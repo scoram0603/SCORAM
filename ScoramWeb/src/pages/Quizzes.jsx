@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Zap, Target, Loader2, Play, Clock, TrendingUp, CalendarClock, Eye } from "lucide-react";
+import {
+  Zap, Target, Loader2, Play, Clock, TrendingUp, CalendarClock, Eye, Swords, Check, X as XIcon,
+} from "lucide-react";
 import { previewWeakTopics, generateWeakTopicsQuiz, listDailyQuizzes, startDailyQuiz } from "../api/quizzes";
+import { getMyQuizChallenges, startQuizChallenge, declineQuizChallenge } from "../api/quizChallenges";
 
 // Quizzes (Phase 1: Weak Topics Quiz) -- deliberately NOT another filter form like Practice Tests.
 // PYP/Practice/Mock are all "sit down for a real session" modes; this is the opposite -- a quick,
@@ -51,6 +54,9 @@ export default function Quizzes() {
           getting wrong.
         </p>
       </div>
+
+      <PendingChallengesSection />
+      <SentChallengesSection />
 
       <DailyQuizzesSection />
 
@@ -240,6 +246,152 @@ function DailyQuizzesSection() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ---------- Challenge a Friend (Phase 3, see QuizChallengesController) ----------
+// Only shows challenges someone's SENT you and haven't responded to yet -- a busy inbox of every
+// past challenge (completed, declined, sent-by-me) belongs on a fuller history view later, not
+// cluttering the main Quizzes page every time a student opens it.
+function PendingChallengesSection() {
+  const navigate = useNavigate();
+  const [challenges, setChallenges] = useState(null);
+  const [status, setStatus] = useState("loading");
+  const [busyId, setBusyId] = useState(null);
+
+  useEffect(() => {
+    getMyQuizChallenges("received", "Pending")
+      .then((res) => {
+        setChallenges(res);
+        setStatus("success");
+      })
+      .catch(() => setStatus("error"));
+  }, []);
+
+  async function handleStart(challenge) {
+    setBusyId(challenge.id);
+    try {
+      const attempt = await startQuizChallenge(challenge.id);
+      navigate(`/tests/attempt/${attempt.attemptId}`);
+    } catch (err) {
+      window.alert(err.message || "Couldn't start this challenge.");
+      setBusyId(null);
+    }
+  }
+
+  async function handleDecline(challenge) {
+    setBusyId(challenge.id);
+    try {
+      await declineQuizChallenge(challenge.id);
+      setChallenges((prev) => prev.filter((c) => c.id !== challenge.id));
+    } catch (err) {
+      window.alert(err.message || "Couldn't decline this challenge.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (status !== "success" || !challenges || challenges.length === 0) return null;
+
+  return (
+    <div className="mt-6">
+      <p className="flex items-center gap-1.5 text-sm font-bold text-ink-900">
+        <Swords className="h-4 w-4 text-secondary-500" strokeWidth={2.25} />
+        Challenges waiting for you
+      </p>
+      <div className="mt-2 flex flex-col gap-2">
+        {challenges.map((c) => (
+          <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl2 border border-secondary-100 bg-secondary-50 p-4">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-ink-900">{c.challengerName} challenged you</p>
+              <p className="mt-0.5 text-xs text-ink-600">
+                {c.quizTitle} · {c.questionCount} Q · beat their score of {c.challengerScore}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleDecline(c)}
+                disabled={busyId === c.id}
+                className="flex h-9 items-center gap-1 rounded-xl border border-primary-100 bg-white px-3 text-xs font-semibold text-ink-500 hover:border-primary-300 disabled:opacity-60"
+              >
+                <XIcon className="h-3.5 w-3.5" strokeWidth={2.25} />
+                Decline
+              </button>
+              <button
+                type="button"
+                onClick={() => handleStart(c)}
+                disabled={busyId === c.id}
+                className="flex h-9 items-center gap-1.5 rounded-xl bg-primary-600 px-3.5 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
+              >
+                {busyId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.25} /> : <Check className="h-3.5 w-3.5" strokeWidth={2.25} />}
+                Accept
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Shows the challenger's own recent sent challenges with live status/result -- fixes the
+// discoverability half of the "who won" gap (the result page itself shows it too, via
+// ChallengeComparisonCards on TestAttemptResult.jsx, but a challenger won't necessarily go back to
+// that specific old result just to check).
+function SentChallengesSection() {
+  const [challenges, setChallenges] = useState(null);
+  const [status, setStatus] = useState("loading");
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    getMyQuizChallenges("sent")
+      .then((res) => {
+        setChallenges(res);
+        setStatus("success");
+      })
+      .catch(() => setStatus("error"));
+  }, []);
+
+  if (status !== "success" || !challenges || challenges.length === 0) return null;
+
+  const visible = showAll ? challenges : challenges.slice(0, 3);
+
+  return (
+    <div className="mt-6">
+      <p className="flex items-center gap-1.5 text-sm font-bold text-ink-900">
+        <Swords className="h-4 w-4 text-secondary-500" strokeWidth={2.25} />
+        Challenges you've sent
+      </p>
+      <div className="mt-2 flex flex-col gap-2">
+        {visible.map((c) => {
+          const iWon = c.status === "Completed" && c.winner === "Challenger";
+          const isTie = c.status === "Completed" && c.winner === "Tie";
+          return (
+            <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl2 border border-primary-100 bg-white p-3.5 shadow-card">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-ink-900">vs {c.challengedName}</p>
+                <p className="mt-0.5 text-xs text-ink-400">{c.quizTitle}</p>
+              </div>
+              {c.status === "Completed" ? (
+                <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${
+                  iWon ? "bg-mint-50 text-mint-600" : isTie ? "bg-primary-50 text-ink-500" : "bg-red-50 text-red-500"
+                }`}>
+                  {c.challengerScore} - {c.challengedScore} {isTie ? "· Tie" : iWon ? "· You won" : "· You lost"}
+                </span>
+              ) : (
+                <span className="shrink-0 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-ink-400">{c.status}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {challenges.length > 3 && !showAll && (
+        <button type="button" onClick={() => setShowAll(true)} className="mt-2 text-xs font-semibold text-secondary-500 hover:underline">
+          Show all {challenges.length}
+        </button>
+      )}
     </div>
   );
 }

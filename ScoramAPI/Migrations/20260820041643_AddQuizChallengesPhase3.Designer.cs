@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScoramAPI.Data;
 
@@ -11,9 +12,11 @@ using ScoramAPI.Data;
 namespace ScoramAPI.Migrations
 {
     [DbContext(typeof(ScoramDbContext))]
-    partial class ScoramDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260820041643_AddQuizChallengesPhase3")]
+    partial class AddQuizChallengesPhase3
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -742,61 +745,6 @@ namespace ScoramAPI.Migrations
                     b.HasIndex("ConversationId", "SentAt");
 
                     b.ToTable("DirectMessages");
-                });
-
-            modelBuilder.Entity("ScoramAPI.Models.Document", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("BlobName")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasMaxLength(260)
-                        .HasColumnType("nvarchar(260)");
-
-                    b.Property<long>("FileSize")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("FileUrl")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("UploadedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("UploadedByAdminId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("UploadedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BlobName")
-                        .IsUnique();
-
-                    b.HasIndex("Category");
-
-                    b.HasIndex("UploadedByAdminId");
-
-                    b.HasIndex("UploadedByUserId");
-
-                    b.ToTable("Documents");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.Exam", b =>
@@ -1944,9 +1892,6 @@ namespace ScoramAPI.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("BatchId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid?>("ChallengedAttemptId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1971,8 +1916,6 @@ namespace ScoramAPI.Migrations
                         .HasColumnType("nvarchar(20)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("BatchId");
 
                     b.HasIndex("ChallengedAttemptId");
 
@@ -2861,23 +2804,6 @@ namespace ScoramAPI.Migrations
                     b.Navigation("Sender");
 
                     b.Navigation("SharedQuestionBankQuestion");
-                });
-
-            modelBuilder.Entity("ScoramAPI.Models.Document", b =>
-                {
-                    b.HasOne("ScoramAPI.Models.Admin", "UploadedByAdmin")
-                        .WithMany()
-                        .HasForeignKey("UploadedByAdminId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("ScoramAPI.Models.User", "UploadedByUser")
-                        .WithMany()
-                        .HasForeignKey("UploadedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("UploadedByAdmin");
-
-                    b.Navigation("UploadedByUser");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.Exam", b =>

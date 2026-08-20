@@ -269,7 +269,7 @@ namespace ScoramAPI.Controllers
 
         // Shared "what do we call this attempt" logic -- used by ToStartResponse, ToResultDto, and
         // Mine() below so all three always agree on a title for the same attempt.
-        private static string TitleFor(Models.StudentTestResult attempt) => attempt.TestKind switch
+        internal static string TitleFor(Models.StudentTestResult attempt) => attempt.TestKind switch
         {
             TestKind.Mock => attempt.MockTest?.Title ?? "Mock Test",
             TestKind.PreviousYearPaper => PaperTitleFor(attempt.Paper) ?? "Previous Year Paper",

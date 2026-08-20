@@ -1,0 +1,38 @@
+# .NET build output
+bin/
+obj/
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+
+# Logs (Serilog rolling file sink)
+logs/
+
+# Environment / secrets -- never baked into the image
+.env
+.env.*
+appsettings.Production.json
+
+# Local uploaded files -- Render's filesystem is ephemeral anyway; these shouldn't ship in the image
+wwwroot/uploads/
+
+# Frontend / Node (in case the build context is ever pointed at the SCORAM root by mistake)
+node_modules/
+dist/
+
+# Local Meilisearch (lives outside ScoramAPI/, but excluded defensively)
+meilisearch.exe
+data.ms/
+dumps/
+
+# Git / editor / OS noise
+.git/
+.gitignore
+.dockerignore
+.idea/
+.vscode/
+*.md
+.DS_Store
+Thumbs.db

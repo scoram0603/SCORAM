@@ -58,6 +58,7 @@ namespace ScoramAPI.Data
         public DbSet<MockTestQuestion> MockTestQuestions => Set<MockTestQuestion>();
         public DbSet<Quiz> Quizzes => Set<Quiz>();
         public DbSet<QuizQuestion> QuizQuestions => Set<QuizQuestion>();
+        public DbSet<QuizChallenge> QuizChallenges => Set<QuizChallenge>();
         public DbSet<StudentTestResult> StudentTestResults => Set<StudentTestResult>();
         public DbSet<StudentAnswer> StudentAnswers => Set<StudentAnswer>();
         public DbSet<AdminTask> AdminTasks => Set<AdminTask>();
@@ -93,6 +94,9 @@ namespace ScoramAPI.Data
         public DbSet<TypingTestResult> TypingTestResults => Set<TypingTestResult>();
         public DbSet<ExamCalendarEvent> ExamCalendarEvents => Set<ExamCalendarEvent>();
         public DbSet<JobAlert> JobAlerts => Set<JobAlert>();
+
+        // Azure Blob Storage -- file metadata only, actual bytes live in the "uploads" container.
+        public DbSet<Document> Documents => Set<Document>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -173,6 +177,7 @@ namespace ScoramAPI.Data
             modelBuilder.Entity<MockTest>().Property(m => m.TestType).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<MockTest>().Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<Quiz>().Property(q => q.Status).HasConversion<string>().HasMaxLength(20);
+            modelBuilder.Entity<QuizChallenge>().Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<StudentAnswer>().Property(a => a.CorrectOptionSnapshot).HasConversion<string>().HasMaxLength(5);
             modelBuilder.Entity<StudentTestResult>().Property(r => r.TestKind).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<StudentTestResult>().Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
@@ -259,6 +264,40 @@ namespace ScoramAPI.Data
                 .WithMany()
                 .HasForeignKey(qq => qq.QuestionBankQuestionId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Quiz Challenges (Phase 3) -- four separate FKs converging on just two tables (User,
+            // StudentTestResult). ALL FOUR need Restrict, not just three of them -- SQL Server
+            // refuses to even create the schema if more than one cascade path could reach the same
+            // table, and every other FK in this file already defaults to Restrict for exactly this
+            // reason, so this isn't a special case, just consistency.
+            modelBuilder.Entity<QuizChallenge>()
+                .HasOne(c => c.ChallengerUser)
+                .WithMany()
+                .HasForeignKey(c => c.ChallengerUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<QuizChallenge>()
+                .HasOne(c => c.ChallengedUser)
+                .WithMany()
+                .HasForeignKey(c => c.ChallengedUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<QuizChallenge>()
+                .HasOne(c => c.SourceAttempt)
+                .WithMany()
+                .HasForeignKey(c => c.SourceAttemptId)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<QuizChallenge>()
+                .HasOne(c => c.ChallengedAttempt)
+                .WithMany()
+                .HasForeignKey(c => c.ChallengedAttemptId)
+                .OnDelete(DeleteBehavior.Restrict);
+            // Fast "my pending challenges" lookup -- the one query this feature actually needs to be
+            // quick, everything else here is low-volume enough not to matter.
+            modelBuilder.Entity<QuizChallenge>()
+                .HasIndex(c => new { c.ChallengedUserId, c.Status });
+            modelBuilder.Entity<QuizChallenge>()
+                .HasIndex(c => c.ChallengerUserId);
+            modelBuilder.Entity<QuizChallenge>()
+                .HasIndex(c => c.BatchId);
 
             modelBuilder.Entity<StudentAnswer>()
                 .HasOne(a => a.Question)
@@ -961,6 +1000,44 @@ namespace ScoramAPI.Data
                 .HasIndex(v => new { v.UserId, v.QuestionBankQuestionId })
                 .IsUnique()
                 .HasFilter("[QuestionBankQuestionId] IS NOT NULL");
+
+            // ==========================================================================
+            // Azure Blob Storage (Documents)
+            // ==========================================================================
+
+            modelBuilder.Entity<Document>().Property(d => d.Category).HasConversion<string>().HasMaxLength(20);
+
+            // The blob key must be unique -- two rows should never point at the same object in the
+            // container.
+            modelBuilder.Entity<Document>()
+                .HasIndex(d => d.BlobName)
+                .IsUnique();
+
+            // Fast "list this admin's / this student's uploads" + fast "list all PYQ PDFs" style
+            // admin lookups.
+            modelBuilder.Entity<Document>()
+                .HasIndex(d => d.Category);
+            modelBuilder.Entity<Document>()
+                .HasIndex(d => d.UploadedByUserId);
+            modelBuilder.Entity<Document>()
+                .HasIndex(d => d.UploadedByAdminId);
+
+            // Restrict (not Cascade) on both -- same reasoning as every other dual-FK entity in this
+            // file (QuestionSolution, QuestionComment, ...): deleting a User/Admin should never
+            // silently delete file metadata out from under a still-referenced blob. Both FKs point at
+            // different tables (User vs Admin), so this doesn't hit SQL Server's "multiple cascade
+            // paths into the same table" restriction that forces Restrict elsewhere in this file.
+            modelBuilder.Entity<Document>()
+                .HasOne(d => d.UploadedByUser)
+                .WithMany()
+                .HasForeignKey(d => d.UploadedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Document>()
+                .HasOne(d => d.UploadedByAdmin)
+                .WithMany()
+                .HasForeignKey(d => d.UploadedByAdminId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 

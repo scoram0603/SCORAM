@@ -110,4 +110,73 @@ namespace ScoramAPI.DTOs
         [Required, MinLength(1)]
         public List<Guid> QuestionBankQuestionIds { get; set; } = new();
     }
+
+    // ============================================================================================
+    // Phase 3 -- Challenge a Friend (see Models/QuizChallengeModels.cs)
+    // ============================================================================================
+
+    // POST /api/quiz-challenges. At least one of ChallengedUserIds/ChallengedGroupId is required --
+    // both can be combined in one send (e.g. "these 2 friends AND my SSC CGL group"). A Group
+    // (ChatRoom) expands to every current, non-banned member (see QuizChallengesController.Create)
+    // -- the challenger themself and anyone already challenged for this exact attempt are silently
+    // dropped from the final target list rather than erroring, so picking a big group doesn't force
+    // the sender to hand-dedupe first.
+    public class QuizChallengeCreateDto
+    {
+        [Required]
+        public Guid AttemptId { get; set; }
+
+        public List<Guid> ChallengedUserIds { get; set; } = new();
+
+        public Guid? ChallengedGroupId { get; set; }
+    }
+
+    // Response to a successful POST /api/quiz-challenges -- one QuizChallengeSummaryDto per person
+    // actually challenged, all sharing the same BatchId.
+    public class QuizChallengeBatchResultDto
+    {
+        public Guid BatchId { get; set; }
+        public List<QuizChallengeSummaryDto> Challenges { get; set; } = new();
+
+        // How many candidates from ChallengedUserIds/the group's members were dropped (self,
+        // duplicates, inactive accounts, or already challenged for this same attempt) -- surfaced so
+        // the UI can say "sent to 12 of 14" instead of silently sending fewer than expected.
+        public int SkippedCount { get; set; }
+    }
+
+    public class QuizChallengeSummaryDto
+    {
+        public Guid Id { get; set; }
+        public Guid BatchId { get; set; }
+
+        public Guid ChallengerUserId { get; set; }
+        public string ChallengerName { get; set; } = string.Empty;
+        public string? ChallengerPhotoUrl { get; set; }
+
+        public Guid ChallengedUserId { get; set; }
+        public string ChallengedName { get; set; } = string.Empty;
+        public string? ChallengedPhotoUrl { get; set; }
+
+        public string QuizTitle { get; set; } = string.Empty;
+        public int QuestionCount { get; set; }
+
+        public decimal ChallengerScore { get; set; }
+        public decimal? ChallengedScore { get; set; } // null until the challenged student finishes
+
+        // "Pending" | "InProgress" | "Completed" | "Declined" | "Expired" -- computed, see
+        // QuizChallengesController.StatusFor.
+        public string Status { get; set; } = string.Empty;
+
+        // Only meaningful once Status == "Completed" -- "Challenger" | "Challenged" | "Tie".
+        public string? Winner { get; set; }
+
+        // So the caller's own UI knows which side of the challenge THIS student is on.
+        public bool IAmChallenger { get; set; }
+
+        public Guid? ChallengedAttemptId { get; set; }
+        public Guid SourceAttemptId { get; set; }
+
+        public DateTime CreatedAt { get; set; }
+        public DateTime ExpiresAt { get; set; }
+    }
 }

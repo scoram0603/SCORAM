@@ -273,4 +273,17 @@ namespace ScoramAPI.Enums
         RolledBack,
         Failed
     }
+
+    // AZURE BLOB STORAGE (Documents) -- which virtual folder inside the private "uploads" container
+    // a Document belongs to (Services/AzureBlobService.cs maps each value to its folder name, e.g.
+    // QuestionImage -> "question-images"). Kept as its own small enum rather than reusing an existing
+    // one (e.g. ChatMessageType) since this is a storage-layer concept, not a messaging one -- new
+    // categories (Notice, MockTestPdf, ...) can be added later without touching unrelated enums.
+    public enum DocumentCategory
+    {
+        QuestionImage,
+        PyqPdf,
+        ExamPdf,
+        ProfileImage
+    }
 }
