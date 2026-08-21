@@ -256,7 +256,11 @@ namespace ScoramAPI.Enums
     public enum NotificationType
     {
         Mention,
-        DirectMessage
+        DirectMessage,
+        // Someone challenged this student to a Quiz -- see QuizChallengesController.Create.
+        // String-backed column is already nvarchar(20) (see ScoramDbContext), and "QuizChallenge"
+        // fits within that, so this needed no migration of its own.
+        QuizChallenge
     }
 
     public enum ImportFileFormat

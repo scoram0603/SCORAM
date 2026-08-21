@@ -20,11 +20,13 @@ namespace ScoramAPI.Controllers
     {
         private readonly ScoramDbContext _db;
         private readonly ITestAttemptService _attemptService;
+        private readonly INotificationService _notifications;
 
-        public QuizChallengesController(ScoramDbContext db, ITestAttemptService attemptService)
+        public QuizChallengesController(ScoramDbContext db, ITestAttemptService attemptService, INotificationService notifications)
         {
             _db = db;
             _attemptService = attemptService;
+            _notifications = notifications;
         }
 
         // POST /api/quiz-challenges -- "Challenge a friend" (or several, or a whole Group Chat room)
@@ -97,6 +99,23 @@ namespace ScoramAPI.Controllers
             var summaries = new List<QuizChallengeSummaryDto>();
             foreach (var c in challenges)
                 summaries.Add(await ToSummaryDtoAsync(c.Id, userId, c));
+
+            // Bell + live SignalR push + Web Push, all handled by CreateAsync itself -- see
+            // NotificationService.CreateAsync. Fixes the earlier gap where a sent challenge was only
+            // ever visible by opening the Quizzes page and happening to notice it there. Reuses each
+            // student's NotifyOnDirectMessages preference (CreateAsync's own muted-check) rather than
+            // adding a whole separate "notify me about challenges" toggle for one narrow feature.
+            var challengerName = summaries.Count > 0 ? summaries[0].ChallengerName : "Someone";
+            foreach (var summary in summaries)
+            {
+                await _notifications.CreateAsync(
+                    summary.ChallengedUserId,
+                    NotificationType.QuizChallenge,
+                    $"{challengerName} challenged you!",
+                    $"{summary.QuizTitle} -- beat their score of {summary.ChallengerScore} to win.",
+                    "/quizzes"
+                );
+            }
 
             return Ok(new QuizChallengeBatchResultDto
             {

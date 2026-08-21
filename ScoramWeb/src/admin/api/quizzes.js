@@ -37,3 +37,20 @@ export function addQuizQuestions(token, id, questionBankQuestionIds) {
 export function removeQuizQuestion(token, id, quizQuestionId) {
   return apiFetch(`/api/admin/quizzes/${id}/questions/${quizQuestionId}`, { method: "DELETE", token });
 }
+
+export function duplicateQuiz(token, id) {
+  return apiFetch(`/api/admin/quizzes/${id}/duplicate`, { method: "POST", token });
+}
+
+// orderedQuizQuestionIds: [guid, ...] in the desired final order
+export function reorderQuizQuestions(token, id, orderedQuizQuestionIds) {
+  return apiFetch(`/api/admin/quizzes/${id}/questions/reorder`, { method: "PUT", token, body: orderedQuizQuestionIds });
+}
+
+export function getQuizAttempts(token, id, params = {}) {
+  return apiFetch(`/api/admin/quizzes/${id}/attempts${toQueryString(params)}`, { token });
+}
+
+export function getQuizResultsSummary(token, id) {
+  return apiFetch(`/api/admin/quizzes/${id}/results`, { token });
+}

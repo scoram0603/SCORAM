@@ -1,18 +1,19 @@
 import { useEffect, useState } from "react";
-import { Plus, X, Trash2 } from "lucide-react";
+import { Plus, X, Trash2, Copy, ChevronUp, ChevronDown, Users, ArrowLeft } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import {
   listQuizzesAdmin, getQuizAdmin, createQuiz, updateQuiz, updateQuizStatus,
-  addQuizQuestions, removeQuizQuestion,
+  addQuizQuestions, removeQuizQuestion, duplicateQuiz, reorderQuizQuestions,
+  getQuizAttempts, getQuizResultsSummary,
 } from "../api/quizzes";
 import TestQuestionPicker from "../components/TestQuestionPicker";
+import PaperQuestionBulkPicker from "../components/PaperQuestionBulkPicker";
 import { PageHeader, Card, Button, FormField, TextInput, Select, Alert, friendlyError } from "../components/AdminUI";
 
-// Admin side of Quizzes Phase 2 (see QuizzesAdminController and Models/QuizModels.cs). Deliberately
-// leaner than Mock Test management -- no Duplicate/randomize-order/attempts dashboard yet (see the
-// controller's own comment on why). Create is settings-only (no questions required up front, unlike
-// Mock Test) -- immediately after creating, the same screen switches into edit mode so the admin
-// adds questions right there, same two-step "identity first, then questions" flow as Papers.
+// Admin side of Quizzes Phase 2 (see QuizzesAdminController and Models/QuizModels.cs). Create is
+// settings-only (no questions required up front, unlike Mock Test) -- immediately after creating,
+// the same screen switches into edit mode so the admin adds questions right there, same two-step
+// "identity first, then questions" flow as Papers.
 export default function QuizManagement() {
   const { token } = useAdminAuth();
   const [mode, setMode] = useState("list");
@@ -38,6 +39,19 @@ export default function QuizManagement() {
     } catch (err) {
       window.alert(friendlyError(err));
     }
+  }
+
+  async function handleDuplicate(id) {
+    try {
+      await duplicateQuiz(token, id);
+      refresh();
+    } catch (err) {
+      window.alert(friendlyError(err));
+    }
+  }
+
+  if (mode === "attempts") {
+    return <QuizAttemptsView token={token} quizId={editingId} onBack={() => { setMode("list"); setEditingId(null); }} />;
   }
 
   if (mode === "form") {
@@ -100,7 +114,15 @@ export default function QuizManagement() {
                       </Select>
                     </td>
                     <td className="px-3 py-2.5">
-                      <button type="button" onClick={() => { setEditingId(q.id); setMode("form"); }} className="font-semibold text-secondary-500 hover:underline">Edit</button>
+                      <div className="flex items-center gap-3">
+                        <button type="button" onClick={() => { setEditingId(q.id); setMode("form"); }} className="font-semibold text-secondary-500 hover:underline">Edit</button>
+                        <button type="button" onClick={() => { setEditingId(q.id); setMode("attempts"); }} className="flex items-center gap-1 font-semibold text-ink-500 hover:text-ink-700" title="View attempts">
+                          <Users className="h-3.5 w-3.5" strokeWidth={2.25} />
+                        </button>
+                        <button type="button" onClick={() => handleDuplicate(q.id)} className="flex items-center gap-1 font-semibold text-ink-500 hover:text-ink-700" title="Duplicate">
+                          <Copy className="h-3.5 w-3.5" strokeWidth={2.25} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -108,6 +130,104 @@ export default function QuizManagement() {
             </table>
           </div>
         </Card>
+      </div>
+    </div>
+  );
+}
+
+function QuizAttemptsView({ token, quizId, onBack }) {
+  const [attempts, setAttempts] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    Promise.all([
+      getQuizAttempts(token, quizId, { page: 1, pageSize: 100 }),
+      getQuizResultsSummary(token, quizId),
+    ])
+      .then(([attemptsRes, summaryRes]) => {
+        setAttempts(attemptsRes.items);
+        setSummary(summaryRes);
+      })
+      .catch((err) => setError(friendlyError(err)));
+  }, [token, quizId]);
+
+  return (
+    <div>
+      <PageHeader
+        title="Quiz Attempts"
+        action={<Button variant="ghost" onClick={onBack}><ArrowLeft className="h-4 w-4" strokeWidth={2.5} />Back</Button>}
+      />
+
+      <div className="p-6">
+        {error && <div className="mb-4"><Alert>{error}</Alert></div>}
+
+        {summary && (
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-2">
+            <Card className="text-center">
+              <p className="text-2xl font-extrabold text-ink-900">{summary.attemptCount}</p>
+              <p className="text-xs text-ink-400">Submitted attempts</p>
+            </Card>
+            <Card className="text-center">
+              <p className="text-2xl font-extrabold text-ink-900">{summary.averageScore}</p>
+              <p className="text-xs text-ink-400">Average score</p>
+            </Card>
+          </div>
+        )}
+
+        <Card className="!p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-primary-50 text-ink-600">
+                <tr>
+                  <th className="px-3 py-2.5">Student</th>
+                  <th className="px-3 py-2.5">Status</th>
+                  <th className="px-3 py-2.5">Score</th>
+                  <th className="px-3 py-2.5">Correct</th>
+                  <th className="px-3 py-2.5">Wrong</th>
+                  <th className="px-3 py-2.5">Skipped</th>
+                  <th className="px-3 py-2.5">Time Taken</th>
+                  <th className="px-3 py-2.5">Started</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!attempts && <tr><td colSpan={8} className="px-3 py-6 text-center text-ink-400">Loading…</td></tr>}
+                {attempts && attempts.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-ink-400">No attempts yet.</td></tr>}
+                {attempts?.map((a) => (
+                  <tr key={a.id} className="border-t border-primary-50">
+                    <td className="px-3 py-2.5 font-medium text-ink-900">{a.studentName}</td>
+                    <td className="px-3 py-2.5 text-ink-600">{a.status}</td>
+                    <td className="px-3 py-2.5 text-ink-600">{a.status === "InProgress" ? "—" : a.score}</td>
+                    <td className="px-3 py-2.5 text-ink-600">{a.correctCount}</td>
+                    <td className="px-3 py-2.5 text-ink-600">{a.wrongCount}</td>
+                    <td className="px-3 py-2.5 text-ink-600">{a.skippedCount}</td>
+                    <td className="px-3 py-2.5 text-ink-600">{a.timeTakenSeconds ? `${Math.round(a.timeTakenSeconds / 60)} min` : "—"}</td>
+                    <td className="px-3 py-2.5 text-ink-600">{new Date(a.startedAt).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        {summary && summary.questions?.length > 0 && (
+          <Card className="mt-4">
+            <h3 className="text-sm font-bold text-ink-900">Question-wise performance</h3>
+            <div className="mt-2 flex flex-col divide-y divide-primary-50">
+              {summary.questions.map((q) => (
+                <div key={q.questionOrder} className="flex items-start justify-between gap-3 py-2 text-xs">
+                  <span className="min-w-0 flex-1">
+                    <span className="font-semibold">Q{q.questionOrder}.</span> {q.questionText}
+                  </span>
+                  <span className="shrink-0 text-ink-500">
+                    {q.correctCount}/{q.totalAttempted} correct
+                    {q.skippedCount > 0 ? ` · ${q.skippedCount} skipped` : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );
@@ -185,6 +305,28 @@ function QuizForm({ token, quizId, onCancel, onCreated, onDone }) {
     }
   }
 
+  async function handleBulkAdd(questionBankQuestionIds) {
+    const result = await addQuizQuestions(token, quizId, questionBankQuestionIds);
+    const q = await getQuizAdmin(token, quizId);
+    setExistingQuestions(q.questions || []);
+    return result;
+  }
+
+  async function handleMove(index, direction) {
+    const next = [...existingQuestions];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    setExistingQuestions(next); // optimistic -- reorder feels instant, matches Papers/Mock's own UX
+    try {
+      await reorderQuizQuestions(token, quizId, next.map((q) => q.quizQuestionId));
+    } catch (err) {
+      window.alert(friendlyError(err));
+      const q = await getQuizAdmin(token, quizId); // roll back to server truth on failure
+      setExistingQuestions(q.questions || []);
+    }
+  }
+
   async function handleRemoveExisting(quizQuestionId) {
     try {
       await removeQuizQuestion(token, quizId, quizQuestionId);
@@ -247,9 +389,17 @@ function QuizForm({ token, quizId, onCancel, onCreated, onDone }) {
                         <span className="font-semibold">{i + 1}.</span> {q.questionText}
                         <span className="ml-1 text-ink-400">({q.subject})</span>
                       </span>
-                      <button type="button" onClick={() => handleRemoveExisting(q.quizQuestionId)} className="shrink-0 text-red-500">
-                        <Trash2 className="h-3.5 w-3.5" strokeWidth={2.25} />
-                      </button>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <button type="button" onClick={() => handleMove(i, -1)} disabled={i === 0} className="rounded p-0.5 text-ink-400 hover:text-ink-700 disabled:opacity-30" title="Move up">
+                          <ChevronUp className="h-3.5 w-3.5" strokeWidth={2.25} />
+                        </button>
+                        <button type="button" onClick={() => handleMove(i, 1)} disabled={i === existingQuestions.length - 1} className="rounded p-0.5 text-ink-400 hover:text-ink-700 disabled:opacity-30" title="Move down">
+                          <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.25} />
+                        </button>
+                        <button type="button" onClick={() => handleRemoveExisting(q.quizQuestionId)} className="ml-1 rounded p-0.5 text-red-500 hover:bg-red-50" title="Remove">
+                          <Trash2 className="h-3.5 w-3.5" strokeWidth={2.25} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -259,7 +409,17 @@ function QuizForm({ token, quizId, onCancel, onCreated, onDone }) {
               )}
 
               <div className="mt-3">
+                <h4 className="mb-2 text-xs font-bold text-ink-900">Add one, at an exact spot</h4>
                 <TestQuestionPicker token={token} selectedRefs={existingQuestions.map((q) => ({ questionBankQuestionId: q.questionBankQuestionId }))} onAdd={handleAddQuestion} />
+              </div>
+
+              <div className="mt-4 border-t border-primary-100 pt-3">
+                <h4 className="mb-2 text-xs font-bold text-ink-900">Bulk-add several at once</h4>
+                <PaperQuestionBulkPicker
+                  token={token}
+                  mappedQuestionBankIds={existingQuestions.map((q) => q.questionBankQuestionId)}
+                  onBulkAdd={handleBulkAdd}
+                />
               </div>
 
               <Button variant="secondary" className="mt-3" onClick={onDone}>Done</Button>

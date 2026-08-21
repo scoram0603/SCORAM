@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, AtSign, MessageCircle, Loader2, Inbox } from "lucide-react";
+import { Bell, AtSign, MessageCircle, Loader2, Inbox, Swords } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { listNotifications, getUnreadCount, markNotificationRead, markAllNotificationsRead } from "../../api/notifications";
 import { useChatConnection } from "../../context/ChatConnectionContext";
 import { timeAgo } from "../../utils/format";
 
-const TYPE_ICON = { Mention: AtSign, DirectMessage: MessageCircle };
+const TYPE_ICON = { Mention: AtSign, DirectMessage: MessageCircle, QuizChallenge: Swords };
 
 export default function NotificationBell({ variant = "desktop" }) {
   const navigate = useNavigate();

@@ -213,6 +213,128 @@ namespace ScoramAPI.Controllers
             return NoContent();
         }
 
+        // POST /api/admin/quizzes/{id}/duplicate -- copies settings + questions as a new Draft, so an
+        // admin can reuse a past quiz (e.g. last week's Current Affairs quiz) as a starting point
+        // without touching the original's (possibly already-attempted) history.
+        [HttpPost("{id:guid}/duplicate")]
+        public async Task<ActionResult<QuizSummaryDto>> Duplicate(Guid id)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageTests)) return Forbid();
+
+            var source = await _db.Quizzes.Include(q => q.QuizQuestions).FirstOrDefaultAsync(q => q.Id == id);
+            if (source == null) return NotFound();
+
+            var adminId = User.GetAdminId();
+            var copy = new Quiz
+            {
+                Title = $"{source.Title} (Copy)",
+                Topic = source.Topic,
+                DurationMinutes = source.DurationMinutes,
+                NegativeMarkingRatio = source.NegativeMarkingRatio,
+                MaxAttempts = source.MaxAttempts,
+                // Deliberately NOT copying AvailableFrom/AvailableTo -- a duplicated quiz's whole
+                // point is usually a different day/window, so those default to unset (admin sets
+                // fresh dates) rather than silently reusing a window that's likely already passed.
+                Status = TestPublishStatus.Draft,
+                CreatedByAdminId = adminId,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.Quizzes.Add(copy);
+            await _db.SaveChangesAsync();
+
+            var copiedQuestions = source.QuizQuestions.OrderBy(qq => qq.QuestionOrder).Select(qq => new QuizQuestion
+            {
+                QuizId = copy.Id,
+                QuestionBankQuestionId = qq.QuestionBankQuestionId,
+                QuestionOrder = qq.QuestionOrder
+            });
+            _db.QuizQuestions.AddRange(copiedQuestions);
+            await _db.SaveChangesAsync();
+
+            await _audit.LogAsync(adminId, "Quiz.Duplicate", "Quiz", copy.Id, $"from {source.Id}");
+            var summary = ToSummaryDto(copy, DateTime.UtcNow);
+            summary.QuestionCount = source.QuizQuestions.Count; // copy.QuizQuestions isn't populated in-memory here
+            return Ok(summary);
+        }
+
+        // PUT /api/admin/quizzes/{id}/questions/reorder -- body: ordered list of QuizQuestion ids.
+        [HttpPut("{id:guid}/questions/reorder")]
+        public async Task<IActionResult> ReorderQuestions(Guid id, [FromBody] List<Guid> orderedQuestionIds)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageTests)) return Forbid();
+
+            var questions = await _db.QuizQuestions.Where(q => q.QuizId == id).ToListAsync();
+            var byId = questions.ToDictionary(q => q.Id);
+
+            for (var i = 0; i < orderedQuestionIds.Count; i++)
+            {
+                if (byId.TryGetValue(orderedQuestionIds[i], out var q)) q.QuestionOrder = i + 1;
+            }
+
+            await _db.SaveChangesAsync();
+            await _audit.LogAsync(User.GetAdminId(), "Quiz.ReorderQuestions", "Quiz", id);
+            return NoContent();
+        }
+
+        // GET /api/admin/quizzes/{id}/attempts?page=&pageSize= -- every student's attempt on this
+        // quiz, most recent first. Same anonymous-object shape as MockTestsAdminController.GetAttempts
+        // -- a proper DTO isn't worth it for an admin-only, read-only table.
+        [HttpGet("{id:guid}/attempts")]
+        public async Task<ActionResult<PagedResult<object>>> GetAttempts(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageTests)) return Forbid();
+
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 100);
+
+            var query = _db.StudentTestResults.Include(r => r.User).Where(r => r.QuizId == id).OrderByDescending(r => r.StartedAt);
+            var totalCount = await query.CountAsync();
+            var items = await query.Skip((page - 1) * pageSize).Take(pageSize)
+                .Select(r => new
+                {
+                    r.Id,
+                    StudentName = r.User != null ? r.User.FullName : "Unknown",
+                    Status = r.Status.ToString(),
+                    r.Score,
+                    r.CorrectCount,
+                    r.WrongCount,
+                    r.SkippedCount,
+                    r.TimeTakenSeconds,
+                    r.StartedAt,
+                    r.AttemptedAt
+                }).ToListAsync();
+
+            return Ok(new PagedResult<object> { Items = items.Cast<object>().ToList(), TotalCount = totalCount, Page = page, PageSize = pageSize });
+        }
+
+        // GET /api/admin/quizzes/{id}/results -- aggregate + question-wise performance across every
+        // SUBMITTED attempt.
+        [HttpGet("{id:guid}/results")]
+        public async Task<ActionResult<object>> GetResultsSummary(Guid id)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageTests)) return Forbid();
+
+            var submitted = _db.StudentTestResults.Where(r => r.QuizId == id && r.Status != TestAttemptStatus.InProgress);
+            var attemptCount = await submitted.CountAsync();
+            var avgScore = attemptCount > 0 ? await submitted.AverageAsync(r => (double)r.Score) : 0;
+
+            var questionStats = await _db.StudentAnswers
+                .Where(a => a.StudentTestResult!.QuizId == id && a.StudentTestResult!.Status != TestAttemptStatus.InProgress)
+                .GroupBy(a => a.QuestionOrder)
+                .Select(g => new
+                {
+                    QuestionOrder = g.Key,
+                    QuestionText = g.First().QuestionTextSnapshot,
+                    TotalAttempted = g.Count(a => a.SelectedOption != null),
+                    CorrectCount = g.Count(a => a.IsCorrect),
+                    SkippedCount = g.Count(a => a.SelectedOption == null)
+                })
+                .OrderBy(q => q.QuestionOrder)
+                .ToListAsync();
+
+            return Ok(new { attemptCount, averageScore = Math.Round(avgScore, 2), questions = questionStats });
+        }
+
         internal static QuizSummaryDto ToSummaryDto(Quiz q, DateTime now) => new QuizSummaryDto
         {
             Id = q.Id,

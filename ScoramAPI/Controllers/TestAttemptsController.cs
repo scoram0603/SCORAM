@@ -20,11 +20,13 @@ namespace ScoramAPI.Controllers
     {
         private readonly ScoramDbContext _db;
         private readonly IGamificationService _gamification;
+        private readonly INotificationService _notifications;
 
-        public TestAttemptsController(ScoramDbContext db, IGamificationService gamification)
+        public TestAttemptsController(ScoramDbContext db, IGamificationService gamification, INotificationService notifications)
         {
             _db = db;
             _gamification = gamification;
+            _notifications = notifications;
         }
 
         // GET /api/tests/attempts/{attemptId} -- if still InProgress, this IS "resume": returns the
@@ -128,6 +130,27 @@ namespace ScoramAPI.Controllers
                 _ => GamificationService.Reasons.PracticeTestCompleted
             };
             await _gamification.RecordActivityAsync(userId, GamificationService.XpFor(reason), reason, examName);
+
+            // Phase 3, Challenge a Friend -- if THIS attempt is what a friend accepted a challenge
+            // with, let the original challenger know it's done instead of them having to remember to
+            // check back (see QuizChallengesController for the "challenge sent" notification's other
+            // half).
+            if (attempt.TestKind == TestKind.Quiz)
+            {
+                var challenge = await _db.QuizChallenges.FirstOrDefaultAsync(c => c.ChallengedAttemptId == attempt.Id);
+                if (challenge != null)
+                {
+                    var challengedUser = await _db.Users.FindAsync(challenge.ChallengedUserId);
+                    var challengedName = challengedUser?.FullName ?? "Your friend";
+                    await _notifications.CreateAsync(
+                        challenge.ChallengerUserId,
+                        NotificationType.QuizChallenge,
+                        $"{challengedName} finished your challenge!",
+                        $"They scored {attempt.Score} -- see how you compare.",
+                        "/quizzes"
+                    );
+                }
+            }
 
             return Ok(ToResultDto(attempt));
         }
