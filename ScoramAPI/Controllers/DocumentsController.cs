@@ -76,8 +76,11 @@ namespace ScoramAPI.Controllers
         [HttpPost("upload")]
         [Consumes("multipart/form-data")]
         [RequestSizeLimit(20 * 1024 * 1024)] // outer hard ceiling; the real, configurable limit is enforced in ValidateFile
-        public async Task<IActionResult> Upload([FromForm] IFormFile file, [FromForm] string category)
+        public async Task<IActionResult> Upload([FromForm] DocumentUploadRequestDto request)
         {
+            var file = request.File;
+            var category = request.Category;
+
             if (!Enum.TryParse<DocumentCategory>(category, ignoreCase: true, out var parsedCategory))
                 return BadRequest(Fail($"category must be one of: {string.Join(", ", Enum.GetNames<DocumentCategory>())}."));
 
