@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, ImagePlus, Plus, PlusCircle, ArrowLeft, ArrowRight, X, Layers, PenLine, Link2Off } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAdminAuth } from "../context/AdminAuthContext";
@@ -9,6 +9,7 @@ import BulkImportPanel from "../components/BulkImportPanel";
 import TestQuestionPicker from "../components/TestQuestionPicker";
 import PaperQuestionBulkPicker from "../components/PaperQuestionBulkPicker";
 import { PracticeSettingsCard, ValidationSummary } from "../components/PaperConfigAndValidation";
+import ImagePickerField from "../components/ImagePickerField";
 import { API_BASE_URL } from "../../api/client";
 import { PageHeader, Card, Button, FormField, TextInput, TextArea, Select, Alert, StatusBadge, friendlyError } from "../components/AdminUI";
 
@@ -984,35 +985,4 @@ function QuestionStep({
   );
 }
 
-function ImagePickerField({ label, file, onChange, compact }) {
-  const inputRef = useRef(null);
-  return (
-    <div className={compact ? "mt-2" : ""}>
-      {!compact && <span className="mb-1 block text-xs font-semibold text-ink-600">{label}</span>}
-      <label className={`flex cursor-pointer items-center gap-2 rounded-xl2 border border-dashed border-primary-100 bg-white text-ink-600 hover:border-secondary-500 ${compact ? "px-2.5 py-1.5 text-xs" : "px-3.5 py-2.5 text-sm"}`}>
-        <ImagePlus className={compact ? "h-3.5 w-3.5 text-ink-400" : "h-4 w-4 text-ink-400"} strokeWidth={2} />
-        <span className="truncate">{file ? file.name : compact ? label : "Choose an image"}</span>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".png,.jpg,.jpeg,.webp,.svg"
-          className="hidden"
-          onChange={(e) => onChange(e.target.files?.[0] || null)}
-        />
-        {file && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              onChange(null);
-              if (inputRef.current) inputRef.current.value = "";
-            }}
-            className="ml-auto text-ink-400 hover:text-red-500"
-          >
-            <X className="h-3.5 w-3.5" strokeWidth={2.5} />
-          </button>
-        )}
-      </label>
-    </div>
-  );
-}
+

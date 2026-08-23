@@ -33,10 +33,12 @@ namespace ScoramAPI.Controllers
         private readonly IMemoryCache _cache;
         private readonly IAuditLogService _audit;
         private readonly ILogger<QuestionBankAdminController> _logger;
+        private readonly IFileStorageService _fileStorage;
 
         public QuestionBankAdminController(
             ScoramDbContext db, IAdminPermissionService permissions, IQuestionBankImportService importService,
-            IMemoryCache cache, IAuditLogService audit, ILogger<QuestionBankAdminController> logger)
+            IMemoryCache cache, IAuditLogService audit, ILogger<QuestionBankAdminController> logger,
+            IFileStorageService fileStorage)
         {
             _db = db;
             _permissions = permissions;
@@ -44,6 +46,7 @@ namespace ScoramAPI.Controllers
             _cache = cache;
             _audit = audit;
             _logger = logger;
+            _fileStorage = fileStorage;
         }
 
         // ======================================================================================
@@ -282,6 +285,63 @@ namespace ScoramAPI.Controllers
             await _db.Entry(question).Collection(x => x.ExamMappings).Query().Include(m => m.Exam).LoadAsync();
 
             return Ok(ToAdminDto(question));
+        }
+
+        // POST /api/admin/question-bank/{id}/images (multipart/form-data) -- attach/replace/remove any
+        // of the 6 images independently of the text fields (see QuestionBankImagesUpdateDto's own
+        // comment on why this is separate from Create/Update). Works identically whether the question
+        // was hand-typed or came from a bulk import -- there's nothing bulk-import-specific about a
+        // question once it's a row in QuestionBankQuestions.
+        [HttpPost("{id:guid}/images")]
+        public async Task<ActionResult<QuestionBankAdminQuestionDto>> UpdateImages(Guid id, [FromForm] QuestionBankImagesUpdateDto dto)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageQuestionBank))
+                return Forbid();
+
+            var question = await _db.QuestionBankQuestions
+                .Include(x => x.Subject).Include(x => x.Topic)
+                .Include(x => x.ExamMappings).ThenInclude(m => m.Exam)
+                .FirstOrDefaultAsync(x => x.Id == id);
+            if (question == null) return NotFound();
+
+            try
+            {
+                question.QuestionImageUrl = await ApplyImageUpdate(dto.QuestionImage, dto.RemoveQuestionImage, question.QuestionImageUrl);
+                question.OptionAImageUrl = await ApplyImageUpdate(dto.OptionAImage, dto.RemoveOptionAImage, question.OptionAImageUrl);
+                question.OptionBImageUrl = await ApplyImageUpdate(dto.OptionBImage, dto.RemoveOptionBImage, question.OptionBImageUrl);
+                question.OptionCImageUrl = await ApplyImageUpdate(dto.OptionCImage, dto.RemoveOptionCImage, question.OptionCImageUrl);
+                question.OptionDImageUrl = await ApplyImageUpdate(dto.OptionDImage, dto.RemoveOptionDImage, question.OptionDImageUrl);
+                question.ExplanationImageUrl = await ApplyImageUpdate(dto.ExplanationImage, dto.RemoveExplanationImage, question.ExplanationImageUrl);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
+            question.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+            await _audit.LogAsync(User.GetAdminId(), "QuestionBank.UpdateImages", "QuestionBankQuestion", id);
+
+            return Ok(ToAdminDto(question));
+        }
+
+        // Same contract as QuestionsController.ApplyImageUpdate -- kept as its own private copy here
+        // rather than extracted into a shared static helper, matching this codebase's existing
+        // preference for small controller-local helpers over a speculative shared-utility layer.
+        private async Task<string?> ApplyImageUpdate(IFormFile? newFile, bool remove, string? currentUrl)
+        {
+            if (newFile != null)
+            {
+                var newUrl = await _fileStorage.SaveImageAsync(newFile, "question-images");
+                _fileStorage.DeleteImage(currentUrl);
+                return newUrl;
+            }
+            if (remove)
+            {
+                _fileStorage.DeleteImage(currentUrl);
+                return null;
+            }
+            return currentUrl;
         }
 
         // DELETE /api/admin/question-bank/{id} -- soft delete (IsActive = false), consistent with how
@@ -865,12 +925,18 @@ namespace ScoramAPI.Controllers
         {
             Id = x.Id,
             QuestionText = x.QuestionText,
+            QuestionImageUrl = x.QuestionImageUrl,
             OptionA = x.OptionA,
+            OptionAImageUrl = x.OptionAImageUrl,
             OptionB = x.OptionB,
+            OptionBImageUrl = x.OptionBImageUrl,
             OptionC = x.OptionC,
+            OptionCImageUrl = x.OptionCImageUrl,
             OptionD = x.OptionD,
+            OptionDImageUrl = x.OptionDImageUrl,
             CorrectOption = x.CorrectOption.ToString(),
             Explanation = x.Explanation,
+            ExplanationImageUrl = x.ExplanationImageUrl,
             Subject = x.Subject?.Name ?? string.Empty,
             Topic = x.Topic?.Name ?? string.Empty,
             SourceReference = x.SourceReference,

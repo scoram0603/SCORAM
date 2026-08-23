@@ -1,4 +1,4 @@
-import { apiFetch } from "../../api/client";
+import { apiFetch, apiFetchForm } from "../../api/client";
 
 function toQueryString(params = {}) {
   const query = new URLSearchParams();
@@ -33,6 +33,24 @@ export function updateQuestionBankQuestion(token, id, payload) {
 // Soft delete (sets IsActive = false) -- see QuestionBankAdminController.Delete.
 export function deleteQuestionBankQuestion(token, id) {
   return apiFetch(`/api/admin/question-bank/${id}`, { method: "DELETE", token });
+}
+
+// POST /api/admin/question-bank/{id}/images (multipart) -- images: { questionImage?, optionAImage?,
+// optionBImage?, optionCImage?, optionDImage?, explanationImage? } (File objects, only include the
+// ones actually changing); removeFlags: { removeQuestionImage?, removeOptionAImage?, ... } (booleans,
+// only include ones being explicitly cleared). Works identically for a hand-typed or bulk-imported
+// question -- see QuestionBankAdminController.UpdateImages.
+export function uploadQuestionBankImages(token, id, images = {}, removeFlags = {}) {
+  const formData = new FormData();
+  const fileKeys = { questionImage: "QuestionImage", optionAImage: "OptionAImage", optionBImage: "OptionBImage", optionCImage: "OptionCImage", optionDImage: "OptionDImage", explanationImage: "ExplanationImage" };
+  const removeKeys = { removeQuestionImage: "RemoveQuestionImage", removeOptionAImage: "RemoveOptionAImage", removeOptionBImage: "RemoveOptionBImage", removeOptionCImage: "RemoveOptionCImage", removeOptionDImage: "RemoveOptionDImage", removeExplanationImage: "RemoveExplanationImage" };
+  Object.entries(fileKeys).forEach(([jsKey, formKey]) => {
+    if (images[jsKey]) formData.append(formKey, images[jsKey]);
+  });
+  Object.entries(removeKeys).forEach(([jsKey, formKey]) => {
+    if (removeFlags[jsKey]) formData.append(formKey, "true");
+  });
+  return apiFetchForm(`/api/admin/question-bank/${id}/images`, { method: "POST", token, formData });
 }
 
 // ---------- Subjects ----------

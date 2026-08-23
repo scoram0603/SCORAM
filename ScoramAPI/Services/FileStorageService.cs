@@ -27,6 +27,14 @@ namespace ScoramAPI.Services
         /// method returned. Silently does nothing if the URL is null/external/already gone -- deleting
         /// old files is a cleanup nicety, not something that should ever fail a request.</summary>
         void DeleteImage(string? relativeUrl);
+
+        /// <summary>Physically copies an already-uploaded image to a new file under the given
+        /// subfolder, returning the new file's own relative URL (or null if sourceRelativeUrl is
+        /// null/not a local upload). Used when two independently-editable records need to end up
+        /// with "the same picture" (e.g. QuestionBankMirrorService mirroring a PYQ question's images)
+        /// -- giving each its own physical file means deleting/replacing one's image can never break
+        /// the other's, the way sharing a single URL between two records would.</summary>
+        Task<string?> CopyImageAsync(string? sourceRelativeUrl, string subfolder);
     }
 
     public class FileStorageService : IFileStorageService
@@ -130,6 +138,28 @@ namespace ScoramAPI.Services
                 // Best-effort cleanup -- an orphaned file on disk is a non-issue, but failing the
                 // request over it (e.g. a locked file, permissions) would be a worse outcome.
             }
+        }
+
+        public async Task<string?> CopyImageAsync(string? sourceRelativeUrl, string subfolder)
+        {
+            if (string.IsNullOrWhiteSpace(sourceRelativeUrl) || !sourceRelativeUrl.StartsWith("/uploads/")) return null;
+
+            var sourcePath = Path.Combine(_env.WebRootPath ?? "wwwroot", sourceRelativeUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(sourcePath)) return null;
+
+            var ext = Path.GetExtension(sourcePath);
+            var fileName = $"{Guid.NewGuid()}{ext}";
+            var uploadsDir = Path.Combine(_env.WebRootPath ?? "wwwroot", "uploads", subfolder);
+            Directory.CreateDirectory(uploadsDir);
+            var destPath = Path.Combine(uploadsDir, fileName);
+
+            using (var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read))
+            using (var destStream = new FileStream(destPath, FileMode.Create))
+            {
+                await sourceStream.CopyToAsync(destStream);
+            }
+
+            return $"/uploads/{subfolder}/{fileName}";
         }
     }
 }

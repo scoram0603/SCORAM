@@ -73,6 +73,18 @@ namespace ScoramAPI.Models
         [Required] public string OptionC { get; set; } = string.Empty;
         [Required] public string OptionD { get; set; } = string.Empty;
 
+        // Image support -- mirrors Question's own QuestionImageUrl/OptionXImageUrl/
+        // ExplanationImageUrl exactly (same nullable relative-URL-under-wwwroot/uploads pattern, same
+        // "question-images" subfolder via IFileStorageService). Added after the fact (see
+        // QuestionBankAdminController's images endpoint) -- existing rows just have these all null,
+        // no backfill needed.
+        public string? QuestionImageUrl { get; set; }
+        public string? OptionAImageUrl { get; set; }
+        public string? OptionBImageUrl { get; set; }
+        public string? OptionCImageUrl { get; set; }
+        public string? OptionDImageUrl { get; set; }
+        public string? ExplanationImageUrl { get; set; }
+
         public OptionLetter CorrectOption { get; set; }
 
         // SCORAM_TESTS: added for Practice Test filtering ("Subject/Topic/Exam/Year/Difficulty").

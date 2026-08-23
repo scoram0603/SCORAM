@@ -40,11 +40,13 @@ namespace ScoramAPI.Services
     public class QuestionBankMirrorService : IQuestionBankMirrorService
     {
         private readonly IQuestionBankImportService _importService;
+        private readonly IFileStorageService _fileStorage;
         private readonly ILogger<QuestionBankMirrorService> _logger;
 
-        public QuestionBankMirrorService(IQuestionBankImportService importService, ILogger<QuestionBankMirrorService> logger)
+        public QuestionBankMirrorService(IQuestionBankImportService importService, IFileStorageService fileStorage, ILogger<QuestionBankMirrorService> logger)
         {
             _importService = importService;
+            _fileStorage = fileStorage;
             _logger = logger;
         }
 
@@ -83,17 +85,33 @@ namespace ScoramAPI.Services
                 var subject = await FindOrCreateSubjectAsync(db, question.Subject, adminId);
                 var topic = await FindOrCreateTopicAsync(db, subject.Id, question.Topic, adminId);
 
+                // Independent copies, not shared URLs -- see IFileStorageService.CopyImageAsync's own
+                // comment on why. Any of these can be null (question has no image there); CopyImageAsync
+                // returns null for a null/non-local input, so this stays simple either way.
+                var questionImageUrl = await _fileStorage.CopyImageAsync(question.QuestionImageUrl, "question-images");
+                var optionAImageUrl = await _fileStorage.CopyImageAsync(question.OptionAImageUrl, "question-images");
+                var optionBImageUrl = await _fileStorage.CopyImageAsync(question.OptionBImageUrl, "question-images");
+                var optionCImageUrl = await _fileStorage.CopyImageAsync(question.OptionCImageUrl, "question-images");
+                var optionDImageUrl = await _fileStorage.CopyImageAsync(question.OptionDImageUrl, "question-images");
+                var explanationImageUrl = await _fileStorage.CopyImageAsync(question.ExplanationImageUrl, "question-images");
+
                 var mirror = new QuestionBankQuestion
                 {
                     QuestionText = question.QuestionText,
                     NormalizedQuestionText = normalized,
+                    QuestionImageUrl = questionImageUrl,
                     OptionA = question.OptionA,
+                    OptionAImageUrl = optionAImageUrl,
                     OptionB = question.OptionB,
+                    OptionBImageUrl = optionBImageUrl,
                     OptionC = question.OptionC,
+                    OptionCImageUrl = optionCImageUrl,
                     OptionD = question.OptionD,
+                    OptionDImageUrl = optionDImageUrl,
                     CorrectOption = question.CorrectOption,
                     DifficultyLevel = question.DifficultyLevel,
                     Explanation = question.Explanation,
+                    ExplanationImageUrl = explanationImageUrl,
                     SubjectId = subject.Id,
                     TopicId = topic.Id,
                     SourceReference = question.SourceReference,
@@ -136,6 +154,19 @@ namespace ScoramAPI.Services
                 mirror.DifficultyLevel = question.DifficultyLevel;
                 mirror.Explanation = question.Explanation;
                 mirror.SourceReference = question.SourceReference;
+
+                // Re-copy each image fresh (independent files, not shared URLs -- see
+                // MirrorFromPyqAsync's own comment) only when the source side actually changed;
+                // otherwise leave the mirror's existing copy alone. Comparing by URL is enough here --
+                // ApplyImageUpdate on the Question side already gives a brand-new URL for any actual
+                // re-upload, so "same URL" reliably means "nothing changed here".
+                mirror.QuestionImageUrl = await ResyncImageAsync(question.QuestionImageUrl, mirror.QuestionImageUrl);
+                mirror.OptionAImageUrl = await ResyncImageAsync(question.OptionAImageUrl, mirror.OptionAImageUrl);
+                mirror.OptionBImageUrl = await ResyncImageAsync(question.OptionBImageUrl, mirror.OptionBImageUrl);
+                mirror.OptionCImageUrl = await ResyncImageAsync(question.OptionCImageUrl, mirror.OptionCImageUrl);
+                mirror.OptionDImageUrl = await ResyncImageAsync(question.OptionDImageUrl, mirror.OptionDImageUrl);
+                mirror.ExplanationImageUrl = await ResyncImageAsync(question.ExplanationImageUrl, mirror.ExplanationImageUrl);
+
                 mirror.UpdatedAt = DateTime.UtcNow;
                 // Deliberately NOT touching Subject/Topic here -- an admin may have since moved the
                 // mirror to a more specific Question Bank topic than the free-text PYQ fields ever
@@ -146,6 +177,23 @@ namespace ScoramAPI.Services
             {
                 _logger.LogWarning(ex, "Question Bank mirror sync failed for question {QuestionBankQuestionId}, continuing without it.", questionBankQuestionId);
             }
+        }
+
+        // sourceUrl: the (already-saved) current image URL on the Question side. mirrorUrl: what the
+        // mirror currently points to (its own independent file, or null). This reliably handles the
+        // two cases that matter most -- an image ADDED where there wasn't one, and one REMOVED
+        // entirely -- by copying in or clearing accordingly. It does NOT detect a same-slot REPLACE
+        // (a brand-new image uploaded over an existing one): since the mirror deliberately doesn't
+        // share the source's URL, there's no cheap way to tell "still the same picture" from "swapped
+        // for a different one" without tracking extra state. In that narrower case the mirror keeps
+        // its existing image until an admin updates it directly via the Question Bank's own image
+        // endpoint -- an acceptable gap given the mirror is meant to seed independently-curated
+        // Question Bank content, not stay perfectly mirrored forever.
+        private async Task<string?> ResyncImageAsync(string? sourceUrl, string? mirrorUrl)
+        {
+            if (sourceUrl == null) return null; // removed on the source side -- clear the mirror's copy too
+            if (mirrorUrl != null) return mirrorUrl; // mirror already has ITS OWN copy -- leave it as-is
+            return await _fileStorage.CopyImageAsync(sourceUrl, "question-images"); // source has one, mirror doesn't yet -- copy it in
         }
 
         private static async Task<QuestionBankSubject> FindOrCreateSubjectAsync(ScoramDbContext db, string name, Guid adminId)

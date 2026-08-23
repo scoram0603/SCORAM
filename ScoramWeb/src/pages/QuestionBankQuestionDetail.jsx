@@ -8,6 +8,12 @@ import CommentThread from "../components/questions/CommentThread";
 import LikeButton from "../components/questions/LikeButton";
 import ShareQuestionModal from "../components/chat/ShareQuestionModal";
 import { useAuth } from "../context/AuthContext";
+import { API_BASE_URL } from "../api/client";
+
+function imgSrc(url) {
+  if (!url) return null;
+  return url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
+}
 
 const OPTION_LETTERS = ["A", "B", "C", "D"];
 
@@ -78,10 +84,14 @@ export default function QuestionBankQuestionDetail() {
             </div>
 
             <p className="mt-3 text-[15px] font-semibold leading-snug text-ink-900">{question.questionText}</p>
+            {imgSrc(question.questionImageUrl) && (
+              <img src={imgSrc(question.questionImageUrl)} alt="" className="mt-2 max-h-64 rounded-lg border border-primary-100" />
+            )}
 
             <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {OPTION_LETTERS.map((letter) => {
                 const text = question[`option${letter}`];
+                const imageUrl = question[`option${letter}ImageUrl`];
                 const isCorrect = revealed && question.correctOption === letter;
                 return (
                   <div
@@ -91,7 +101,10 @@ export default function QuestionBankQuestionDetail() {
                     }`}
                   >
                     <span className="font-bold">{letter}.</span>
-                    <span className="min-w-0 flex-1">{text}</span>
+                    <span className="min-w-0 flex-1">
+                      {text}
+                      {imgSrc(imageUrl) && <img src={imgSrc(imageUrl)} alt="" className="mt-1 max-h-20 rounded border border-primary-100" />}
+                    </span>
                     {isCorrect && <CheckCircle2 className="h-4 w-4 shrink-0 text-mint-500" strokeWidth={2.25} />}
                   </div>
                 );
@@ -112,6 +125,9 @@ export default function QuestionBankQuestionDetail() {
                 <div className="mt-4 rounded-lg bg-primary-50/60 p-3.5 text-sm leading-snug text-ink-600">
                   <p className="mb-1 text-xs font-bold text-primary-600">Explanation</p>
                   {question.explanation}
+                  {imgSrc(question.explanationImageUrl) && (
+                    <img src={imgSrc(question.explanationImageUrl)} alt="" className="mt-2 max-h-64 rounded-lg border border-primary-100" />
+                  )}
                 </div>
               )
             )}

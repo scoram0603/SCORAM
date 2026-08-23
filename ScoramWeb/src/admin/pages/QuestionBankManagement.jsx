@@ -4,10 +4,12 @@ import { Plus, Pencil, Trash2, RotateCcw, X, ChevronLeft, ChevronRight, UploadCl
 import { useAdminAuth } from "../context/AdminAuthContext";
 import {
   listQuestionBankQuestions, createQuestionBankQuestion, updateQuestionBankQuestion, deleteQuestionBankQuestion,
-  listSubjects, listTopics, getQuestionBankStats,
+  listSubjects, listTopics, getQuestionBankStats, uploadQuestionBankImages,
 } from "../api/questionBank";
 import { listExams } from "../api/exams";
 import { PageHeader, Card, Button, FormField, TextInput, TextArea, Select, Alert, friendlyError } from "../components/AdminUI";
+import ImagePickerField from "../components/ImagePickerField";
+import EditImageField, { imgSrc } from "../components/EditImageField";
 
 const PAGE_SIZE = 20;
 
@@ -263,6 +265,9 @@ function QuestionForm({ token, subjects, existing, onCancel, onSaved }) {
   );
   const [exams, setExams] = useState([]);
 
+  const [images, setImages] = useState({}); // { questionImage, optionAImage, ... }: File|null
+  const [removeFlags, setRemoveFlags] = useState({}); // { removeQuestionImage, ... }: bool
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [duplicate, setDuplicate] = useState(null); // { existingQuestionId, existingQuestionText }
@@ -315,8 +320,19 @@ function QuestionForm({ token, subjects, existing, onCancel, onSaved }) {
     if (!confirmDuplicate) setDuplicate(null);
     try {
       const payload = buildPayload(confirmDuplicate);
-      if (isEdit) await updateQuestionBankQuestion(token, existing.id, payload);
-      else await createQuestionBankQuestion(token, payload);
+      let questionId = existing?.id;
+      if (isEdit) {
+        await updateQuestionBankQuestion(token, existing.id, payload);
+      } else {
+        const created = await createQuestionBankQuestion(token, payload);
+        questionId = created.id;
+      }
+
+      const hasImageChanges = Object.values(images).some(Boolean) || Object.values(removeFlags).some(Boolean);
+      if (hasImageChanges) {
+        await uploadQuestionBankImages(token, questionId, images, removeFlags);
+      }
+
       onSaved();
     } catch (err) {
       if (err.status === 409 && err.data?.existingQuestionId) {
@@ -357,6 +373,16 @@ function QuestionForm({ token, subjects, existing, onCancel, onSaved }) {
             <FormField label="Question text">
               <TextArea required rows={3} value={questionText} onChange={(e) => setQuestionText(e.target.value)} />
             </FormField>
+            {isEdit ? (
+              <EditImageField
+                label="Question image (optional)"
+                currentUrl={existing.questionImageUrl}
+                onReplace={(f) => setImages((prev) => ({ ...prev, questionImage: f }))}
+                onRemove={(v) => setRemoveFlags((prev) => ({ ...prev, removeQuestionImage: v }))}
+              />
+            ) : (
+              <ImagePickerField label="Question image (optional)" file={images.questionImage} onChange={(f) => setImages((prev) => ({ ...prev, questionImage: f }))} />
+            )}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {["A", "B", "C", "D"].map((letter) => (
@@ -372,6 +398,17 @@ function QuestionForm({ token, subjects, existing, onCancel, onSaved }) {
                     />
                     <TextInput required value={options[letter]} onChange={(e) => setOptions((prev) => ({ ...prev, [letter]: e.target.value }))} />
                   </div>
+                  {isEdit ? (
+                    <EditImageField
+                      label={`Option ${letter} image`}
+                      currentUrl={existing[`option${letter}ImageUrl`]}
+                      onReplace={(f) => setImages((prev) => ({ ...prev, [`option${letter}Image`]: f }))}
+                      onRemove={(v) => setRemoveFlags((prev) => ({ ...prev, [`removeOption${letter}Image`]: v }))}
+                      compact
+                    />
+                  ) : (
+                    <ImagePickerField label={`Option ${letter} image`} file={images[`option${letter}Image`]} onChange={(f) => setImages((prev) => ({ ...prev, [`option${letter}Image`]: f }))} compact />
+                  )}
                 </FormField>
               ))}
             </div>
@@ -380,6 +417,16 @@ function QuestionForm({ token, subjects, existing, onCancel, onSaved }) {
             <FormField label="Explanation (optional)">
               <TextArea rows={3} value={explanation} onChange={(e) => setExplanation(e.target.value)} />
             </FormField>
+            {isEdit ? (
+              <EditImageField
+                label="Explanation image (optional)"
+                currentUrl={existing.explanationImageUrl}
+                onReplace={(f) => setImages((prev) => ({ ...prev, explanationImage: f }))}
+                onRemove={(v) => setRemoveFlags((prev) => ({ ...prev, removeExplanationImage: v }))}
+              />
+            ) : (
+              <ImagePickerField label="Explanation image (optional)" file={images.explanationImage} onChange={(f) => setImages((prev) => ({ ...prev, explanationImage: f }))} />
+            )}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <FormField label="Subject">

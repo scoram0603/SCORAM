@@ -93,12 +93,18 @@ namespace ScoramAPI.DTOs
     {
         public Guid Id { get; set; }
         public string QuestionText { get; set; } = string.Empty;
+        public string? QuestionImageUrl { get; set; }
         public string OptionA { get; set; } = string.Empty;
+        public string? OptionAImageUrl { get; set; }
         public string OptionB { get; set; } = string.Empty;
+        public string? OptionBImageUrl { get; set; }
         public string OptionC { get; set; } = string.Empty;
+        public string? OptionCImageUrl { get; set; }
         public string OptionD { get; set; } = string.Empty;
+        public string? OptionDImageUrl { get; set; }
         public string CorrectOption { get; set; } = string.Empty;
         public string? Explanation { get; set; }
+        public string? ExplanationImageUrl { get; set; }
         public string Subject { get; set; } = string.Empty;
         public string Topic { get; set; } = string.Empty;
         public string? SourceReference { get; set; }
@@ -121,6 +127,28 @@ namespace ScoramAPI.DTOs
         public string CreatedByAdminName { get; set; } = string.Empty;
         public Guid? ImportJobId { get; set; }
         public DateTime? UpdatedAt { get; set; }
+    }
+
+    // POST /api/admin/question-bank/{id}/images (multipart/form-data) -- set/replace/remove each of
+    // the 6 images independently, same RemoveXImage-flag pattern as QuestionUpdateDto. Split out from
+    // Create/Update (which stay plain JSON) rather than converting those to multipart -- the JSON
+    // create/edit flow already works and this keeps that untouched; images are attached as a second
+    // step right after (single-add) or whenever an admin opens Edit (including a bulk-imported
+    // question, which never had images at all before this).
+    public class QuestionBankImagesUpdateDto
+    {
+        public Microsoft.AspNetCore.Http.IFormFile? QuestionImage { get; set; }
+        public bool RemoveQuestionImage { get; set; }
+        public Microsoft.AspNetCore.Http.IFormFile? OptionAImage { get; set; }
+        public bool RemoveOptionAImage { get; set; }
+        public Microsoft.AspNetCore.Http.IFormFile? OptionBImage { get; set; }
+        public bool RemoveOptionBImage { get; set; }
+        public Microsoft.AspNetCore.Http.IFormFile? OptionCImage { get; set; }
+        public bool RemoveOptionCImage { get; set; }
+        public Microsoft.AspNetCore.Http.IFormFile? OptionDImage { get; set; }
+        public bool RemoveOptionDImage { get; set; }
+        public Microsoft.AspNetCore.Http.IFormFile? ExplanationImage { get; set; }
+        public bool RemoveExplanationImage { get; set; }
     }
 
     // GET /api/question-bank/search query parameters
