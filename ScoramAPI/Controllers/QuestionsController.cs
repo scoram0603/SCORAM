@@ -25,11 +25,12 @@ namespace ScoramAPI.Controllers
         private readonly IMemoryCache _cache;
         private readonly ILogger<QuestionsController> _logger;
         private readonly IAuditLogService _audit;
+        private readonly IQuestionBankMirrorService _mirror;
 
         public QuestionsController(
             ScoramDbContext db, IAdminPermissionService permissions, IFileStorageService fileStorage,
             IInstantSearchService instantSearch, IFallbackSearchService fallbackSearch, IMemoryCache cache,
-            ILogger<QuestionsController> logger, IAuditLogService audit)
+            ILogger<QuestionsController> logger, IAuditLogService audit, IQuestionBankMirrorService mirror)
         {
             _db = db;
             _permissions = permissions;
@@ -39,6 +40,7 @@ namespace ScoramAPI.Controllers
             _cache = cache;
             _logger = logger;
             _audit = audit;
+            _mirror = mirror;
         }
 
         // GET /api/questions/today -- "Today's Challenge" on the student home page. Deterministic pick
@@ -295,6 +297,16 @@ namespace ScoramAPI.Controllers
                 return Conflict(new { message = $"Question number {dto.QuestionNumber} already exists in this paper." });
             }
 
+            // Auto-mirror into the Question Bank (see IQuestionBankMirrorService) -- a separate
+            // SaveChangesAsync so a mirror hiccup can never roll back the PYQ question that just
+            // succeeded above.
+            var mirrorId = await _mirror.MirrorFromPyqAsync(_db, question, paper.ExamId, paper.Year, User.GetAdminId());
+            if (mirrorId.HasValue)
+            {
+                question.MirroredToQuestionBankQuestionId = mirrorId;
+                try { await _db.SaveChangesAsync(); } catch { /* non-critical, see MirrorFromPyqAsync's own comment */ }
+            }
+
             var saved = await _db.Questions.Include(x => x.Paper).ThenInclude(p => p!.Exam).FirstAsync(x => x.Id == question.Id);
             return CreatedAtAction(nameof(GetById), new { id = question.Id }, MapToDetailDto(saved));
         }
@@ -358,6 +370,13 @@ namespace ScoramAPI.Controllers
             }
 
             await _db.SaveChangesAsync();
+
+            if (question.MirroredToQuestionBankQuestionId.HasValue)
+            {
+                await _mirror.SyncMirrorAsync(_db, question.MirroredToQuestionBankQuestionId.Value, question);
+                try { await _db.SaveChangesAsync(); } catch { /* non-critical, see SyncMirrorAsync's own comment */ }
+            }
+
             return Ok(MapToDetailDto(question));
         }
 

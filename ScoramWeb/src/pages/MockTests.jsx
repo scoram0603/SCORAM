@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, Clock, Play, RotateCcw } from "lucide-react";
-import { listMockTests, startMockTest } from "../api/mockTests";
+import { listMockTests } from "../api/mockTests";
 
 const AVAILABILITY_STYLES = {
   Upcoming: "bg-secondary-50 text-secondary-500",
@@ -13,7 +13,6 @@ export default function MockTests() {
   const navigate = useNavigate();
   const [tests, setTests] = useState(null);
   const [status, setStatus] = useState("loading");
-  const [startingId, setStartingId] = useState(null);
 
   useEffect(() => {
     listMockTests({ page: 1, pageSize: 50 })
@@ -24,15 +23,8 @@ export default function MockTests() {
       .catch(() => setStatus("error"));
   }, []);
 
-  async function handleStart(id) {
-    setStartingId(id);
-    try {
-      const attempt = await startMockTest(id);
-      navigate(`/tests/attempt/${attempt.attemptId}`);
-    } catch (err) {
-      window.alert(err.message || "Couldn't start this mock test.");
-      setStartingId(null);
-    }
+  function handleStart(id) {
+    navigate(`/tests/instructions/mock/${id}`);
   }
 
   return (
@@ -80,12 +72,10 @@ export default function MockTests() {
                   <button
                     type="button"
                     onClick={() => handleStart(t.id)}
-                    disabled={disabled || startingId === t.id}
+                    disabled={disabled}
                     className="flex shrink-0 items-center gap-1.5 rounded-xl2 bg-primary-600 px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-40"
                   >
-                    {startingId === t.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.5} />
-                    ) : t.myAttemptCount > 0 ? (
+                    {t.myAttemptCount > 0 ? (
                       <RotateCcw className="h-3.5 w-3.5" strokeWidth={2.25} />
                     ) : (
                       <Play className="h-3.5 w-3.5" strokeWidth={2.25} />

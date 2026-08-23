@@ -21,6 +21,7 @@ import MockTests from "./pages/MockTests";
 import MyTests from "./pages/MyTests";
 import TestAttemptResult from "./pages/TestAttemptResult";
 import TestRunner from "./components/tests/TestRunner";
+import PreExamInstructions from "./pages/PreExamInstructions";
 // GAMIFICATION
 import Leaderboard from "./pages/Leaderboard";
 import ProgressPage from "./pages/Progress";
@@ -80,6 +81,7 @@ function AppRoutes() {
           <Route path="tests/practice" element={<PracticeTests />} />
           <Route path="tests/mock" element={<MockTests />} />
           <Route path="tests/my" element={<MyTests />} />
+          <Route path="tests/instructions/:kind/:id" element={<PreExamInstructions />} />
           <Route path="tests/attempt/:attemptId" element={<TestRunner />} />
           <Route path="tests/result/:attemptId" element={<TestAttemptResult />} />
           <Route path="quizzes" element={<Quizzes />} />

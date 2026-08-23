@@ -159,6 +159,8 @@ namespace ScoramAPI.DTOs
 
         public string QuizTitle { get; set; } = string.Empty;
         public int QuestionCount { get; set; }
+        public int DurationMinutes { get; set; }
+        public decimal NegativeMarkingRatio { get; set; }
 
         public decimal ChallengerScore { get; set; }
         public decimal? ChallengedScore { get; set; } // null until the challenged student finishes

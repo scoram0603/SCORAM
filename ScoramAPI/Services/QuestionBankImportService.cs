@@ -283,7 +283,19 @@ namespace ScoramAPI.Services
                 lastWasSpace = false;
             }
 
-            return sb.ToString().Trim();
+            var result = sb.ToString().Trim();
+
+            // The NormalizedQuestionText column is nvarchar(450) (the max length SQL Server allows
+            // for an indexed nvarchar column, used here for fast duplicate lookups). Long
+            // paragraph-style questions (e.g. "rearrange these sentences...") can exceed that after
+            // normalization, which previously crashed the bulk-import commit with an unhandled
+            // SqlException ("String or binary data would be truncated"). Truncate here instead so
+            // duplicate-check and storage always agree on the same value.
+            const int MaxNormalizedLength = 450;
+            if (result.Length > MaxNormalizedLength)
+                result = result.Substring(0, MaxNormalizedLength);
+
+            return result;
         }
 
         private static string Snippet(string text) => text.Length > 140 ? text[..140] + "…" : text;

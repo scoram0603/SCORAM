@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, ChevronDown, Sparkles, Play } from "lucide-react";
 import { getQuestionBankSubjects, getQuestionBankTopics, getQuestionBankExams } from "../api/questionBank";
-import { listPracticeTestTemplates, generatePracticeTest, startPracticeTestFromTemplate, DIFFICULTY_OPTIONS } from "../api/practiceTests";
+import { listPracticeTestTemplates, DIFFICULTY_OPTIONS } from "../api/practiceTests";
 
 const QUESTION_COUNT_OPTIONS = [10, 20, 30, 50];
 const DURATION_OPTIONS = [10, 20, 30, 45, 60];
@@ -39,38 +39,32 @@ export default function PracticeTests() {
     getQuestionBankTopics(subjectId).then(setTopics).catch(() => setTopics([]));
   }, [subjectId]);
 
-  async function handleGenerate(e) {
+  function handleGenerate(e) {
     e.preventDefault();
-    setGenerating(true);
-    setError(null);
-    try {
-      const attempt = await generatePracticeTest({
-        subjectId: subjectId || null,
-        topicId: topicId || null,
-        examId: examId || null,
-        difficulty: difficulty || null,
-        questionCount,
-        durationMinutes,
-        negativeMarkingRatio: 0,
-        isRandomOrder: true,
-      });
-      navigate(`/tests/attempt/${attempt.attemptId}`);
-    } catch (err) {
-      setError(err.message || "Couldn't generate a Practice Test with those filters.");
-    } finally {
-      setGenerating(false);
-    }
+    const subjectName = subjects.find((s) => s.id === subjectId)?.name || null;
+    const topicName = topics.find((t) => t.id === topicId)?.name || null;
+    const examName = exams.find((x) => x.id === examId)?.name || null;
+    const difficultyLabel = DIFFICULTY_OPTIONS.find((d) => d.value === difficulty)?.label || null;
+
+    navigate("/tests/instructions/practice-adhoc/adhoc", {
+      state: {
+        filters: {
+          subjectId: subjectId || null,
+          topicId: topicId || null,
+          examId: examId || null,
+          difficulty: difficulty || null,
+          questionCount,
+          durationMinutes,
+          negativeMarkingRatio: 0,
+          isRandomOrder: true,
+        },
+        labels: { subjectName, topicName, examName, difficultyLabel },
+      },
+    });
   }
 
-  async function handleStartTemplate(id) {
-    setStartingTemplateId(id);
-    try {
-      const attempt = await startPracticeTestFromTemplate(id);
-      navigate(`/tests/attempt/${attempt.attemptId}`);
-    } catch (err) {
-      window.alert(err.message || "Couldn't start this Practice Test.");
-      setStartingTemplateId(null);
-    }
+  function handleStartTemplate(id) {
+    navigate(`/tests/instructions/practice-template/${id}`);
   }
 
   return (

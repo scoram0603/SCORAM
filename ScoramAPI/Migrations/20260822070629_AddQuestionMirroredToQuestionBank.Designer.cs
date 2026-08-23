@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScoramAPI.Data;
 
@@ -11,9 +12,11 @@ using ScoramAPI.Data;
 namespace ScoramAPI.Migrations
 {
     [DbContext(typeof(ScoramDbContext))]
-    partial class ScoramDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260822070629_AddQuestionMirroredToQuestionBank")]
+    partial class AddQuestionMirroredToQuestionBank
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2172,8 +2175,7 @@ namespace ScoramAPI.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("NegativeMarkingRatio")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<Guid?>("PaperId")
                         .HasColumnType("uniqueidentifier");

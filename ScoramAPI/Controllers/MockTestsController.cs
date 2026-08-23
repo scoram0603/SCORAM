@@ -71,6 +71,7 @@ namespace ScoramAPI.Controllers
                 DurationMinutes = t.DurationMinutes,
                 NegativeMarkingRatio = t.NegativeMarkingRatio,
                 QuestionCount = t.MockTestQuestions.Count,
+                Instructions = t.Instructions,
                 ScheduledAt = t.ScheduledAt,
                 EndAt = t.EndAt,
                 Status = t.Status.ToString(),
@@ -85,6 +86,45 @@ namespace ScoramAPI.Controllers
                 TotalCount = totalCount,
                 Page = page,
                 PageSize = pageSize
+            });
+        }
+
+        // GET /api/mocktests/{id}/summary -- same shape as one row of the List above, but by id and
+        // without needing to page through the whole list to find it. Exists specifically so the
+        // Pre-Exam Instructions screen (see PreExamInstructions.jsx) doesn't have to call GetById
+        // just to show Title/Duration/NegativeMarking/QuestionCount/Instructions -- GetById eagerly
+        // loads and ships every question's full text+options, which that screen never needs (spec:
+        // "Only retrieve the metadata required for the instructions page").
+        [HttpGet("{id:guid}/summary")]
+        public async Task<ActionResult<MockTestSummaryDto>> GetSummary(Guid id)
+        {
+            var test = await _db.MockTests.Include(t => t.MockTestQuestions).FirstOrDefaultAsync(t => t.Id == id);
+            if (test == null) return NotFound();
+
+            var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
+            var myAttemptCount = 0;
+            if (isAuthenticated)
+            {
+                var userId = User.GetUserId();
+                myAttemptCount = await _db.StudentTestResults.CountAsync(r => r.UserId == userId && r.MockTestId == id);
+            }
+
+            return Ok(new MockTestSummaryDto
+            {
+                Id = test.Id,
+                Title = test.Title,
+                ExamName = test.ExamName,
+                TestType = test.TestType.ToString(),
+                DurationMinutes = test.DurationMinutes,
+                NegativeMarkingRatio = test.NegativeMarkingRatio,
+                QuestionCount = test.MockTestQuestions.Count,
+                Instructions = test.Instructions,
+                ScheduledAt = test.ScheduledAt,
+                EndAt = test.EndAt,
+                Status = test.Status.ToString(),
+                AvailabilityStatus = ComputeAvailability(test, DateTime.UtcNow),
+                MaxAttempts = test.MaxAttempts,
+                MyAttemptCount = isAuthenticated ? myAttemptCount : null
             });
         }
 

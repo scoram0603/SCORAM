@@ -205,6 +205,9 @@ namespace ScoramAPI.Data
             modelBuilder.Entity<MockTest>().Property(m => m.NegativeMarkingRatio).HasPrecision(4, 2);
             modelBuilder.Entity<Quiz>().Property(q => q.NegativeMarkingRatio).HasPrecision(4, 2);
             modelBuilder.Entity<StudentTestResult>().Property(r => r.Score).HasPrecision(6, 2);
+            // Matches MockTest/Quiz's own precision (4,2) -- this is where their NegativeMarkingRatio
+            // gets snapshotted onto the attempt at start time, so it should hold the same range.
+            modelBuilder.Entity<StudentTestResult>().Property(r => r.NegativeMarkingRatio).HasPrecision(4, 2);
             modelBuilder.Entity<TypingTestResult>().Property(t => t.WPM).HasPrecision(5, 2);
             modelBuilder.Entity<TypingTestResult>().Property(t => t.Accuracy).HasPrecision(5, 2);
 

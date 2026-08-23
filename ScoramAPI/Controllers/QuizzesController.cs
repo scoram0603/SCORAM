@@ -127,6 +127,26 @@ namespace ScoramAPI.Controllers
             return Ok(items.Where(i => i.AvailabilityStatus is "Live" or "Upcoming").ToList());
         }
 
+        // GET /api/quizzes/{id} -- single-quiz metadata lookup, for the Pre-Exam Instructions screen
+        // (see PreExamInstructions.jsx) when a student navigates there directly rather than via the
+        // /daily list that already has this data in hand. No question payload here, same as
+        // QuizSummaryDto everywhere else -- there's nothing heavier to accidentally over-fetch for a
+        // Quiz the way MockTestsController.GetById risks for a Mock Test.
+        [HttpGet("{id:guid}")]
+        public async Task<ActionResult<QuizSummaryDto>> GetById(Guid id)
+        {
+            var quiz = await _db.Quizzes.Include(q => q.QuizQuestions).FirstOrDefaultAsync(q => q.Id == id);
+            if (quiz == null || quiz.Status != TestPublishStatus.Published) return NotFound();
+
+            var summary = QuizzesAdminController.ToSummaryDto(quiz, DateTime.UtcNow);
+            if (User.Identity?.IsAuthenticated ?? false)
+            {
+                var userId = User.GetUserId();
+                summary.MyAttemptCount = await _db.StudentTestResults.CountAsync(r => r.UserId == userId && r.QuizId == id);
+            }
+            return Ok(summary);
+        }
+
         // POST /api/quizzes/{id}/start -- same "resume an existing InProgress attempt if one exists,
         // otherwise create a fresh one" flow as MockTestsController.Start, respecting MaxAttempts and
         // the AvailableFrom/AvailableTo window.

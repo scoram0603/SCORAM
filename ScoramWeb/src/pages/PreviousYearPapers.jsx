@@ -5,7 +5,7 @@ import {
   MinusCircle, Play, RotateCcw, Search, Sparkles, X, Eye,
 } from "lucide-react";
 import { listExams } from "../api/exams";
-import { browsePapers, getPaperFilterOptions, getPaperYears, getMyPaperAttempts, startPaper } from "../api/papers";
+import { browsePapers, getPaperFilterOptions, getPaperYears, getMyPaperAttempts } from "../api/papers";
 import { useAuth } from "../context/AuthContext";
 import { timeAgo } from "../utils/format";
 
@@ -110,20 +110,12 @@ export default function PreviousYearPapers() {
     setSearchInput(""); setSearch("");
   }
 
-  async function handleStart(paper) {
+  function handleStart(paper) {
     if (!isAuthenticated) {
       navigate(`/login?redirect=${encodeURIComponent("/pyq")}`);
       return;
     }
-    setStartError("");
-    setStartingId(paper.id);
-    try {
-      const attempt = await startPaper(paper.id);
-      navigate(`/tests/attempt/${attempt.attemptId}`);
-    } catch (err) {
-      setStartError(err.message || "Couldn't start this paper.");
-      setStartingId(null);
-    }
+    navigate(`/tests/instructions/paper/${paper.id}`);
   }
 
   return (

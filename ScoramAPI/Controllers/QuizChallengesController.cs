@@ -335,6 +335,8 @@ namespace ScoramAPI.Controllers
                 ChallengedPhotoUrl = challenged.PhotoUrl,
                 QuizTitle = TestAttemptsController.TitleFor(sourceAttempt),
                 QuestionCount = sourceAttempt.Answers.Count,
+                DurationMinutes = sourceAttempt.Quiz?.DurationMinutes ?? sourceAttempt.QuizDurationMinutes ?? Math.Max(5, sourceAttempt.Answers.Count),
+                NegativeMarkingRatio = sourceAttempt.NegativeMarkingRatio,
                 ChallengerScore = sourceAttempt.Score,
                 ChallengedScore = challengedScore,
                 Status = status,

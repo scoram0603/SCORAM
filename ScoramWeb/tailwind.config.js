@@ -6,6 +6,12 @@ export default {
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
       },
+      keyframes: {
+        fadeIn: { "0%": { opacity: "0", transform: "translateY(4px)" }, "100%": { opacity: "1", transform: "translateY(0)" } },
+      },
+      animation: {
+        "fade-in": "fadeIn 0.25s ease-out",
+      },
       colors: {
         // Primary deep navy — brand, headings, sidebar active states.
         // SCORAM brand palette: 500 = Primary Navy (#123B7A), 600 = Dark Navy (#0B2D5C) --

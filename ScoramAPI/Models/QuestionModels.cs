@@ -80,6 +80,16 @@ namespace ScoramAPI.Models
         public Guid? ImportJobId { get; set; }
         public ImportJob? ImportJob { get; set; }
 
+        // Set once this PYQ question has been auto-mirrored into the Question Bank (see
+        // IQuestionBankMirrorService, called from QuestionsController.Create/Update and
+        // BulkImportController.Commit) -- so it shows up in Question Bank search, Practice Tests,
+        // Weak Topics Quiz, Daily Quiz, and Discussions, not just this one paper. Null for rows
+        // created before this existed, or if the mirror attempt failed (mirroring is best-effort and
+        // never blocks saving the actual PYQ question). Deliberately NOT a hard foreign key with
+        // cascade behavior -- if the Question Bank copy is later deleted independently, this PYQ
+        // question must keep working exactly as before.
+        public Guid? MirroredToQuestionBankQuestionId { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Navigation

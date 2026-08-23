@@ -14,6 +14,13 @@ export function listMockTests(params = {}, opts = {}) {
   return apiFetch(`/api/mocktests${toQueryString(params)}`, opts);
 }
 
+// GET /api/mocktests/{id}/summary -- Title/Duration/NegativeMarking/QuestionCount/Instructions only,
+// no question payload. Use this for the Pre-Exam Instructions screen; use getMockTest (below) only
+// once actually attempting.
+export function getMockTestSummary(id, opts = {}) {
+  return apiFetch(`/api/mocktests/${id}/summary`, opts);
+}
+
 // POST /api/mocktests/{id}/start -- returns the same attempt if one is already InProgress (resume),
 // otherwise creates a fresh one. See api/testAttempts.js for answer/submit/resume once you have an
 // attemptId back from this, and for the shared "my attempts" (Practice + Mock) history list.

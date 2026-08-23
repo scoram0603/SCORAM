@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import {
   Zap, Target, Loader2, Play, Clock, TrendingUp, CalendarClock, Eye, Swords, Check, X as XIcon,
 } from "lucide-react";
-import { previewWeakTopics, generateWeakTopicsQuiz, listDailyQuizzes, startDailyQuiz } from "../api/quizzes";
-import { getMyQuizChallenges, startQuizChallenge, declineQuizChallenge } from "../api/quizChallenges";
+import { previewWeakTopics, listDailyQuizzes } from "../api/quizzes";
+import { getMyQuizChallenges, declineQuizChallenge } from "../api/quizChallenges";
 
 // Quizzes (Phase 1: Weak Topics Quiz) -- deliberately NOT another filter form like Practice Tests.
 // PYP/Practice/Mock are all "sit down for a real session" modes; this is the opposite -- a quick,
@@ -31,16 +31,8 @@ export default function Quizzes() {
       .catch(() => setPreviewStatus("error"));
   }, []);
 
-  async function handleStart() {
-    setError("");
-    setStarting(true);
-    try {
-      const attempt = await generateWeakTopicsQuiz(questionCount);
-      navigate(`/tests/attempt/${attempt.attemptId}`);
-    } catch (err) {
-      setError(err.message || "Couldn't start the quiz right now.");
-      setStarting(false);
-    }
+  function handleStart() {
+    navigate("/tests/instructions/quiz-weak/adhoc", { state: { questionCount } });
   }
 
   const hasWeakSubjects = previewStatus === "success" && weakSubjects.length > 0;
@@ -177,15 +169,8 @@ function DailyQuizzesSection() {
       .catch(() => setStatus("error"));
   }, []);
 
-  async function handleStart(quiz) {
-    setStartingId(quiz.id);
-    try {
-      const attempt = await startDailyQuiz(quiz.id);
-      navigate(`/tests/attempt/${attempt.attemptId}`);
-    } catch (err) {
-      window.alert(err.message || "Couldn't start this quiz right now.");
-      setStartingId(null);
-    }
+  function handleStart(quiz) {
+    navigate(`/tests/instructions/quiz-daily/${quiz.id}`);
   }
 
   // Nothing live right now -- don't show an empty section, the Weak Topics card below is always
@@ -269,15 +254,8 @@ function PendingChallengesSection() {
       .catch(() => setStatus("error"));
   }, []);
 
-  async function handleStart(challenge) {
-    setBusyId(challenge.id);
-    try {
-      const attempt = await startQuizChallenge(challenge.id);
-      navigate(`/tests/attempt/${attempt.attemptId}`);
-    } catch (err) {
-      window.alert(err.message || "Couldn't start this challenge.");
-      setBusyId(null);
-    }
+  function handleStart(challenge) {
+    navigate(`/tests/instructions/quiz-challenge/${challenge.id}`);
   }
 
   async function handleDecline(challenge) {

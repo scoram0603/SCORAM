@@ -47,6 +47,7 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPushNotificationService, PushNotificationService>();
 builder.Services.AddScoped<IBulkImportService, BulkImportService>();
 builder.Services.AddScoped<IQuestionBankImportService, QuestionBankImportService>(); // SCORAM_QUESTION_BANK
+builder.Services.AddScoped<IQuestionBankMirrorService, QuestionBankMirrorService>(); // auto-mirrors new PYQ questions into the Question Bank
 builder.Services.AddScoped<ITestAttemptService, TestAttemptService>(); // SCORAM_TESTS
 builder.Services.AddScoped<IGamificationService, GamificationService>(); // GAMIFICATION
 builder.Services.AddSingleton<IChatPresenceService, ChatPresenceService>(); // GROUP CHAT -- online user list
@@ -182,7 +183,7 @@ builder.Services.AddAuthorization();
 // are configured in a non-Development environment, cross-origin requests are simply rejected (fails
 // closed rather than open) until Cors:AllowedOrigins is set.
 var configuredCorsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
-var devCorsOrigins = new[] { "http://localhost:5173", "http://localhost:3000" };
+var devCorsOrigins = new[] { "http://localhost:5173", "http://localhost:3000", "https://scoram.in/" };
 var corsOrigins = builder.Environment.IsDevelopment()
     ? devCorsOrigins.Concat(configuredCorsOrigins).Distinct().ToArray()
     : configuredCorsOrigins;

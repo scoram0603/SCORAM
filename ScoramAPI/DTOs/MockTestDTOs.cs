@@ -53,6 +53,11 @@ namespace ScoramAPI.DTOs
         public int DurationMinutes { get; set; }
         public decimal NegativeMarkingRatio { get; set; }
         public int QuestionCount { get; set; }
+        // Added for the Pre-Exam Instructions screen -- was already on the MockTest model/
+        // MockTestDetailDto, just never surfaced on the summary before. Avoids that screen having to
+        // call GetById (which also eagerly loads and ships all 100+ questions' full text/options,
+        // unnecessary for a metadata-only briefing page -- see PreExamInstructions.jsx).
+        public string? Instructions { get; set; }
         public DateTime? ScheduledAt { get; set; }
         public DateTime? EndAt { get; set; }
         public string Status { get; set; } = string.Empty;

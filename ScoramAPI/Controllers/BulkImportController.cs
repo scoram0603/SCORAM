@@ -33,10 +33,12 @@ namespace ScoramAPI.Controllers
         private readonly IMemoryCache _cache;
         private readonly IAuditLogService _audit;
         private readonly ILogger<BulkImportController> _logger;
+        private readonly IQuestionBankMirrorService _mirror;
 
         public BulkImportController(
             ScoramDbContext db, IAdminPermissionService permissions, IBulkImportService importService,
-            IMemoryCache cache, IAuditLogService audit, ILogger<BulkImportController> logger)
+            IMemoryCache cache, IAuditLogService audit, ILogger<BulkImportController> logger,
+            IQuestionBankMirrorService mirror)
         {
             _db = db;
             _permissions = permissions;
@@ -44,6 +46,7 @@ namespace ScoramAPI.Controllers
             _cache = cache;
             _audit = audit;
             _logger = logger;
+            _mirror = mirror;
         }
 
         // POST /api/admin/papers/{paperId}/bulk-import/preview  (multipart/form-data, field name "file")
@@ -138,9 +141,10 @@ namespace ScoramAPI.Controllers
             var skipped = rows.Count - toCommit.Count;
 
             var adminId = User.GetAdminId();
+            var createdQuestions = new List<Question>();
             foreach (var row in toCommit)
             {
-                _db.Questions.Add(new Question
+                var question = new Question
                 {
                     PaperId = job.PaperId,
                     QuestionNumber = row.QuestionNumber,
@@ -158,7 +162,9 @@ namespace ScoramAPI.Controllers
                     CreatedByAdminId = adminId,
                     ImportJobId = job.Id,
                     CreatedAt = DateTime.UtcNow
-                });
+                };
+                _db.Questions.Add(question);
+                createdQuestions.Add(question);
             }
 
             job.Status = ImportJobStatus.Committed;
@@ -166,6 +172,19 @@ namespace ScoramAPI.Controllers
             job.CommittedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
+
+            // Auto-mirror every newly-imported PYQ question into the Question Bank (see
+            // IQuestionBankMirrorService) -- same reasoning as QuestionsController.Create: a bulk
+            // import is just as much "a PYQ upload" as the one-by-one form, and bulk-imported
+            // questions have no images to lose in the mirror (this flow doesn't support images at
+            // all -- see this controller's own class comment), so nothing is lost in translation here.
+            foreach (var question in createdQuestions)
+            {
+                var mirrorId = await _mirror.MirrorFromPyqAsync(_db, question, job.Paper.ExamId, job.Paper.Year, adminId);
+                if (mirrorId.HasValue) question.MirroredToQuestionBankQuestionId = mirrorId;
+            }
+            try { await _db.SaveChangesAsync(); } catch { /* non-critical, see MirrorFromPyqAsync's own comment */ }
+
             _cache.Remove(CachePrefix + jobId);
             await _audit.LogAsync(adminId, "BulkImport.Commit", "Paper", job.PaperId, $"{toCommit.Count} question(s) imported from {job.FileName}");
 
