@@ -115,6 +115,8 @@ namespace ScoramAPI.DTOs
         // true = I liked it, false = I disliked it, null = no vote from me (or not logged in).
         public bool? MyVote { get; set; }
         public int CommentCount { get; set; }
+        // Whether the current viewer has this question bookmarked (false when not logged in).
+        public bool IsBookmarked { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 

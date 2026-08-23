@@ -67,6 +67,8 @@ namespace ScoramAPI.DTOs
         public int UpvoteCount { get; set; }
         public int ReplyCount { get; set; }
         public DateTime CreatedAt { get; set; }
+        // Whether the current viewer has this thread bookmarked (false when not logged in).
+        public bool IsBookmarked { get; set; }
     }
 
     // Question-level Like/Dislike (distinct from a CommentVote on one reply -- see

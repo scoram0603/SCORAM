@@ -52,6 +52,9 @@ namespace ScoramAPI.DTOs
         public string Username { get; set; } = string.Empty;
         public string FullName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
+        // Was never returned here before -- Profile/Settings need it to display + let the student
+        // change their own number (see ChangePhoneDto below), same reason PhotoUrl is on this DTO.
+        public string PhoneNumber { get; set; } = string.Empty;
         public string? PhotoUrl { get; set; }
         public bool NotifyOnGroupMessages { get; set; } = true;
         public bool NotifyOnDirectMessages { get; set; } = true;
@@ -66,5 +69,49 @@ namespace ScoramAPI.DTOs
     public class ProfilePhotoResponseDto
     {
         public string? PhotoUrl { get; set; }
+    }
+
+    // ---------- Settings: Account & Security ----------
+    // All three require the current password as confirmation before making the change -- same
+    // "prove you're still you" gate a bank/email provider uses for this kind of sensitive edit.
+    // No OTP step yet (MSG91 integration is still pending -- see the OTP-registration discussion
+    // earlier); once that's in place, ChangeEmail/ChangePhone can add an OTP-verify step here
+    // without touching ChangePassword.
+
+    public class ChangePasswordDto
+    {
+        [Required]
+        public string CurrentPassword { get; set; } = string.Empty;
+
+        [Required, MinLength(6)]
+        public string NewPassword { get; set; } = string.Empty;
+    }
+
+    public class ChangeEmailDto
+    {
+        [Required]
+        public string CurrentPassword { get; set; } = string.Empty;
+
+        [Required, EmailAddress, MaxLength(150)]
+        public string NewEmail { get; set; } = string.Empty;
+    }
+
+    public class ChangeEmailResponseDto
+    {
+        public string Email { get; set; } = string.Empty;
+    }
+
+    public class ChangePhoneDto
+    {
+        [Required]
+        public string CurrentPassword { get; set; } = string.Empty;
+
+        [Required, MaxLength(20)]
+        public string NewPhoneNumber { get; set; } = string.Empty;
+    }
+
+    public class ChangePhoneResponseDto
+    {
+        public string PhoneNumber { get; set; } = string.Empty;
     }
 }

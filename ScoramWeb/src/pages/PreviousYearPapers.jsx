@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { listExams } from "../api/exams";
 import { browsePapers, getPaperFilterOptions, getPaperYears, getMyPaperAttempts } from "../api/papers";
+import BookmarkButton from "../components/questions/BookmarkButton";
 import { useAuth } from "../context/AuthContext";
 import { timeAgo } from "../utils/format";
 
@@ -116,6 +117,10 @@ export default function PreviousYearPapers() {
       return;
     }
     navigate(`/tests/instructions/paper/${paper.id}`);
+  }
+
+  function handleBookmarkChange(paperId, isBookmarked) {
+    setPapers((prev) => prev.map((p) => (p.id === paperId ? { ...p, isBookmarked } : p)));
   }
 
   return (
@@ -264,6 +269,7 @@ export default function PreviousYearPapers() {
                 view={view}
                 starting={startingId === paper.id}
                 onStart={() => handleStart(paper)}
+                onBookmarkChange={(isBookmarked) => handleBookmarkChange(paper.id, isBookmarked)}
               />
             ))}
           </div>
@@ -299,7 +305,7 @@ export default function PreviousYearPapers() {
   );
 }
 
-function PaperCard({ paper, accent, view, starting, onStart }) {
+function PaperCard({ paper, accent, view, starting, onStart, onBookmarkChange }) {
   const title = [paper.examName, paper.year].filter(Boolean).join(" ");
   const subtitle = [paper.tier, paper.paperLabel].filter(Boolean).join(" \u00b7 ");
   const dateLine = [
@@ -325,7 +331,10 @@ function PaperCard({ paper, accent, view, starting, onStart }) {
             </p>
           </div>
         </div>
-        <StartButton attemptable={attemptable} configured={paper.isConfiguredForPractice} starting={starting} onStart={onStart} compact />
+        <div className="flex items-center gap-2">
+          <BookmarkButton type="paper" id={paper.id} isBookmarked={paper.isBookmarked} size="sm" onChange={onBookmarkChange} />
+          <StartButton attemptable={attemptable} configured={paper.isConfiguredForPractice} starting={starting} onStart={onStart} compact />
+        </div>
       </div>
     );
   }
@@ -338,6 +347,9 @@ function PaperCard({ paper, accent, view, starting, onStart }) {
           New
         </span>
       )}
+      <div className="absolute right-4 top-4">
+        <BookmarkButton type="paper" id={paper.id} isBookmarked={paper.isBookmarked} size="sm" onChange={onBookmarkChange} />
+      </div>
       <div className={`flex h-11 w-11 items-center justify-center rounded-full ${accent} ${isNew ? "mt-6" : ""}`}>
         <FileQuestion className="h-5 w-5" strokeWidth={2.25} />
       </div>

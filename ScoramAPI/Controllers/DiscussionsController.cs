@@ -41,6 +41,10 @@ namespace ScoramAPI.Controllers
             page = Math.Max(page, 1);
             pageSize = Math.Clamp(pageSize, 1, 100);
 
+            // Null when the request isn't authenticated -- guards the IsBookmarked subquery below
+            // the same way every other viewer-specific field in this codebase (MyVote, etc.) does.
+            var userId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : (Guid?)null;
+
             var query = _db.QuestionComments
                 .Where(c => c.ParentCommentId == null && c.QuestionId != null)
                 .Include(c => c.Question).ThenInclude(q => q!.Paper).ThenInclude(p => p!.Exam)
@@ -64,7 +68,8 @@ namespace ScoramAPI.Controllers
                     AuthorName = c.SubmittedByAdmin != null ? c.SubmittedByAdmin.FullName : (c.User != null ? c.User.FullName : "Unknown"),
                     UpvoteCount = c.UpvoteCount,
                     ReplyCount = _db.QuestionComments.Count(r => r.ParentCommentId == c.Id),
-                    CreatedAt = c.CreatedAt
+                    CreatedAt = c.CreatedAt,
+                    IsBookmarked = userId != null && _db.Bookmarks.Any(b => b.CommentId == c.Id && b.UserId == userId)
                 })
                 .ToListAsync();
 

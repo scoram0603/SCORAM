@@ -82,9 +82,18 @@ namespace ScoramAPI.Controllers
                 .Select(p => new { Paper = p, QuestionCount = p.Questions.Count + p.QuestionBankLinks.Count })
                 .ToListAsync();
 
+            // One batch lookup for this page's worth of papers instead of a query per row -- same
+            // null-guard as DiscussionsController.TopDiscussions for a request with no logged-in user.
+            var userId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : (Guid?)null;
+            var pagePaperIds = pageRows.Select(x => x.Paper.Id).ToList();
+            var bookmarkedIds = userId == null
+                ? new HashSet<Guid>()
+                : (await _db.Bookmarks.Where(b => b.UserId == userId && b.PaperId != null && pagePaperIds.Contains(b.PaperId!.Value))
+                    .Select(b => b.PaperId!.Value).ToListAsync()).ToHashSet();
+
             return Ok(new PagedResult<PaperResponseDto>
             {
-                Items = pageRows.Select(x => PapersController.MapToDto(x.Paper, x.QuestionCount)).ToList(),
+                Items = pageRows.Select(x => PapersController.MapToDto(x.Paper, x.QuestionCount, bookmarkedIds.Contains(x.Paper.Id))).ToList(),
                 TotalCount = totalCount,
                 Page = page,
                 PageSize = pageSize
@@ -234,7 +243,9 @@ namespace ScoramAPI.Controllers
             if (paper == null) return NotFound(new { message = "Paper not found." });
 
             var questionCount = await PapersController.GetCombinedQuestionCountAsync(_db, id);
-            return Ok(PapersController.MapToDto(paper, questionCount));
+            var isBookmarked = User.Identity?.IsAuthenticated == true
+                && await _db.Bookmarks.AnyAsync(b => b.PaperId == id && b.UserId == User.GetUserId());
+            return Ok(PapersController.MapToDto(paper, questionCount, isBookmarked));
         }
 
         // POST /api/papers/{id}/start -- begin (or resume) a Previous Year Paper Practice attempt.

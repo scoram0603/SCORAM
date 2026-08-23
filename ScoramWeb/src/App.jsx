@@ -26,26 +26,10 @@ import PreExamInstructions from "./pages/PreExamInstructions";
 import Leaderboard from "./pages/Leaderboard";
 import ProgressPage from "./pages/Progress";
 import Referrals from "./pages/Referrals";
+import Bookmarks from "./pages/Bookmarks";
+import Settings from "./pages/Settings";
 import { AuthProvider } from "./context/AuthContext";
 import { ChatConnectionProvider } from "./context/ChatConnectionContext";
-
-// Cards for these already exist on Home (Bookmarks, Settings) but the features themselves aren't
-// built yet -- routed honestly to a "next up on the build list" screen instead of a dead link or a
-// 404. Leaderboard, My Progress, and Quizzes used to be here too -- see
-// GamificationController/Leaderboard.jsx/Progress.jsx and QuizzesController/Quizzes.jsx, now real.
-const COMING_SOON_LABEL = {
-  bookmarks: "Bookmarks",
-  settings: "Settings",
-};
-
-function ComingSoon({ label }) {
-  return (
-    <div className="flex h-full min-h-[70vh] flex-col items-center justify-center gap-2 px-8 text-center">
-      <p className="text-lg font-bold text-ink-900">{label}</p>
-      <p className="text-sm text-ink-400">This screen is next up on the build list.</p>
-    </div>
-  );
-}
 
 function AppRoutes() {
   return (
@@ -86,6 +70,8 @@ function AppRoutes() {
           <Route path="tests/result/:attemptId" element={<TestAttemptResult />} />
           <Route path="quizzes" element={<Quizzes />} />
           <Route path="profile" element={<Profile />} />
+          <Route path="bookmarks" element={<Bookmarks />} />
+          <Route path="settings" element={<Settings />} />
 
           {/* GAMIFICATION -- all per-student, so behind the same auth gate as the rest of this
               block (GamificationController/ReferralsController on the backend both require
@@ -94,10 +80,6 @@ function AppRoutes() {
           <Route path="progress" element={<ProgressPage />} />
           <Route path="referrals" element={<Referrals />} />
         </Route>
-
-        {Object.entries(COMING_SOON_LABEL).map(([key, label]) => (
-          <Route key={key} path={key} element={<ComingSoon label={label} />} />
-        ))}
 
         <Route path="*" element={<NotFound />} />
       </Route>

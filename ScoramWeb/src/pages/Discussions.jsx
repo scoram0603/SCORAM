@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getTopDiscussions, upvoteComment, replyToComment } from "../api/discussions";
+import BookmarkButton from "../components/questions/BookmarkButton";
 import { useAuth } from "../context/AuthContext";
 import { timeAgo, isRecent } from "../utils/format";
 
@@ -78,6 +79,13 @@ export default function Discussions() {
     } finally {
       setReplySubmitting(false);
     }
+  }
+
+  function handleBookmarkChange(commentId, isBookmarked) {
+    setResult((prev) => ({
+      ...prev,
+      items: prev.items.map((d) => (d.commentId === commentId ? { ...d, isBookmarked } : d)),
+    }));
   }
 
   const totalPages = result ? Math.max(1, Math.ceil(result.totalCount / result.pageSize)) : 1;
@@ -155,6 +163,14 @@ export default function Discussions() {
                         <MessageSquare className="h-3.5 w-3.5" strokeWidth={2} />
                         {d.replyCount} {d.replyCount === 1 ? "Reply" : "Replies"}
                       </button>
+                      <BookmarkButton
+                        type="discussion"
+                        id={d.commentId}
+                        isBookmarked={d.isBookmarked}
+                        size="sm"
+                        onChange={(isBookmarked) => handleBookmarkChange(d.commentId, isBookmarked)}
+                        onRequireLogin={() => navigate("/login?redirect=/discussions")}
+                      />
                       <button
                         type="button"
                         onClick={() => navigate(`/questions/${d.questionId}`)}

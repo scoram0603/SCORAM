@@ -68,6 +68,8 @@ namespace ScoramAPI.DTOs
         public int? MaxAttempts { get; set; }
         // How many attempts THIS student has already used, if authenticated -- null for anonymous.
         public int? MyAttemptCount { get; set; }
+        // Whether the current viewer has this mock test bookmarked (false when not logged in).
+        public bool IsBookmarked { get; set; }
     }
 
     // Question shape WITHOUT CorrectOption/Explanation -- this is what a student

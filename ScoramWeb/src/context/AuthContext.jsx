@@ -66,6 +66,7 @@ export function AuthProvider({ children }) {
       username: res.username,
       fullName: res.fullName,
       email: res.email,
+      phoneNumber: res.phoneNumber,
       photoUrl: res.photoUrl ?? null,
       notifyOnGroupMessages: res.notifyOnGroupMessages,
       notifyOnDirectMessages: res.notifyOnDirectMessages,
@@ -132,6 +133,23 @@ export function AuthProvider({ children }) {
     return res;
   }, []);
 
+  // ---------- Settings: Account & Security ----------
+  // updatePassword doesn't touch `user` state -- nothing about the stored session changes, only
+  // the password itself (which is never held client-side anyway).
+  const updatePassword = useCallback((payload) => authApi.changePassword(payload), []);
+
+  const updateEmail = useCallback(async (payload) => {
+    const res = await authApi.changeEmail(payload);
+    setUser((prev) => (prev ? { ...prev, email: res.email } : prev));
+    return res;
+  }, []);
+
+  const updatePhoneNumber = useCallback(async (payload) => {
+    const res = await authApi.changePhone(payload);
+    setUser((prev) => (prev ? { ...prev, phoneNumber: res.phoneNumber } : prev));
+    return res;
+  }, []);
+
   const value = useMemo(
     () => ({
       user,
@@ -146,9 +164,16 @@ export function AuthProvider({ children }) {
       updateNotificationPreferences,
       updateProfilePhoto,
       removeProfilePhoto,
+      updatePassword,
+      updateEmail,
+      updatePhoneNumber,
       clearError: () => setError(null),
     }),
-    [user, token, isLoading, error, sessionExpired, login, register, logout, updateNotificationPreferences, updateProfilePhoto, removeProfilePhoto]
+    [
+      user, token, isLoading, error, sessionExpired, login, register, logout,
+      updateNotificationPreferences, updateProfilePhoto, removeProfilePhoto,
+      updatePassword, updateEmail, updatePhoneNumber,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

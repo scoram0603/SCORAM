@@ -6,6 +6,7 @@ import { API_BASE_URL } from "../api/client";
 import CommentThread from "../components/questions/CommentThread";
 import SolutionsPanel from "../components/questions/SolutionsPanel";
 import LikeButton from "../components/questions/LikeButton";
+import BookmarkButton from "../components/questions/BookmarkButton";
 
 const DIFFICULTY_STYLES = {
   Easy: "bg-mint-50 text-mint-500",
@@ -149,6 +150,13 @@ export default function QuestionDetail() {
                   <Layers className="h-3.5 w-3.5" strokeWidth={2} />
                   {question.solutionCount} {question.solutionCount === 1 ? "Method" : "Methods"}
                 </span>
+                <BookmarkButton
+                  type="question"
+                  id={questionId}
+                  isBookmarked={question.isBookmarked}
+                  onChange={(isBookmarked) => setQuestion((prev) => ({ ...prev, isBookmarked }))}
+                  onRequireLogin={() => navigate(`/login?redirect=/questions/${questionId}`)}
+                />
               </div>
               {question.examId && (
                 <button

@@ -97,6 +97,7 @@ namespace ScoramAPI.Data
 
         // Azure Blob Storage -- file metadata only, actual bytes live in the "uploads" container.
         public DbSet<Document> Documents => Set<Document>();
+        public DbSet<Bookmark> Bookmarks => Set<Bookmark>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1041,6 +1042,84 @@ namespace ScoramAPI.Data
                 .WithMany()
                 .HasForeignKey(d => d.UploadedByAdminId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // ==========================================================================
+            // Bookmarks -- one table, five possible targets (see Models/Bookmark.cs)
+            // ==========================================================================
+
+            modelBuilder.Entity<Bookmark>()
+                .HasOne(b => b.User)
+                .WithMany()
+                .HasForeignKey(b => b.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Restrict (not Cascade) on every content-target FK below: Question and QuestionBank
+            // Question both already cascade into QuestionComment (Comment), and Paper cascades into
+            // Question -- so a direct Cascade here as well would give SQL Server two different
+            // cascade paths converging on this same Bookmarks table (one direct, one via Comment),
+            // which it refuses at schema-creation time. Same reasoning as the
+            // "Restrict cascade deletes where it would create multiple cascade paths" block near the
+            // top of this method. In practice this content is soft-deleted (IsActive/Status flags)
+            // rather than hard-deleted, so this rarely bites -- and if it ever needs to, the
+            // deleting code can remove the relevant Bookmark rows explicitly first.
+            modelBuilder.Entity<Bookmark>()
+                .HasOne(b => b.Question)
+                .WithMany()
+                .HasForeignKey(b => b.QuestionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Bookmark>()
+                .HasOne(b => b.QuestionBankQuestion)
+                .WithMany()
+                .HasForeignKey(b => b.QuestionBankQuestionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Bookmark>()
+                .HasOne(b => b.Comment)
+                .WithMany()
+                .HasForeignKey(b => b.CommentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Bookmark>()
+                .HasOne(b => b.Paper)
+                .WithMany()
+                .HasForeignKey(b => b.PaperId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Bookmark>()
+                .HasOne(b => b.MockTest)
+                .WithMany()
+                .HasForeignKey(b => b.MockTestId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // One bookmark per (user, target) -- a filtered unique index per target column since
+            // exactly one of the five is ever set (same reasoning as QuestionVote's filtered indexes
+            // above: a plain unique index across all columns together wouldn't stop two DIFFERENT
+            // bookmarks that both leave every OTHER column null from colliding as "equal").
+            modelBuilder.Entity<Bookmark>()
+                .HasIndex(b => new { b.UserId, b.QuestionId })
+                .IsUnique()
+                .HasFilter("[QuestionId] IS NOT NULL");
+
+            modelBuilder.Entity<Bookmark>()
+                .HasIndex(b => new { b.UserId, b.QuestionBankQuestionId })
+                .IsUnique()
+                .HasFilter("[QuestionBankQuestionId] IS NOT NULL");
+
+            modelBuilder.Entity<Bookmark>()
+                .HasIndex(b => new { b.UserId, b.CommentId })
+                .IsUnique()
+                .HasFilter("[CommentId] IS NOT NULL");
+
+            modelBuilder.Entity<Bookmark>()
+                .HasIndex(b => new { b.UserId, b.PaperId })
+                .IsUnique()
+                .HasFilter("[PaperId] IS NOT NULL");
+
+            modelBuilder.Entity<Bookmark>()
+                .HasIndex(b => new { b.UserId, b.MockTestId })
+                .IsUnique()
+                .HasFilter("[MockTestId] IS NOT NULL");
         }
     }
 

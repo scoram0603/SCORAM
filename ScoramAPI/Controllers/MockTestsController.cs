@@ -50,6 +50,7 @@ namespace ScoramAPI.Controllers
 
             var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
             Dictionary<Guid, int> myAttemptCounts = new();
+            HashSet<Guid> bookmarkedIds = new();
             if (isAuthenticated && tests.Count > 0)
             {
                 var userId = User.GetUserId();
@@ -59,6 +60,10 @@ namespace ScoramAPI.Controllers
                     .GroupBy(r => r.MockTestId!.Value)
                     .Select(g => new { MockTestId = g.Key, Count = g.Count() })
                     .ToDictionaryAsync(g => g.MockTestId, g => g.Count);
+
+                bookmarkedIds = (await _db.Bookmarks
+                    .Where(b => b.UserId == userId && b.MockTestId != null && testIds.Contains(b.MockTestId.Value))
+                    .Select(b => b.MockTestId!.Value).ToListAsync()).ToHashSet();
             }
 
             var now = DateTime.UtcNow;
@@ -77,7 +82,8 @@ namespace ScoramAPI.Controllers
                 Status = t.Status.ToString(),
                 AvailabilityStatus = ComputeAvailability(t, now),
                 MaxAttempts = t.MaxAttempts,
-                MyAttemptCount = isAuthenticated ? myAttemptCounts.GetValueOrDefault(t.Id, 0) : null
+                MyAttemptCount = isAuthenticated ? myAttemptCounts.GetValueOrDefault(t.Id, 0) : null,
+                IsBookmarked = bookmarkedIds.Contains(t.Id)
             }).ToList();
 
             return Ok(new PagedResult<MockTestSummaryDto>
@@ -103,10 +109,12 @@ namespace ScoramAPI.Controllers
 
             var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
             var myAttemptCount = 0;
+            var isBookmarked = false;
             if (isAuthenticated)
             {
                 var userId = User.GetUserId();
                 myAttemptCount = await _db.StudentTestResults.CountAsync(r => r.UserId == userId && r.MockTestId == id);
+                isBookmarked = await _db.Bookmarks.AnyAsync(b => b.UserId == userId && b.MockTestId == id);
             }
 
             return Ok(new MockTestSummaryDto
@@ -124,7 +132,8 @@ namespace ScoramAPI.Controllers
                 Status = test.Status.ToString(),
                 AvailabilityStatus = ComputeAvailability(test, DateTime.UtcNow),
                 MaxAttempts = test.MaxAttempts,
-                MyAttemptCount = isAuthenticated ? myAttemptCount : null
+                MyAttemptCount = isAuthenticated ? myAttemptCount : null,
+                IsBookmarked = isBookmarked
             });
         }
 

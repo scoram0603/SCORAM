@@ -6,6 +6,7 @@ import SolutionsPanel from "../components/questions/SolutionsPanel";
 import ReportQuestionModal from "../components/questions/ReportQuestionModal";
 import CommentThread from "../components/questions/CommentThread";
 import LikeButton from "../components/questions/LikeButton";
+import BookmarkButton from "../components/questions/BookmarkButton";
 import ShareQuestionModal from "../components/chat/ShareQuestionModal";
 import { useAuth } from "../context/AuthContext";
 import { API_BASE_URL } from "../api/client";
@@ -157,6 +158,13 @@ export default function QuestionBankQuestionDetail() {
                 myVote={question.myVote}
                 questionType="bank"
                 onChange={(result) => setQuestion((prev) => ({ ...prev, ...result }))}
+                onRequireLogin={() => navigate(loginRedirect)}
+              />
+              <BookmarkButton
+                type="questionBank"
+                id={questionId}
+                isBookmarked={question.isBookmarked}
+                onChange={(isBookmarked) => setQuestion((prev) => ({ ...prev, isBookmarked }))}
                 onRequireLogin={() => navigate(loginRedirect)}
               />
               <button

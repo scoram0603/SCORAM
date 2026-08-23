@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOut, Mail, User as UserIcon, Users, MessageCircle, Loader2, Smartphone, Camera, X, Flame, Gift, ChevronRight } from "lucide-react";
+import { LogOut, Mail, User as UserIcon, Users, MessageCircle, Loader2, Smartphone, Camera, X, Flame, Gift, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getGamificationSummary } from "../api/gamification";
 import { enablePushNotifications, disablePushNotifications, getPushSubscriptionStatus, isPushSupported } from "../utils/push";
@@ -19,6 +19,7 @@ function initialsFor(fullName) {
 
 export default function Profile() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="flex flex-col items-center px-6 py-10 sm:py-16">
@@ -40,6 +41,21 @@ export default function Profile() {
       <NotificationSettings />
 
       <GamificationSnapshot />
+
+      <button
+        type="button"
+        onClick={() => navigate("/settings")}
+        className="mt-6 flex w-full max-w-sm items-center gap-3 rounded-xl2 border border-primary-100 bg-white p-4 text-left shadow-card transition-colors hover:border-primary-300"
+      >
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-600">
+          <SlidersHorizontal className="h-4 w-4" strokeWidth={2} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold text-ink-900">Account & Security</span>
+          <span className="block text-xs text-ink-400">Change your password, email, or phone number</span>
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-300" strokeWidth={2.5} />
+      </button>
 
       <button
         type="button"

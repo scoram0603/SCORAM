@@ -48,3 +48,32 @@ export function uploadProfilePhoto(file) {
 export function removeProfilePhoto() {
   return apiFetch("/api/auth/profile-photo", { method: "DELETE", auth: true });
 }
+
+// ---------- Settings: Account & Security ----------
+
+// PATCH /api/auth/change-password
+export function changePassword({ currentPassword, newPassword }) {
+  return apiFetch("/api/auth/change-password", {
+    method: "PATCH",
+    auth: true,
+    body: { currentPassword, newPassword },
+  });
+}
+
+// PATCH /api/auth/change-email
+export function changeEmail({ currentPassword, newEmail }) {
+  return apiFetch("/api/auth/change-email", {
+    method: "PATCH",
+    auth: true,
+    body: { currentPassword, newEmail },
+  });
+}
+
+// PATCH /api/auth/change-phone
+export function changePhone({ currentPassword, newPhoneNumber }) {
+  return apiFetch("/api/auth/change-phone", {
+    method: "PATCH",
+    auth: true,
+    body: { currentPassword, newPhoneNumber },
+  });
+}

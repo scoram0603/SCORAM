@@ -136,6 +136,7 @@ namespace ScoramAPI.Controllers
             {
                 var myVote = await _db.QuestionVotes.FirstOrDefaultAsync(v => v.QuestionBankQuestionId == id && v.UserId == User.GetUserId());
                 dto.MyVote = myVote?.IsLike;
+                dto.IsBookmarked = await _db.Bookmarks.AnyAsync(b => b.QuestionBankQuestionId == id && b.UserId == User.GetUserId());
             }
 
             return Ok(dto);

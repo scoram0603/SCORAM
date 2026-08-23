@@ -96,6 +96,7 @@ namespace ScoramAPI.Controllers
                 Username = user.Username,
                 FullName = user.FullName,
                 Email = user.Email,
+                PhoneNumber = user.PhoneNumber,
                 PhotoUrl = user.PhotoUrl,
                 NotifyOnGroupMessages = user.NotifyOnGroupMessages,
                 NotifyOnDirectMessages = user.NotifyOnDirectMessages
@@ -131,6 +132,7 @@ namespace ScoramAPI.Controllers
                 Username = user.Username,
                 FullName = user.FullName,
                 Email = user.Email,
+                PhoneNumber = user.PhoneNumber,
                 PhotoUrl = user.PhotoUrl,
                 NotifyOnGroupMessages = user.NotifyOnGroupMessages,
                 NotifyOnDirectMessages = user.NotifyOnDirectMessages
@@ -226,6 +228,75 @@ namespace ScoramAPI.Controllers
             }
 
             return Ok(new ProfilePhotoResponseDto { PhotoUrl = null });
+        }
+
+        // ==========================================================================
+        // Settings -- Account & Security
+        // ==========================================================================
+
+        // PATCH /api/auth/change-password -- reuses the "login" rate-limit policy since this also
+        // verifies a password and is exactly the kind of endpoint credential-stuffing targets, same
+        // reasoning as Login/Register above (see Program.cs's rate limiter comment block).
+        [Authorize(Roles = "Student")]
+        [HttpPatch("change-password")]
+        [EnableRateLimiting("login")]
+        public async Task<ActionResult> ChangePassword(ChangePasswordDto dto)
+        {
+            var user = await _db.Users.FindAsync(User.GetUserId());
+            if (user == null) return NotFound();
+
+            if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+                return BadRequest(new { message = "Current password is incorrect." });
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+            await _db.SaveChangesAsync();
+
+            return Ok(new { message = "Password updated successfully." });
+        }
+
+        // PATCH /api/auth/change-email -- no OTP step yet (see the DTO's comment in AuthDTOs.cs),
+        // so the current password is what stands in for "prove you're still you" for now.
+        [Authorize(Roles = "Student")]
+        [HttpPatch("change-email")]
+        [EnableRateLimiting("login")]
+        public async Task<ActionResult<ChangeEmailResponseDto>> ChangeEmail(ChangeEmailDto dto)
+        {
+            var user = await _db.Users.FindAsync(User.GetUserId());
+            if (user == null) return NotFound();
+
+            if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+                return BadRequest(new { message = "Current password is incorrect." });
+
+            var newEmail = dto.NewEmail.Trim();
+            if (await _db.Users.AnyAsync(u => u.Id != user.Id && u.Email == newEmail))
+                return Conflict(new { message = "An account with this email already exists." });
+
+            user.Email = newEmail;
+            await _db.SaveChangesAsync();
+
+            return Ok(new ChangeEmailResponseDto { Email = user.Email });
+        }
+
+        // PATCH /api/auth/change-phone -- same current-password gate as ChangeEmail above.
+        [Authorize(Roles = "Student")]
+        [HttpPatch("change-phone")]
+        [EnableRateLimiting("login")]
+        public async Task<ActionResult<ChangePhoneResponseDto>> ChangePhone(ChangePhoneDto dto)
+        {
+            var user = await _db.Users.FindAsync(User.GetUserId());
+            if (user == null) return NotFound();
+
+            if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+                return BadRequest(new { message = "Current password is incorrect." });
+
+            var newPhoneNumber = dto.NewPhoneNumber.Trim();
+            if (await _db.Users.AnyAsync(u => u.Id != user.Id && u.PhoneNumber == newPhoneNumber))
+                return Conflict(new { message = "An account with this phone number already exists." });
+
+            user.PhoneNumber = newPhoneNumber;
+            await _db.SaveChangesAsync();
+
+            return Ok(new ChangePhoneResponseDto { PhoneNumber = user.PhoneNumber });
         }
     }
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, Clock, Play, RotateCcw } from "lucide-react";
 import { listMockTests } from "../api/mockTests";
+import BookmarkButton from "../components/questions/BookmarkButton";
 
 const AVAILABILITY_STYLES = {
   Upcoming: "bg-secondary-50 text-secondary-500",
@@ -25,6 +26,10 @@ export default function MockTests() {
 
   function handleStart(id) {
     navigate(`/tests/instructions/mock/${id}`);
+  }
+
+  function handleBookmarkChange(id, isBookmarked) {
+    setTests((prev) => prev.map((t) => (t.id === id ? { ...t, isBookmarked } : t)));
   }
 
   return (
@@ -69,19 +74,29 @@ export default function MockTests() {
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleStart(t.id)}
-                    disabled={disabled}
-                    className="flex shrink-0 items-center gap-1.5 rounded-xl2 bg-primary-600 px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-40"
-                  >
-                    {t.myAttemptCount > 0 ? (
-                      <RotateCcw className="h-3.5 w-3.5" strokeWidth={2.25} />
-                    ) : (
-                      <Play className="h-3.5 w-3.5" strokeWidth={2.25} />
-                    )}
-                    {outOfAttempts ? "No attempts left" : isCompleted ? "Closed" : t.myAttemptCount > 0 ? "Attempt again" : "Start"}
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <BookmarkButton
+                      type="mockTest"
+                      id={t.id}
+                      isBookmarked={t.isBookmarked}
+                      size="sm"
+                      onChange={(isBookmarked) => handleBookmarkChange(t.id, isBookmarked)}
+                      onRequireLogin={() => navigate(`/login?redirect=/tests/mock`)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleStart(t.id)}
+                      disabled={disabled}
+                      className="flex items-center gap-1.5 rounded-xl2 bg-primary-600 px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-40"
+                    >
+                      {t.myAttemptCount > 0 ? (
+                        <RotateCcw className="h-3.5 w-3.5" strokeWidth={2.25} />
+                      ) : (
+                        <Play className="h-3.5 w-3.5" strokeWidth={2.25} />
+                      )}
+                      {outOfAttempts ? "No attempts left" : isCompleted ? "Closed" : t.myAttemptCount > 0 ? "Attempt again" : "Start"}
+                    </button>
+                  </div>
                 </div>
               </div>
             );

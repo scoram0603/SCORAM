@@ -74,6 +74,9 @@ namespace ScoramAPI.DTOs
         // i.e. an admin has actually configured this paper for Previous Year Paper Practice, as
         // opposed to a legacy paper that only supports the older "browse its questions" flow.
         public bool IsConfiguredForPractice { get; set; }
+
+        // Whether the current viewer has this paper bookmarked (false when not logged in).
+        public bool IsBookmarked { get; set; }
     }
 
     public class PaperRejectDto
