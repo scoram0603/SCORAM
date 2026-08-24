@@ -232,11 +232,13 @@ app.UseSerilogRequestLogging();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// Serve uploaded images (exam logos, question/option/explanation diagrams) at /uploads/{subfolder}/{file}
-var uploadsRoot = Path.Combine(app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot"), "uploads");
-Directory.CreateDirectory(Path.Combine(uploadsRoot, "exam-logos"));
-Directory.CreateDirectory(Path.Combine(uploadsRoot, "question-images"));
-Directory.CreateDirectory(Path.Combine(uploadsRoot, "chat-attachments"));
+// Uploaded images (exam logos, question/option/explanation diagrams, profile photos, chat/DM
+// attachments) used to live on local disk at wwwroot/uploads/{subfolder}/{file} and were served here
+// via app.UseStaticFiles(). Render's filesystem is ephemeral -- it resets on every redeploy/restart --
+// so anything written there at runtime was silently lost, leaving broken image URLs in the database.
+// These now live in Azure Blob Storage (see AzureBlobService) and are served by
+// UploadedFilesController at the same "/uploads/{subfolder}/{file}" route, so no data migration or
+// frontend change was needed. UseStaticFiles() is kept for any other genuinely static wwwroot assets.
 app.UseStaticFiles();
 
 app.UseCors("FrontendDev");

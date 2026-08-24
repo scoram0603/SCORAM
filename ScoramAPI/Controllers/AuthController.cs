@@ -228,7 +228,7 @@ namespace ScoramAPI.Controllers
             user.PhotoUrl = newUrl;
             await _db.SaveChangesAsync();
 
-            if (!string.IsNullOrEmpty(oldUrl)) _fileStorage.DeleteImage(oldUrl);
+            if (!string.IsNullOrEmpty(oldUrl)) await _fileStorage.DeleteImageAsync(oldUrl);
 
             return Ok(new ProfilePhotoResponseDto { PhotoUrl = user.PhotoUrl });
         }
@@ -244,7 +244,7 @@ namespace ScoramAPI.Controllers
 
             if (!string.IsNullOrEmpty(user.PhotoUrl))
             {
-                _fileStorage.DeleteImage(user.PhotoUrl);
+                await _fileStorage.DeleteImageAsync(user.PhotoUrl);
                 user.PhotoUrl = null;
                 await _db.SaveChangesAsync();
             }

@@ -608,7 +608,7 @@ namespace ScoramAPI.Controllers
             await _audit.LogAsync(User.GetAdminId(), "Paper.Delete", "Paper", id,
                 $"{questionIds.Count} question(s) deleted with it" + (wasPublished ? " (was Published)" : ""));
 
-            foreach (var url in imageUrls) _fileStorage.DeleteImage(url);
+            foreach (var url in imageUrls) await _fileStorage.DeleteImageAsync(url);
             if (wasPublished) await RemoveQuestionsFromIndexAsync(questionIds);
 
             return NoContent();

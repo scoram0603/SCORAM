@@ -406,7 +406,7 @@ namespace ScoramAPI.Controllers
             await _db.SaveChangesAsync();
             await _audit.LogAsync(User.GetAdminId(), "Question.Delete", "Question", id);
 
-            foreach (var url in imageUrls) _fileStorage.DeleteImage(url);
+            foreach (var url in imageUrls) await _fileStorage.DeleteImageAsync(url);
 
             return NoContent();
         }
@@ -421,12 +421,12 @@ namespace ScoramAPI.Controllers
             if (newFile != null)
             {
                 var newUrl = await _fileStorage.SaveImageAsync(newFile, "question-images");
-                _fileStorage.DeleteImage(currentUrl);
+                await _fileStorage.DeleteImageAsync(currentUrl);
                 return newUrl;
             }
             if (remove)
             {
-                _fileStorage.DeleteImage(currentUrl);
+                await _fileStorage.DeleteImageAsync(currentUrl);
                 return null;
             }
             return currentUrl;

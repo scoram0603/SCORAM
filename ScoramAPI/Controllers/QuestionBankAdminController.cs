@@ -337,12 +337,12 @@ namespace ScoramAPI.Controllers
             if (newFile != null)
             {
                 var newUrl = await _fileStorage.SaveImageAsync(newFile, "question-images");
-                _fileStorage.DeleteImage(currentUrl);
+                await _fileStorage.DeleteImageAsync(currentUrl);
                 return newUrl;
             }
             if (remove)
             {
-                _fileStorage.DeleteImage(currentUrl);
+                await _fileStorage.DeleteImageAsync(currentUrl);
                 return null;
             }
             return currentUrl;

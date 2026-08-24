@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 
 namespace ScoramAPI.Services
@@ -7,10 +6,14 @@ namespace ScoramAPI.Services
 
     public interface IFileStorageService
     {
-        /// <summary>Validates and saves an uploaded image under wwwroot/uploads/{subfolder}/, returning
-        /// the relative URL to store on the entity (e.g. "/uploads/question-images/{guid}.png"), or
-        /// null if no file was given. Throws ArgumentException with a user-facing message on validation
-        /// failure (bad extension / too large / empty file) so the controller can turn it into a 400.</summary>
+        /// <summary>Validates and saves an uploaded image to Azure Blob Storage under
+        /// "{subfolder}/{guid}{ext}" in the private "uploads" container, returning a relative URL to
+        /// store on the entity (e.g. "/uploads/question-images/{guid}.png"), or null if no file was
+        /// given. That URL is served by UploadedFilesController, which streams the matching blob back
+        /// -- so callers of this interface don't need to know or care that the bytes live in Azure
+        /// rather than on local disk. Throws ArgumentException with a user-facing message on
+        /// validation failure (bad extension / too large / empty file) so the controller can turn it
+        /// into a 400.</summary>
         Task<string?> SaveImageAsync(IFormFile? file, string subfolder);
 
         /// <summary>Same contract as SaveImageAsync, but for a chat attachment which may be an image OR
@@ -25,10 +28,12 @@ namespace ScoramAPI.Services
 
         /// <summary>Best-effort delete of a previously-saved file, given the relative URL a Save*Async
         /// method returned. Silently does nothing if the URL is null/external/already gone -- deleting
-        /// old files is a cleanup nicety, not something that should ever fail a request.</summary>
-        void DeleteImage(string? relativeUrl);
+        /// old files is a cleanup nicety, not something that should ever fail a request. Async because
+        /// deleting a blob is a network call (unlike the old local-disk File.Delete) -- callers should
+        /// await it, but a failure here is swallowed rather than thrown, same as before.</summary>
+        Task DeleteImageAsync(string? relativeUrl);
 
-        /// <summary>Physically copies an already-uploaded image to a new file under the given
+        /// <summary>Physically copies an already-uploaded image to a new blob under the given
         /// subfolder, returning the new file's own relative URL (or null if sourceRelativeUrl is
         /// null/not a local upload). Used when two independently-editable records need to end up
         /// with "the same picture" (e.g. QuestionBankMirrorService mirroring a PYQ question's images)
@@ -48,11 +53,34 @@ namespace ScoramAPI.Services
         private const long MaxDocumentSizeBytes = 15 * 1024 * 1024; // 15 MB -- notes/PDFs shared in chat
         private const long MaxAudioSizeBytes = 10 * 1024 * 1024;  // 10 MB -- generous for a voice note (~10+ min at typical bitrates)
 
-        private readonly IWebHostEnvironment _env;
+        private const string UploadsUrlPrefix = "/uploads/";
 
-        public FileStorageService(IWebHostEnvironment env)
+        private static readonly Dictionary<string, string> ContentTypeByExtension = new()
         {
-            _env = env;
+            [".png"] = "image/png",
+            [".jpg"] = "image/jpeg",
+            [".jpeg"] = "image/jpeg",
+            [".webp"] = "image/webp",
+            [".svg"] = "image/svg+xml",
+            [".pdf"] = "application/pdf",
+            [".doc"] = "application/msword",
+            [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            [".xls"] = "application/vnd.ms-excel",
+            [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            [".ppt"] = "application/vnd.ms-powerpoint",
+            [".pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            [".webm"] = "audio/webm",
+            [".m4a"] = "audio/mp4",
+            [".mp3"] = "audio/mpeg",
+            [".ogg"] = "audio/ogg",
+            [".wav"] = "audio/wav",
+        };
+
+        private readonly IAzureBlobService _blobService;
+
+        public FileStorageService(IAzureBlobService blobService)
+        {
+            _blobService = blobService;
         }
 
         public Task<string?> SaveImageAsync(IFormFile? file, string subfolder) =>
@@ -112,54 +140,62 @@ namespace ScoramAPI.Services
 
             // Never trust the original filename -- generate our own to avoid path traversal / collisions.
             var fileName = $"{Guid.NewGuid()}{ext}";
-            var uploadsDir = Path.Combine(_env.WebRootPath ?? "wwwroot", "uploads", subfolder);
-            Directory.CreateDirectory(uploadsDir);
+            var blobName = $"{subfolder}/{fileName}";
 
-            var fullPath = Path.Combine(uploadsDir, fileName);
-            using (var stream = new FileStream(fullPath, FileMode.Create))
+            await using (var stream = file.OpenReadStream())
             {
-                await file.CopyToAsync(stream);
+                await _blobService.UploadAsync(blobName, stream, GetContentType(ext));
             }
 
-            return $"/uploads/{subfolder}/{fileName}";
+            return $"{UploadsUrlPrefix}{subfolder}/{fileName}";
         }
 
-        public void DeleteImage(string? relativeUrl)
+        public async Task DeleteImageAsync(string? relativeUrl)
         {
-            if (string.IsNullOrWhiteSpace(relativeUrl) || !relativeUrl.StartsWith("/uploads/")) return;
+            if (string.IsNullOrWhiteSpace(relativeUrl) || !relativeUrl.StartsWith(UploadsUrlPrefix)) return;
 
             try
             {
-                var fullPath = Path.Combine(_env.WebRootPath ?? "wwwroot", relativeUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
-                if (File.Exists(fullPath)) File.Delete(fullPath);
+                var blobName = relativeUrl[UploadsUrlPrefix.Length..];
+                await _blobService.DeleteAsync(blobName);
             }
             catch
             {
-                // Best-effort cleanup -- an orphaned file on disk is a non-issue, but failing the
-                // request over it (e.g. a locked file, permissions) would be a worse outcome.
+                // Best-effort cleanup -- an orphaned blob is a non-issue, but failing the request
+                // over it (e.g. a transient storage hiccup) would be a worse outcome.
             }
         }
 
         public async Task<string?> CopyImageAsync(string? sourceRelativeUrl, string subfolder)
         {
-            if (string.IsNullOrWhiteSpace(sourceRelativeUrl) || !sourceRelativeUrl.StartsWith("/uploads/")) return null;
+            if (string.IsNullOrWhiteSpace(sourceRelativeUrl) || !sourceRelativeUrl.StartsWith(UploadsUrlPrefix)) return null;
 
-            var sourcePath = Path.Combine(_env.WebRootPath ?? "wwwroot", sourceRelativeUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
-            if (!File.Exists(sourcePath)) return null;
+            var sourceBlobName = sourceRelativeUrl[UploadsUrlPrefix.Length..];
 
-            var ext = Path.GetExtension(sourcePath);
-            var fileName = $"{Guid.NewGuid()}{ext}";
-            var uploadsDir = Path.Combine(_env.WebRootPath ?? "wwwroot", "uploads", subfolder);
-            Directory.CreateDirectory(uploadsDir);
-            var destPath = Path.Combine(uploadsDir, fileName);
-
-            using (var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read))
-            using (var destStream = new FileStream(destPath, FileMode.Create))
+            Stream? sourceStream;
+            try
             {
-                await sourceStream.CopyToAsync(destStream);
+                sourceStream = await _blobService.DownloadAsync(sourceBlobName);
+            }
+            catch
+            {
+                return null;
+            }
+            if (sourceStream == null) return null;
+
+            var ext = Path.GetExtension(sourceBlobName);
+            var fileName = $"{Guid.NewGuid()}{ext}";
+            var destBlobName = $"{subfolder}/{fileName}";
+
+            await using (sourceStream)
+            {
+                await _blobService.UploadAsync(destBlobName, sourceStream, GetContentType(ext));
             }
 
-            return $"/uploads/{subfolder}/{fileName}";
+            return $"{UploadsUrlPrefix}{subfolder}/{fileName}";
         }
+
+        private static string GetContentType(string extension) =>
+            ContentTypeByExtension.TryGetValue(extension, out var contentType) ? contentType : "application/octet-stream";
     }
 }
