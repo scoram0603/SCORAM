@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOut, Mail, User as UserIcon, Users, MessageCircle, Loader2, Smartphone, Camera, X, Flame, Gift, ChevronRight, SlidersHorizontal } from "lucide-react";
+import {
+  LogOut, Mail, User as UserIcon, Users, MessageCircle, Loader2, Smartphone, Camera, X, Flame, Gift,
+  ChevronRight, SlidersHorizontal, Phone, AtSign, Pencil, Check, CheckCircle2, XCircle,
+} from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getGamificationSummary } from "../api/gamification";
+import { checkUsername } from "../api/auth";
 import { enablePushNotifications, disablePushNotifications, getPushSubscriptionStatus, isPushSupported } from "../utils/push";
 import { API_BASE_URL } from "../api/client";
+import ImageCropModal from "../components/profile/ImageCropModal";
+
+const USERNAME_PATTERN = /^[a-z0-9._]+$/;
 
 function photoSrc(url) {
   if (!url) return null;
@@ -27,15 +34,8 @@ export default function Profile() {
 
       <h1 className="mt-4 text-xl font-extrabold text-ink-900">{user.fullName}</h1>
 
-      <div className="mt-6 w-full max-w-sm rounded-xl2 border border-primary-100 bg-white p-4 shadow-card">
-        <div className="flex items-center gap-3 py-2">
-          <UserIcon className="h-4 w-4 text-ink-400" strokeWidth={2} />
-          <span className="text-sm text-ink-600">{user.fullName}</span>
-        </div>
-        <div className="flex items-center gap-3 border-t border-primary-50 py-2 pt-3">
-          <Mail className="h-4 w-4 text-ink-400" strokeWidth={2} />
-          <span className="text-sm text-ink-600">{user.email}</span>
-        </div>
+      <div className="mt-6 w-full max-w-sm">
+        <ProfileInfoCard />
       </div>
 
       <NotificationSettings />
@@ -67,6 +67,195 @@ export default function Profile() {
       </button>
     </div>
   );
+}
+
+// Full Name + Username are directly editable here (no password gate -- see the endpoint's own
+// comment in AuthController.cs). Email + Phone stay read-only display here with a "Change" link
+// through to Settings, since those DO require the current-password confirmation built there.
+function ProfileInfoCard() {
+  const { user, updateBasicProfile } = useAuth();
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState(false);
+  const [fullName, setFullName] = useState(user.fullName);
+  const [username, setUsername] = useState(user.username);
+  const [usernameStatus, setUsernameStatus] = useState(null); // null | "checking" | "available" | "taken" | "invalid"
+  const [usernameReason, setUsernameReason] = useState(null);
+  const usernameCheckRef = useRef(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    const normalized = username.trim().toLowerCase();
+
+    if (usernameCheckRef.current) clearTimeout(usernameCheckRef.current);
+
+    // Unchanged from the account's current username -- no need to ask the server (and it would
+    // wrongly say "taken", since it's taken by this same account).
+    if (normalized === user.username) {
+      setUsernameStatus(null);
+      setUsernameReason(null);
+      return;
+    }
+    if (!normalized) {
+      setUsernameStatus("invalid");
+      setUsernameReason("Username can't be empty.");
+      return;
+    }
+    if (normalized.length < 3 || !USERNAME_PATTERN.test(normalized)) {
+      setUsernameStatus("invalid");
+      setUsernameReason(normalized.length < 3 ? "At least 3 characters" : "Only lowercase letters, numbers, dots, and underscores");
+      return;
+    }
+
+    setUsernameStatus("checking");
+    usernameCheckRef.current = setTimeout(async () => {
+      try {
+        const res = await checkUsername(normalized);
+        setUsernameStatus(res.available ? "available" : "taken");
+        setUsernameReason(res.reason || null);
+      } catch {
+        setUsernameStatus(null);
+      }
+    }, 400);
+
+    return () => clearTimeout(usernameCheckRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username, editing]);
+
+  function handleEditStart() {
+    setFullName(user.fullName);
+    setUsername(user.username);
+    setUsernameStatus(null);
+    setError(null);
+    setEditing(true);
+  }
+
+  function handleCancel() {
+    setEditing(false);
+    setError(null);
+  }
+
+  async function handleSave() {
+    if (!fullName.trim()) {
+      setError("Full name can't be empty.");
+      return;
+    }
+    if (usernameStatus === "taken" || usernameStatus === "invalid") return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await updateBasicProfile({ fullName: fullName.trim(), username: username.trim().toLowerCase() });
+      setEditing(false);
+    } catch (err) {
+      setError(err.message || "Couldn't save your changes. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl2 border border-primary-100 bg-white p-4 shadow-card">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-bold text-ink-900">Profile Info</p>
+        {!editing && (
+          <button type="button" onClick={handleEditStart} className="flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700">
+            <Pencil className="h-3.5 w-3.5" strokeWidth={2.25} />
+            Edit
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="mt-3 flex flex-col gap-3">
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-ink-600">Full name</span>
+            <span className="flex items-center gap-2.5 rounded-xl2 border border-primary-100 bg-white px-3.5 py-3 focus-within:border-secondary-500">
+              <UserIcon className="h-4 w-4 shrink-0 text-ink-400" strokeWidth={2} />
+              <input
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                maxLength={100}
+                className="w-full bg-transparent text-sm text-ink-900 focus:outline-none"
+              />
+            </span>
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-ink-600">Username</span>
+            <span className="flex items-center gap-2.5 rounded-xl2 border border-primary-100 bg-white px-3.5 py-3 focus-within:border-secondary-500">
+              <AtSign className="h-4 w-4 shrink-0 text-ink-400" strokeWidth={2} />
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                maxLength={30}
+                className="w-full bg-transparent text-sm text-ink-900 focus:outline-none"
+              />
+              <UsernameStatusIcon status={usernameStatus} />
+            </span>
+            {usernameReason && (usernameStatus === "taken" || usernameStatus === "invalid") && (
+              <span className="mt-1 block text-xs text-red-600">{usernameReason}</span>
+            )}
+          </label>
+
+          {error && <p className="text-xs text-red-600">{error}</p>}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={saving}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl2 border border-primary-100 px-4 py-2.5 text-sm font-semibold text-ink-600 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || usernameStatus === "checking" || usernameStatus === "taken" || usernameStatus === "invalid"}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl2 bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.5} /> : <Check className="h-4 w-4" strokeWidth={2.5} />}
+              Save
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-1">
+          <InfoRow icon={UserIcon} value={user.fullName} />
+          <InfoRow icon={AtSign} value={`@${user.username}`} />
+          <InfoRow icon={Mail} value={user.email} action={<ChangeLink onClick={() => navigate("/settings")} />} />
+          <InfoRow icon={Phone} value={user.phoneNumber || "Not added"} action={<ChangeLink onClick={() => navigate("/settings")} />} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InfoRow({ icon: Icon, value, action }) {
+  return (
+    <div className="flex items-center gap-3 border-t border-primary-50 py-2.5 first:border-t-0 first:pt-2">
+      <Icon className="h-4 w-4 shrink-0 text-ink-400" strokeWidth={2} />
+      <span className="min-w-0 flex-1 truncate text-sm text-ink-600">{value}</span>
+      {action}
+    </div>
+  );
+}
+
+function ChangeLink({ onClick }) {
+  return (
+    <button type="button" onClick={onClick} className="shrink-0 text-xs font-semibold text-primary-600 hover:text-primary-700">
+      Change
+    </button>
+  );
+}
+
+function UsernameStatusIcon({ status }) {
+  if (status === "checking") return <Loader2 className="h-4 w-4 shrink-0 animate-spin text-ink-400" strokeWidth={2.25} />;
+  if (status === "available") return <CheckCircle2 className="h-4 w-4 shrink-0 text-mint-500" strokeWidth={2.25} />;
+  if (status === "taken" || status === "invalid") return <XCircle className="h-4 w-4 shrink-0 text-red-500" strokeWidth={2.25} />;
+  return null;
 }
 
 // Live -- wired to GET /api/gamification/me. Small snapshot only (streak + XP + level); the full
@@ -141,19 +330,26 @@ function ProfilePhoto() {
   const fileInputRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [pendingFile, setPendingFile] = useState(null); // file awaiting crop, or null
 
-  async function handleFileChange(e) {
+  function handleFileChange(e) {
     const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file next time
     if (!file) return;
+    setError(null);
+    setPendingFile(file); // opens the crop modal -- upload happens after Save there
+  }
+
+  async function handleCropped(croppedFile) {
+    setPendingFile(null);
     setBusy(true);
     setError(null);
     try {
-      await updateProfilePhoto(file);
+      await updateProfilePhoto(croppedFile);
     } catch (err) {
       setError(err.message || "Couldn't upload that photo.");
     } finally {
       setBusy(false);
-      e.target.value = ""; // allow re-selecting the same file next time
     }
   }
 
@@ -205,6 +401,10 @@ function ProfilePhoto() {
       )}
 
       {error && <p className="mt-2 max-w-xs text-center text-xs text-red-600">{error}</p>}
+
+      {pendingFile && (
+        <ImageCropModal file={pendingFile} onCancel={() => setPendingFile(null)} onCropped={handleCropped} />
+      )}
     </div>
   );
 }

@@ -25,76 +25,84 @@ namespace ScoramAPI.Controllers
 
         // POST /api/questions/{questionId}/bookmark
         [HttpPost("questions/{questionId:guid}/bookmark")]
-        public async Task<ActionResult<BookmarkToggleResponseDto>> ToggleQuestion(Guid questionId)
-        {
-            if (!await _db.Questions.AnyAsync(q => q.Id == questionId))
-                return NotFound(new { message = "Question not found." });
-
-            return await ToggleAsync(b => b.QuestionId == questionId, () => new Bookmark { QuestionId = questionId });
-        }
+        public Task<ActionResult<BookmarkToggleResponseDto>> ToggleQuestion(Guid questionId) =>
+            ToggleAsync(
+                b => b.QuestionId == questionId,
+                () => new Bookmark { QuestionId = questionId },
+                () => _db.Questions.AnyAsync(q => q.Id == questionId),
+                "Question not found.");
 
         // POST /api/question-bank/{questionId}/bookmark
         [HttpPost("question-bank/{questionId:guid}/bookmark")]
-        public async Task<ActionResult<BookmarkToggleResponseDto>> ToggleQuestionBankQuestion(Guid questionId)
-        {
-            if (!await _db.QuestionBankQuestions.AnyAsync(q => q.Id == questionId && q.IsActive))
-                return NotFound(new { message = "Question not found." });
+        public Task<ActionResult<BookmarkToggleResponseDto>> ToggleQuestionBankQuestion(Guid questionId) =>
+            ToggleAsync(
+                b => b.QuestionBankQuestionId == questionId,
+                () => new Bookmark { QuestionBankQuestionId = questionId },
+                () => _db.QuestionBankQuestions.AnyAsync(q => q.Id == questionId && q.IsActive),
+                "Question not found.");
 
-            return await ToggleAsync(b => b.QuestionBankQuestionId == questionId, () => new Bookmark { QuestionBankQuestionId = questionId });
-        }
-
-        // POST /api/discussions/{commentId}/bookmark -- commentId must be a TOP-LEVEL comment
-        // (a whole thread), same rule DiscussionsController's own feed follows.
-        [HttpPost("discussions/{commentId:guid}/bookmark")]
-        public async Task<ActionResult<BookmarkToggleResponseDto>> ToggleDiscussion(Guid commentId)
-        {
-            var isTopLevelThread = await _db.QuestionComments.AnyAsync(c => c.Id == commentId && c.ParentCommentId == null);
-            if (!isTopLevelThread)
-                return NotFound(new { message = "Discussion thread not found." });
-
-            return await ToggleAsync(b => b.CommentId == commentId, () => new Bookmark { CommentId = commentId });
-        }
+        // POST /api/comments/{commentId}/bookmark -- commentId must be a TOP-LEVEL comment (a whole
+        // thread), same rule DiscussionsController's own feed follows. Deliberately under
+        // "comments/", not "discussions/" -- matches every other per-comment action already in
+        // DiscussionsController (upvote/downvote/resolve/pin/report all live at
+        // comments/{commentId}/..., "discussions" is reserved there for the top-level feed route).
+        [HttpPost("comments/{commentId:guid}/bookmark")]
+        public Task<ActionResult<BookmarkToggleResponseDto>> ToggleDiscussion(Guid commentId) =>
+            ToggleAsync(
+                b => b.CommentId == commentId,
+                () => new Bookmark { CommentId = commentId },
+                () => _db.QuestionComments.AnyAsync(c => c.Id == commentId && c.ParentCommentId == null),
+                "Discussion thread not found.");
 
         // POST /api/papers/{paperId}/bookmark
         [HttpPost("papers/{paperId:guid}/bookmark")]
-        public async Task<ActionResult<BookmarkToggleResponseDto>> TogglePaper(Guid paperId)
-        {
-            if (!await _db.Papers.AnyAsync(p => p.Id == paperId))
-                return NotFound(new { message = "Paper not found." });
-
-            return await ToggleAsync(b => b.PaperId == paperId, () => new Bookmark { PaperId = paperId });
-        }
+        public Task<ActionResult<BookmarkToggleResponseDto>> TogglePaper(Guid paperId) =>
+            ToggleAsync(
+                b => b.PaperId == paperId,
+                () => new Bookmark { PaperId = paperId },
+                () => _db.Papers.AnyAsync(p => p.Id == paperId),
+                "Paper not found.");
 
         // POST /api/mocktests/{mockTestId}/bookmark
         [HttpPost("mocktests/{mockTestId:guid}/bookmark")]
-        public async Task<ActionResult<BookmarkToggleResponseDto>> ToggleMockTest(Guid mockTestId)
-        {
-            if (!await _db.MockTests.AnyAsync(m => m.Id == mockTestId))
-                return NotFound(new { message = "Mock test not found." });
+        public Task<ActionResult<BookmarkToggleResponseDto>> ToggleMockTest(Guid mockTestId) =>
+            ToggleAsync(
+                b => b.MockTestId == mockTestId,
+                () => new Bookmark { MockTestId = mockTestId },
+                () => _db.MockTests.AnyAsync(m => m.Id == mockTestId),
+                "Mock test not found.");
 
-            return await ToggleAsync(b => b.MockTestId == mockTestId, () => new Bookmark { MockTestId = mockTestId });
-        }
-
+        // targetExistsAsync is only ever consulted on the ADD path below -- REMOVING a bookmark is
+        // always allowed regardless of the target's current state. Without that split, a
+        // QuestionBankQuestion an admin later deactivates (IsActive = false) would permanently trap
+        // a student's bookmark of it: the existence check would 404 on every toggle attempt,
+        // including the one trying to remove it, leaving it stuck on their Bookmarks page forever
+        // with no way to clear it.
         private async Task<ActionResult<BookmarkToggleResponseDto>> ToggleAsync(
             System.Linq.Expressions.Expression<Func<Bookmark, bool>> matchesTarget,
-            Func<Bookmark> makeNewBookmark)
+            Func<Bookmark> makeNewBookmark,
+            Func<Task<bool>> targetExistsAsync,
+            string notFoundMessage)
         {
             var userId = User.GetUserId();
 
             var existing = await _db.Bookmarks.Where(matchesTarget).FirstOrDefaultAsync(b => b.UserId == userId);
 
-            if (existing == null)
+            if (existing != null)
             {
-                var bookmark = makeNewBookmark();
-                bookmark.UserId = userId;
-                _db.Bookmarks.Add(bookmark);
+                _db.Bookmarks.Remove(existing);
                 await _db.SaveChangesAsync();
-                return Ok(new BookmarkToggleResponseDto { IsBookmarked = true });
+                return Ok(new BookmarkToggleResponseDto { IsBookmarked = false });
             }
 
-            _db.Bookmarks.Remove(existing);
+            if (!await targetExistsAsync())
+                return NotFound(new { message = notFoundMessage });
+
+            var bookmark = makeNewBookmark();
+            bookmark.UserId = userId;
+            _db.Bookmarks.Add(bookmark);
             await _db.SaveChangesAsync();
-            return Ok(new BookmarkToggleResponseDto { IsBookmarked = false });
+            return Ok(new BookmarkToggleResponseDto { IsBookmarked = true });
         }
 
         // GET /api/bookmarks?type=all|questions|discussions|papers|mocktests&page=1&pageSize=20

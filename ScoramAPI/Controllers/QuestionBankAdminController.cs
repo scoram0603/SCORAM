@@ -57,7 +57,7 @@ namespace ScoramAPI.Controllers
         [HttpGet]
         public async Task<ActionResult<PagedResult<QuestionBankAdminQuestionDto>>> List(
             [FromQuery] string? search, [FromQuery] Guid? subjectId, [FromQuery] Guid? topicId,
-            [FromQuery] Guid? examId, [FromQuery] int? year, [FromQuery] bool includeInactive = false,
+            [FromQuery] Guid? examId, [FromQuery] int? year, [FromQuery] string? language, [FromQuery] bool includeInactive = false,
             [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
             if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageQuestionBank))
@@ -71,6 +71,8 @@ namespace ScoramAPI.Controllers
             if (!string.IsNullOrWhiteSpace(search)) q = q.Where(x => EF.Functions.Like(x.QuestionText, $"%{search.Trim()}%"));
             if (subjectId.HasValue) q = q.Where(x => x.SubjectId == subjectId);
             if (topicId.HasValue) q = q.Where(x => x.TopicId == topicId);
+            if (!string.IsNullOrWhiteSpace(language) && Enum.TryParse<PaperLanguage>(language, ignoreCase: true, out var languageFilter))
+                q = q.Where(x => x.Language == languageFilter);
 
             // Both examId AND year must match on the SAME mapping row -- a question mapped to
             // "SSC CGL 2024" and separately to "SSC CHSL 2025" must NOT match a search for
@@ -171,6 +173,7 @@ namespace ScoramAPI.Controllers
                 SubjectId = dto.SubjectId,
                 TopicId = dto.TopicId,
                 SourceReference = string.IsNullOrWhiteSpace(dto.SourceReference) ? null : dto.SourceReference.Trim(),
+                Language = ParseLanguage(dto.Language),
                 CreatedByAdminId = adminId,
                 CreatedAt = DateTime.UtcNow
             };
@@ -235,6 +238,7 @@ namespace ScoramAPI.Controllers
             question.SubjectId = dto.SubjectId;
             question.TopicId = dto.TopicId;
             question.SourceReference = string.IsNullOrWhiteSpace(dto.SourceReference) ? null : dto.SourceReference.Trim();
+            question.Language = ParseLanguage(dto.Language);
             question.UpdatedAt = DateTime.UtcNow;
 
             // Diff the exam/year mapping set instead of blanket-deleting and recreating every row on
@@ -921,6 +925,12 @@ namespace ScoramAPI.Controllers
                 HashCode.Combine(obj.SubjectId, obj.Name.ToLowerInvariant());
         }
 
+        // Shared by Create/Update -- "Hindi"/"English" (case-insensitive) parses to that enum value,
+        // anything else (null, empty, a typo) just leaves it unset rather than 400ing the whole
+        // request over an optional field.
+        private static PaperLanguage? ParseLanguage(string? raw) =>
+            !string.IsNullOrWhiteSpace(raw) && Enum.TryParse<PaperLanguage>(raw, ignoreCase: true, out var parsed) ? parsed : null;
+
         private static QuestionBankAdminQuestionDto ToAdminDto(QuestionBankQuestion x) => new QuestionBankAdminQuestionDto
         {
             Id = x.Id,
@@ -940,6 +950,7 @@ namespace ScoramAPI.Controllers
             Subject = x.Subject?.Name ?? string.Empty,
             Topic = x.Topic?.Name ?? string.Empty,
             SourceReference = x.SourceReference,
+            Language = x.Language?.ToString(),
             AskedIn = x.ExamMappings.OrderByDescending(m => m.Year).Select(m => new QuestionBankExamYearDto
             {
                 ExamId = m.ExamId, ExamName = m.Exam?.Name ?? "Unknown", ExamLogoUrl = m.Exam?.LogoUrl, Year = m.Year

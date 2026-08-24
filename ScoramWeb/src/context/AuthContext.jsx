@@ -43,6 +43,20 @@ export function AuthProvider({ children }) {
     setStoredToken(token);
   }, [token]);
 
+  // Self-heals a session that was cached before some profile field existed on it (see
+  // MeResponseDto's comment in AuthDTOs.cs -- PhoneNumber is the first field this bit, but it'll
+  // protect any field added later too). Runs once per token; failures are ignored -- a genuinely
+  // invalid/expired token is already caught by the scoram:session-expired listener below, so this
+  // failing just means the cached session gets used as-is for this load.
+  useEffect(() => {
+    if (!token) return;
+    authApi.getMe()
+      .then((res) => {
+        setUser((prev) => (prev ? { ...prev, ...res, photoUrl: res.photoUrl ?? null } : prev));
+      })
+      .catch(() => {});
+  }, [token]);
+
   // See api/client.js: fires at most once per bad token, the moment ANY authenticated request comes
   // back 401 with that token attached. Without this, every other authenticated call on the page
   // (notifications poll, SignalR negotiate/reconnect, etc.) just keeps failing against a token that
@@ -133,6 +147,14 @@ export function AuthProvider({ children }) {
     return res;
   }, []);
 
+  // Full Name + Username -- kept separate from the Settings/updateEmail/updatePhoneNumber trio
+  // above since it isn't password-gated (see the endpoint's own comment in AuthController.cs).
+  const updateBasicProfile = useCallback(async (payload) => {
+    const res = await authApi.updateProfile(payload);
+    setUser((prev) => (prev ? { ...prev, fullName: res.fullName, username: res.username } : prev));
+    return res;
+  }, []);
+
   // ---------- Settings: Account & Security ----------
   // updatePassword doesn't touch `user` state -- nothing about the stored session changes, only
   // the password itself (which is never held client-side anyway).
@@ -164,6 +186,7 @@ export function AuthProvider({ children }) {
       updateNotificationPreferences,
       updateProfilePhoto,
       removeProfilePhoto,
+      updateBasicProfile,
       updatePassword,
       updateEmail,
       updatePhoneNumber,
@@ -171,7 +194,7 @@ export function AuthProvider({ children }) {
     }),
     [
       user, token, isLoading, error, sessionExpired, login, register, logout,
-      updateNotificationPreferences, updateProfilePhoto, removeProfilePhoto,
+      updateNotificationPreferences, updateProfilePhoto, removeProfilePhoto, updateBasicProfile,
       updatePassword, updateEmail, updatePhoneNumber,
     ]
   );

@@ -77,6 +77,11 @@ namespace ScoramAPI.DTOs
 
         // Whether the current viewer has this paper bookmarked (false when not logged in).
         public bool IsBookmarked { get; set; }
+
+        // Distinct students who've submitted an attempt on this paper (Submitted/AutoSubmitted --
+        // not counting ones still InProgress or abandoned/Expired without submitting). Powers the
+        // "Attempted by X students" line the mobile reference UI shows on every paper card.
+        public int AttemptCount { get; set; }
     }
 
     public class PaperRejectDto

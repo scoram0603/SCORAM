@@ -91,9 +91,23 @@ namespace ScoramAPI.Controllers
                 : (await _db.Bookmarks.Where(b => b.UserId == userId && b.PaperId != null && pagePaperIds.Contains(b.PaperId!.Value))
                     .Select(b => b.PaperId!.Value).ToListAsync()).ToHashSet();
 
+            // Distinct students per paper, not raw attempt rows (a student re-attempting the same
+            // paper shouldn't inflate "Attempted by X students" -- see AttemptCount's comment in
+            // PaperDTOs.cs). Grouping on (PaperId, UserId) first collapses each student down to one
+            // row before the outer GroupBy counts students per paper.
+            var attemptCounts = await _db.StudentTestResults
+                .Where(r => r.PaperId != null && pagePaperIds.Contains(r.PaperId.Value)
+                    && (r.Status == TestAttemptStatus.Submitted || r.Status == TestAttemptStatus.AutoSubmitted))
+                .Select(r => new { r.PaperId, r.UserId })
+                .Distinct()
+                .GroupBy(r => r.PaperId!.Value)
+                .Select(g => new { PaperId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(g => g.PaperId, g => g.Count);
+
             return Ok(new PagedResult<PaperResponseDto>
             {
-                Items = pageRows.Select(x => PapersController.MapToDto(x.Paper, x.QuestionCount, bookmarkedIds.Contains(x.Paper.Id))).ToList(),
+                Items = pageRows.Select(x => PapersController.MapToDto(
+                    x.Paper, x.QuestionCount, bookmarkedIds.Contains(x.Paper.Id), attemptCounts.GetValueOrDefault(x.Paper.Id))).ToList(),
                 TotalCount = totalCount,
                 Page = page,
                 PageSize = pageSize
@@ -245,7 +259,10 @@ namespace ScoramAPI.Controllers
             var questionCount = await PapersController.GetCombinedQuestionCountAsync(_db, id);
             var isBookmarked = User.Identity?.IsAuthenticated == true
                 && await _db.Bookmarks.AnyAsync(b => b.PaperId == id && b.UserId == User.GetUserId());
-            return Ok(PapersController.MapToDto(paper, questionCount, isBookmarked));
+            var attemptCount = await _db.StudentTestResults
+                .Where(r => r.PaperId == id && (r.Status == TestAttemptStatus.Submitted || r.Status == TestAttemptStatus.AutoSubmitted))
+                .Select(r => r.UserId).Distinct().CountAsync();
+            return Ok(PapersController.MapToDto(paper, questionCount, isBookmarked, attemptCount));
         }
 
         // POST /api/papers/{id}/start -- begin (or resume) a Previous Year Paper Practice attempt.

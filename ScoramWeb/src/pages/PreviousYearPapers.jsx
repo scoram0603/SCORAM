@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ChevronDown, Clock, FileQuestion, Grid2x2, Info, List as ListIcon, Loader2,
-  MinusCircle, Play, RotateCcw, Search, Sparkles, X, Eye,
+  MinusCircle, Play, RotateCcw, Search, Sparkles, X, Eye, Users,
 } from "lucide-react";
 import { listExams } from "../api/exams";
 import { browsePapers, getPaperFilterOptions, getPaperYears, getMyPaperAttempts } from "../api/papers";
 import BookmarkButton from "../components/questions/BookmarkButton";
 import { useAuth } from "../context/AuthContext";
-import { timeAgo } from "../utils/format";
+import { timeAgo, formatCount } from "../utils/format";
 
 // MASTER PROMPT -- Previous Year Paper Practice: replaces the old "PYQ Bank" nav destination.
 // Where "Find PYQs" (/search) lets a student browse individual questions, this page assembles the
@@ -329,6 +329,12 @@ function PaperCard({ paper, accent, view, starting, onStart, onBookmarkChange })
             <p className="mt-0.5 text-xs text-ink-400">
               {dateLine}{dateLine && " · "}{paper.questionCount} Q · {paper.durationMinutes ? `${paper.durationMinutes} min` : "--"}
             </p>
+            {paper.attemptCount > 0 && (
+              <p className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-secondary-500">
+                <Users className="h-3 w-3" strokeWidth={2.25} />
+                Attempted by {formatCount(paper.attemptCount)} students
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -367,6 +373,13 @@ function PaperCard({ paper, accent, view, starting, onStart, onBookmarkChange })
           <span className="flex items-center gap-1"><MinusCircle className="h-3.5 w-3.5" strokeWidth={2.25} />-{paper.negativeMarkingRatio} per wrong</span>
         )}
       </div>
+
+      {paper.attemptCount > 0 && (
+        <p className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-secondary-500">
+          <Users className="h-3 w-3" strokeWidth={2.25} />
+          Attempted by {formatCount(paper.attemptCount)} students
+        </p>
+      )}
 
       <div className="mt-4 flex-1" />
       <StartButton attemptable={attemptable} configured={paper.isConfiguredForPractice} starting={starting} onStart={onStart} />

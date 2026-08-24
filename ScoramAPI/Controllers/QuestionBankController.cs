@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ScoramAPI.Data;
 using ScoramAPI.DTOs;
+using ScoramAPI.Enums;
 using ScoramAPI.Extensions;
 using ScoramAPI.Models;
 using ScoramAPI.Services;
@@ -53,6 +54,8 @@ namespace ScoramAPI.Controllers
             if (query.TopicId.HasValue) q = q.Where(x => x.TopicId == query.TopicId);
             if (query.ExamId.HasValue) q = q.Where(x => x.ExamMappings.Any(m => m.ExamId == query.ExamId));
             if (query.Year.HasValue) q = q.Where(x => x.ExamMappings.Any(m => m.Year == query.Year));
+            if (!string.IsNullOrWhiteSpace(query.Language) && Enum.TryParse<PaperLanguage>(query.Language, ignoreCase: true, out var languageFilter))
+                q = q.Where(x => x.Language == languageFilter);
 
             q = q.OrderByDescending(x => x.CreatedAt);
 
@@ -257,6 +260,7 @@ namespace ScoramAPI.Controllers
             Subject = x.Subject?.Name ?? string.Empty,
             Topic = x.Topic?.Name ?? string.Empty,
             SourceReference = x.SourceReference,
+            Language = x.Language?.ToString(),
             AskedIn = x.ExamMappings
                 .OrderByDescending(m => m.Year)
                 .Select(m => new QuestionBankExamYearDto

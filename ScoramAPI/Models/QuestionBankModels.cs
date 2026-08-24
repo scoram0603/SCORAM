@@ -93,6 +93,12 @@ namespace ScoramAPI.Models
         // question has a sensible default so nothing needs backfilling to start using it.
         public DifficultyLevel DifficultyLevel { get; set; } = DifficultyLevel.Medium;
 
+        // Which language this question's text/options are actually written in. Nullable/optional --
+        // added after the Question Bank already had content, so existing rows just have this unset
+        // rather than needing a backfill guess. Reuses Paper's own PaperLanguage enum (Hindi/English)
+        // instead of a second parallel language list.
+        public PaperLanguage? Language { get; set; }
+
         public string? Explanation { get; set; }
 
         public Guid SubjectId { get; set; }

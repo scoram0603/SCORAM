@@ -45,6 +45,7 @@ export default function QuestionBankSearch() {
   const topicId = searchParams.get("topicId") || "";
   const examId = searchParams.get("examId") || "";
   const year = searchParams.get("year") || "";
+  const language = searchParams.get("language") || "";
 
   const [subjects, setSubjects] = useState([]);
   const [topics, setTopics] = useState([]);
@@ -88,7 +89,7 @@ export default function QuestionBankSearch() {
       const controller = new AbortController();
       setStatus(append ? "loading-more" : "loading");
 
-      searchQuestionBank({ search, subjectId, topicId, examId, year, page: pageNum, pageSize: PAGE_SIZE }, { signal: controller.signal })
+      searchQuestionBank({ search, subjectId, topicId, examId, year, language, page: pageNum, pageSize: PAGE_SIZE }, { signal: controller.signal })
         .then((data) => {
           setItems((prev) => (append ? [...prev, ...data.items] : data.items));
           setTotalCount(data.totalCount);
@@ -103,7 +104,7 @@ export default function QuestionBankSearch() {
 
       return controller;
     },
-    [search, subjectId, topicId, examId, year]
+    [search, subjectId, topicId, examId, year, language]
   );
 
   // Filters/search changed -- start over from page 1.
@@ -158,7 +159,7 @@ export default function QuestionBankSearch() {
   function clearFilters() {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      ["subjectId", "topicId", "examId", "year"].forEach((k) => next.delete(k));
+      ["subjectId", "topicId", "examId", "year", "language"].forEach((k) => next.delete(k));
       return next;
     });
   }
@@ -199,8 +200,9 @@ export default function QuestionBankSearch() {
       if (e) chips.push({ key: "examId", label: e.name, clears: ["examId"] });
     }
     if (year) chips.push({ key: "year", label: year, clears: ["year"] });
+    if (language) chips.push({ key: "language", label: language, clears: ["language"] });
     return chips;
-  }, [subjectId, topicId, examId, year, subjects, topics, exams]);
+  }, [subjectId, topicId, examId, year, language, subjects, topics, exams]);
 
   const hasActiveFilters = activeFilterChips.length > 0;
 
@@ -273,7 +275,7 @@ export default function QuestionBankSearch() {
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
         <Dropdown label="Subject" value={subjectId} onChange={(v) => updateParam("subjectId", v, ["topicId"])} placeholder="Any subject">
           {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </Dropdown>
@@ -285,6 +287,10 @@ export default function QuestionBankSearch() {
         </Dropdown>
         <Dropdown label="Year" value={year} onChange={(v) => updateParam("year", v)} placeholder="Any year">
           {years.map((y) => <option key={y} value={y}>{y}</option>)}
+        </Dropdown>
+        <Dropdown label="Language" value={language} onChange={(v) => updateParam("language", v)} placeholder="Any language">
+          <option value="Hindi">Hindi</option>
+          <option value="English">English</option>
         </Dropdown>
       </div>
 

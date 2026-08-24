@@ -1,19 +1,22 @@
 import { useEffect, useState } from "react";
-import { Search, CheckSquare, Square, Loader2, Layers } from "lucide-react";
+import { Search, CheckSquare, Square, Loader2, Layers, X } from "lucide-react";
 import { listQuestionBankQuestions } from "../api/questionBank";
-import { Button, Alert, friendlyError } from "./AdminUI";
+import { listExams } from "../api/exams";
+import { Button, Alert, friendlyError, FormField, Select, TextInput } from "./AdminUI";
 
 // Companion to TestQuestionPicker (used by Mock/Practice Tests too, deliberately left untouched --
-// see that file's own comment on why it's shared). This one is Paper-specific: it pre-filters the
-// Question Bank by the paper's OWN Exam+Year (QuestionBankExamMapping already tags questions this
-// way -- see QuestionBankController.Search) so an admin building "SSC CGL 2025" immediately sees
-// "here are the SSC CGL 2025 questions already sitting in the Question Bank", and lets them
-// multi-select + add them all in one call via PapersController.MapQuestionsBulk instead of one at a
-// time. Q.No for everything added this way is auto-assigned and NOT the real original position --
-// see the notice this renders and PaperQuestionBankLink.IsNumberExact.
+// see that file's own comment on why it's shared). This one is Paper-specific: it lets an admin
+// filter the Question Bank by ANY Exam+Year they choose (not just this paper's own -- e.g. building
+// "SSC CGL 2026" but wanting to reuse questions already tagged "SSC CGL 2024"), pre-filled with the
+// paper's own Exam+Year since that's the common case, then multi-select + add them all in one call
+// via PapersController.MapQuestionsBulk instead of one at a time. Q.No for everything added this way
+// is auto-assigned and NOT the real original position -- see the notice this renders and
+// PaperQuestionBankLink.IsNumberExact.
 export default function PaperQuestionBulkPicker({ token, examId, year, mappedQuestionBankIds, onBulkAdd }) {
   const [search, setSearch] = useState("");
-  const [useExamYearFilter, setUseExamYearFilter] = useState(true);
+  const [filterExamId, setFilterExamId] = useState(examId || "");
+  const [filterYear, setFilterYear] = useState(year || "");
+  const [exams, setExams] = useState([]);
   const [results, setResults] = useState([]);
   const [totalCount, setTotalCount] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -22,17 +25,19 @@ export default function PaperQuestionBulkPicker({ token, examId, year, mappedQue
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    listExams().then(setExams).catch(() => setExams([]));
+  }, []);
+
+  useEffect(() => {
     setSelected(new Set());
-  }, [examId, year, useExamYearFilter]);
+  }, [filterExamId, filterYear]);
 
   useEffect(() => {
     const handle = setTimeout(() => {
       setLoading(true);
       const params = { search, page: 1, pageSize: 50 };
-      if (useExamYearFilter && examId && year) {
-        params.examId = examId;
-        params.year = year;
-      }
+      if (filterExamId) params.examId = filterExamId;
+      if (filterYear) params.year = filterYear;
       listQuestionBankQuestions(token, params)
         .then((res) => {
           setResults(res.items);
@@ -45,9 +50,10 @@ export default function PaperQuestionBulkPicker({ token, examId, year, mappedQue
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(handle);
-  }, [search, useExamYearFilter, examId, year, token]);
+  }, [search, filterExamId, filterYear, token]);
 
   const mappedIds = new Set(mappedQuestionBankIds);
+  const isFilteredToThisPaper = filterExamId === (examId || "") && String(filterYear) === String(year || "");
 
   function toggle(id) {
     setSelected((prev) => {
@@ -74,43 +80,64 @@ export default function PaperQuestionBulkPicker({ token, examId, year, mappedQue
 
   return (
     <div>
-      {useExamYearFilter && examId && year && (
+      {filterExamId && filterYear && (
         <div className="mb-3 flex items-start gap-2 rounded-lg bg-accent-50 p-2.5 text-xs text-accent-600">
           <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2.25} />
           <span>
-            Showing Question Bank questions already tagged for this exam/year
-            {totalCount != null ? ` (${totalCount} found)` : ""}. Q.No for anything added here is
-            auto-assigned, not the exact original position -- students will get these questions in a
-            subject-grouped order instead of a numbered sequence.
+            Showing Question Bank questions tagged for the exam/year picked below
+            {totalCount != null ? ` (${totalCount} found)` : ""}
+            {!isFilteredToThisPaper ? " -- not this paper's own exam/year" : ""}. Q.No for anything
+            added here is auto-assigned, not the exact original position -- students will get these
+            questions in a subject-grouped order instead of a numbered sequence.
           </span>
         </div>
       )}
 
-      <div className="flex items-center gap-2">
-        <label className="relative block flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" strokeWidth={2} />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search Question Bank by keyword..."
-            className="h-10 w-full rounded-lg border border-primary-100 bg-white pl-9 pr-3 text-sm focus:border-secondary-500"
-          />
-        </label>
-        {examId && year && (
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-[160px] flex-1">
+          <FormField label="Exam">
+            <Select value={filterExamId} onChange={(e) => setFilterExamId(e.target.value)}>
+              <option value="">Any exam</option>
+              {exams.map((ex) => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
+            </Select>
+          </FormField>
+        </div>
+        <div className="w-28">
+          <FormField label="Year">
+            <TextInput type="number" value={filterYear} onChange={(e) => setFilterYear(e.target.value)} placeholder="e.g. 2024" />
+          </FormField>
+        </div>
+        {(filterExamId || filterYear) && (
           <button
             type="button"
-            onClick={() => setUseExamYearFilter((v) => !v)}
-            className={`h-10 shrink-0 whitespace-nowrap rounded-lg border px-3 text-xs font-semibold ${
-              useExamYearFilter
-                ? "border-accent-500 bg-accent-50 text-accent-600"
-                : "border-primary-100 text-ink-400"
-            }`}
+            onClick={() => { setFilterExamId(""); setFilterYear(""); }}
+            className="mb-2 flex h-10 items-center gap-1 px-2 text-xs font-semibold text-ink-400 hover:text-ink-600"
           >
-            This exam/year only
+            <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+            Clear
+          </button>
+        )}
+        {examId && year && !isFilteredToThisPaper && (
+          <button
+            type="button"
+            onClick={() => { setFilterExamId(examId); setFilterYear(year); }}
+            className="mb-2 whitespace-nowrap text-xs font-semibold text-secondary-500 hover:underline"
+          >
+            Back to this paper's exam/year
           </button>
         )}
       </div>
+
+      <label className="relative mt-2 block">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" strokeWidth={2} />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search Question Bank by keyword..."
+          className="h-10 w-full rounded-lg border border-primary-100 bg-white pl-9 pr-3 text-sm focus:border-secondary-500"
+        />
+      </label>
 
       {error && <div className="mt-3"><Alert>{error}</Alert></div>}
 
@@ -122,7 +149,7 @@ export default function PaperQuestionBulkPicker({ token, examId, year, mappedQue
         )}
         {!loading && results.length === 0 && (
           <p className="p-4 text-center text-xs text-ink-400">
-            No matching questions found{useExamYearFilter ? " for this exam/year" : ""}.
+            No matching questions found{filterExamId || filterYear ? " for this exam/year" : ""}.
           </p>
         )}
         {!loading && results.map((q) => {

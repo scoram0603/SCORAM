@@ -9,10 +9,10 @@ function toQueryString(params = {}) {
   return qs ? `?${qs}` : "";
 }
 
-// GET /api/question-bank/search?search=&subjectId=&topicId=&examId=&year=&page=&pageSize=
+// GET /api/question-bank/search?search=&subjectId=&topicId=&examId=&year=&language=&page=&pageSize=
 // Public -- no auth needed to search the Question Bank, same as regular question search.
-export function searchQuestionBank({ search, subjectId, topicId, examId, year, page = 1, pageSize = 20 } = {}, opts = {}) {
-  return apiFetch(`/api/question-bank/search${toQueryString({ search, subjectId, topicId, examId, year, page, pageSize })}`, opts);
+export function searchQuestionBank({ search, subjectId, topicId, examId, year, language, page = 1, pageSize = 20 } = {}, opts = {}) {
+  return apiFetch(`/api/question-bank/search${toQueryString({ search, subjectId, topicId, examId, year, language, page, pageSize })}`, opts);
 }
 
 // GET /api/question-bank/{id}

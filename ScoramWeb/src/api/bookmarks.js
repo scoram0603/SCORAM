@@ -5,7 +5,10 @@ import { apiFetch } from "./client";
 const TOGGLE_PATH = {
   question: (id) => `/api/questions/${id}/bookmark`,
   questionBank: (id) => `/api/question-bank/${id}/bookmark`,
-  discussion: (id) => `/api/discussions/${id}/bookmark`,
+  // Backend route is comments/{commentId}/bookmark, not discussions/{commentId}/bookmark -- matches
+  // DiscussionsController's own upvote/downvote/resolve/pin/report routes, which all live under
+  // comments/ too ("discussions" there is reserved for the top-level feed route).
+  discussion: (id) => `/api/comments/${id}/bookmark`,
   paper: (id) => `/api/papers/${id}/bookmark`,
   mockTest: (id) => `/api/mocktests/${id}/bookmark`,
 };

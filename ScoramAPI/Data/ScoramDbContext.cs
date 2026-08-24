@@ -813,6 +813,9 @@ namespace ScoramAPI.Data
             // ==========================================================================
 
             modelBuilder.Entity<QuestionBankQuestion>().Property(q => q.CorrectOption).HasConversion<string>().HasMaxLength(5);
+            // Nullable, unlike Paper.Language above -- see the model's own comment on why (older
+            // rows predate this column). Same HasMaxLength(10) as Paper.Language for consistency.
+            modelBuilder.Entity<QuestionBankQuestion>().Property(q => q.Language).HasConversion<string>().HasMaxLength(10);
             modelBuilder.Entity<QuestionBankImportJob>().Property(j => j.Format).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<QuestionBankImportJob>().Property(j => j.Status).HasConversion<string>().HasMaxLength(20);
 

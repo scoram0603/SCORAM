@@ -27,3 +27,11 @@ export function formatDuration(totalSeconds) {
   if (seconds === 0) return `${minutes} min`;
   return `${minutes}m ${seconds}s`;
 }
+
+// 12500 -> "12.5K", 850 -> "850", 2000000 -> "2M" -- matches the "Attempted by 12.5K students"
+// style shown on each Previous Year Paper card.
+export function formatCount(n) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}K`;
+  return `${n}`;
+}

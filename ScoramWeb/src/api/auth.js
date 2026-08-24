@@ -49,6 +49,21 @@ export function removeProfilePhoto() {
   return apiFetch("/api/auth/profile-photo", { method: "DELETE", auth: true });
 }
 
+// GET /api/auth/me -- see MeResponseDto's comment in AuthDTOs.cs for why this exists
+export function getMe() {
+  return apiFetch("/api/auth/me", { auth: true });
+}
+
+// PATCH /api/auth/profile -- Full Name + Username (no password confirmation, unlike the
+// change-email/phone/password calls below -- see the DTO's comment in AuthDTOs.cs).
+export function updateProfile({ fullName, username }) {
+  return apiFetch("/api/auth/profile", {
+    method: "PATCH",
+    auth: true,
+    body: { fullName, username },
+  });
+}
+
 // ---------- Settings: Account & Security ----------
 
 // PATCH /api/auth/change-password

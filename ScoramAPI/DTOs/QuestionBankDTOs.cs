@@ -64,6 +64,8 @@ namespace ScoramAPI.DTOs
         public Guid SubjectId { get; set; }
         public Guid TopicId { get; set; }
         public string? SourceReference { get; set; }
+        // "Hindi" | "English", case-insensitive -- null/omitted stays unset, same as SourceReference.
+        public string? Language { get; set; }
         public List<QuestionBankExamYearInputDto> ExamYears { get; set; } = new();
 
         // If true and a near-identical question already exists, the API still creates this as a
@@ -84,6 +86,7 @@ namespace ScoramAPI.DTOs
         public Guid SubjectId { get; set; }
         public Guid TopicId { get; set; }
         public string? SourceReference { get; set; }
+        public string? Language { get; set; }
         public List<QuestionBankExamYearInputDto> ExamYears { get; set; } = new();
     }
 
@@ -108,6 +111,9 @@ namespace ScoramAPI.DTOs
         public string Subject { get; set; } = string.Empty;
         public string Topic { get; set; } = string.Empty;
         public string? SourceReference { get; set; }
+        // "Hindi" | "English" | null (not specified) -- see the model's own comment on why this can
+        // be null for older rows.
+        public string? Language { get; set; }
         public List<QuestionBankExamYearDto> AskedIn { get; set; } = new();
         public int SolutionCount { get; set; }
         public int LikeCount { get; set; }
@@ -163,6 +169,8 @@ namespace ScoramAPI.DTOs
         public Guid? TopicId { get; set; }
         public Guid? ExamId { get; set; }
         public int? Year { get; set; }
+        // "Hindi" | "English" -- matches Language exactly (case-insensitive, see Search's parsing).
+        public string? Language { get; set; }
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
     }

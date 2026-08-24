@@ -690,7 +690,7 @@ namespace ScoramAPI.Controllers
             return MapToDto(paper, questionCount);
         }
 
-        public static PaperResponseDto MapToDto(Paper p, int? questionCountOverride = null, bool isBookmarked = false) => new PaperResponseDto
+        public static PaperResponseDto MapToDto(Paper p, int? questionCountOverride = null, bool isBookmarked = false, int attemptCount = 0) => new PaperResponseDto
         {
             Id = p.Id,
             ExamId = p.ExamId,
@@ -716,7 +716,8 @@ namespace ScoramAPI.Controllers
             IsComplete = !p.RequiredQuestionCount.HasValue
                 || (questionCountOverride ?? p.Questions?.Count ?? 0) >= p.RequiredQuestionCount.Value,
             IsConfiguredForPractice = p.DurationMinutes.HasValue && p.NegativeMarkingRatio.HasValue && p.RequiredQuestionCount.HasValue,
-            IsBookmarked = isBookmarked
+            IsBookmarked = isBookmarked,
+            AttemptCount = attemptCount
         };
 
         // Combined question count for a paper: legacy PYQ-upload Questions (Question.PaperId) PLUS

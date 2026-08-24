@@ -54,6 +54,7 @@ export default function QuestionBankFeedCard({ question, onQuestionChange, compa
         <div className="flex flex-wrap gap-1.5">
           <Tag className="bg-primary-50 text-primary-600">{question.subject}</Tag>
           <Tag className="bg-teal-50 text-teal-600">{question.topic}</Tag>
+          {question.language && <Tag className="bg-mint-50 text-mint-600">{question.language}</Tag>}
         </div>
         {question.askedIn?.[0] && (
           <Tag className="bg-accent-50 text-accent-600">

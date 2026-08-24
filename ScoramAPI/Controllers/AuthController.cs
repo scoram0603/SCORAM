@@ -139,6 +139,28 @@ namespace ScoramAPI.Controllers
             });
         }
 
+        // GET /api/auth/me -- lets the frontend silently refresh its cached user object (see
+        // MeResponseDto's comment in AuthDTOs.cs for why this exists).
+        [Authorize(Roles = "Student")]
+        [HttpGet("me")]
+        public async Task<ActionResult<MeResponseDto>> Me()
+        {
+            var user = await _db.Users.FindAsync(User.GetUserId());
+            if (user == null) return NotFound();
+
+            return Ok(new MeResponseDto
+            {
+                UserId = user.Id,
+                Username = user.Username,
+                FullName = user.FullName,
+                Email = user.Email,
+                PhoneNumber = user.PhoneNumber,
+                PhotoUrl = user.PhotoUrl,
+                NotifyOnGroupMessages = user.NotifyOnGroupMessages,
+                NotifyOnDirectMessages = user.NotifyOnDirectMessages
+            });
+        }
+
         // GET /api/auth/check-username?username=xxx -- live availability check as the person types
         // during registration. Public, no auth needed.
         [HttpGet("check-username")]
@@ -228,6 +250,27 @@ namespace ScoramAPI.Controllers
             }
 
             return Ok(new ProfilePhotoResponseDto { PhotoUrl = null });
+        }
+
+        // PATCH /api/auth/profile -- Full Name + Username only. No password gate (see the DTO's
+        // comment in AuthDTOs.cs); Email/Phone/Password live under change-email/change-phone/
+        // change-password below instead, precisely because those ARE security-sensitive.
+        [Authorize(Roles = "Student")]
+        [HttpPatch("profile")]
+        public async Task<ActionResult<UpdateProfileResponseDto>> UpdateProfile(UpdateProfileDto dto)
+        {
+            var user = await _db.Users.FindAsync(User.GetUserId());
+            if (user == null) return NotFound();
+
+            var username = dto.Username.Trim().ToLowerInvariant();
+            if (await _db.Users.AnyAsync(u => u.Id != user.Id && u.Username == username))
+                return Conflict(new { message = "That username is already taken." });
+
+            user.FullName = dto.FullName.Trim();
+            user.Username = username;
+            await _db.SaveChangesAsync();
+
+            return Ok(new UpdateProfileResponseDto { FullName = user.FullName, Username = user.Username });
         }
 
         // ==========================================================================

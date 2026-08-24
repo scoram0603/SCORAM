@@ -30,6 +30,7 @@ export default function QuestionBankManagement() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("");
+  const [languageFilter, setLanguageFilter] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -39,12 +40,12 @@ export default function QuestionBankManagement() {
     listSubjects(token, false).then(setSubjects).catch(() => {});
   }, [token]);
 
-  useEffect(refresh, [token, page, subjectFilter, includeInactive]);
+  useEffect(refresh, [token, page, subjectFilter, languageFilter, includeInactive]);
 
   function refresh() {
     setLoading(true);
     setError(null);
-    listQuestionBankQuestions(token, { search, subjectId: subjectFilter, includeInactive, page, pageSize: PAGE_SIZE })
+    listQuestionBankQuestions(token, { search, subjectId: subjectFilter, language: languageFilter, includeInactive, page, pageSize: PAGE_SIZE })
       .then((res) => {
         setItems(res.items);
         setTotalCount(res.totalCount);
@@ -151,6 +152,15 @@ export default function QuestionBankManagement() {
                 </Select>
               </FormField>
             </div>
+            <div className="w-40">
+              <FormField label="Language">
+                <Select value={languageFilter} onChange={(e) => { setLanguageFilter(e.target.value); setPage(1); }}>
+                  <option value="">All languages</option>
+                  <option value="Hindi">Hindi</option>
+                  <option value="English">English</option>
+                </Select>
+              </FormField>
+            </div>
             <label className="flex items-center gap-1.5 pb-2.5 text-xs font-semibold text-ink-600">
               <input type="checkbox" checked={includeInactive} onChange={(e) => { setIncludeInactive(e.target.checked); setPage(1); }} />
               Show removed
@@ -168,6 +178,7 @@ export default function QuestionBankManagement() {
                 <tr>
                   <th className="px-3 py-2.5">Question</th>
                   <th className="px-3 py-2.5">Subject / Topic</th>
+                  <th className="px-3 py-2.5">Language</th>
                   <th className="px-3 py-2.5">Asked In</th>
                   <th className="px-3 py-2.5">Methods</th>
                   <th className="px-3 py-2.5"></th>
@@ -175,10 +186,10 @@ export default function QuestionBankManagement() {
               </thead>
               <tbody>
                 {loading && (
-                  <tr><td colSpan={5} className="px-3 py-6 text-center text-ink-400">Loading…</td></tr>
+                  <tr><td colSpan={6} className="px-3 py-6 text-center text-ink-400">Loading…</td></tr>
                 )}
                 {!loading && items.length === 0 && (
-                  <tr><td colSpan={5} className="px-3 py-6 text-center text-ink-400">No questions found.</td></tr>
+                  <tr><td colSpan={6} className="px-3 py-6 text-center text-ink-400">No questions found.</td></tr>
                 )}
                 {items.map((q) => (
                   <tr key={q.id} className={`border-t border-primary-50 ${q.isActive === false ? "opacity-50" : ""}`}>
@@ -186,6 +197,7 @@ export default function QuestionBankManagement() {
                       <span className="line-clamp-2 font-medium text-ink-900">{q.questionText}</span>
                     </td>
                     <td className="px-3 py-2.5 align-top text-ink-600">{q.subject} / {q.topic}</td>
+                    <td className="px-3 py-2.5 align-top text-ink-600">{q.language || "—"}</td>
                     <td className="px-3 py-2.5 align-top text-ink-600">
                       {q.askedIn.slice(0, 2).map((a) => `${a.examName} ${a.year}`).join(", ")}
                       {q.askedIn.length > 2 ? ` +${q.askedIn.length - 2}` : ""}
@@ -256,6 +268,7 @@ function QuestionForm({ token, subjects, existing, onCancel, onSaved }) {
   });
   const [correctOption, setCorrectOption] = useState(existing?.correctOption || "A");
   const [explanation, setExplanation] = useState(existing?.explanation || "");
+  const [language, setLanguage] = useState(existing?.language || "");
   const [subjectId, setSubjectId] = useState(existing?.subjectId || "");
   const [topics, setTopics] = useState([]);
   const [topicId, setTopicId] = useState(existing?.topicId || "");
@@ -306,6 +319,7 @@ function QuestionForm({ token, subjects, existing, onCancel, onSaved }) {
       subjectId,
       topicId,
       sourceReference: sourceReference.trim() || null,
+      language: language || null,
       examYears: examYears
         .filter((ey) => ey.examId || ey.examName)
         .map((ey) => ({ examId: ey.examId || null, examName: ey.examId ? null : ey.examName, year: Number(ey.year) })),
@@ -428,7 +442,7 @@ function QuestionForm({ token, subjects, existing, onCancel, onSaved }) {
               <ImagePickerField label="Explanation image (optional)" file={images.explanationImage} onChange={(f) => setImages((prev) => ({ ...prev, explanationImage: f }))} />
             )}
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <FormField label="Subject">
                 <Select required value={subjectId} onChange={(e) => { setSubjectId(e.target.value); setTopicId(""); }}>
                   <option value="">Select subject</option>
@@ -439,6 +453,13 @@ function QuestionForm({ token, subjects, existing, onCancel, onSaved }) {
                 <Select required disabled={!subjectId} value={topicId} onChange={(e) => setTopicId(e.target.value)}>
                   <option value="">Select topic</option>
                   {topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </Select>
+              </FormField>
+              <FormField label="Language" hint="Which language this question is written in">
+                <Select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                  <option value="">Not specified</option>
+                  <option value="Hindi">Hindi</option>
+                  <option value="English">English</option>
                 </Select>
               </FormField>
             </div>

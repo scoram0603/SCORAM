@@ -114,4 +114,46 @@ namespace ScoramAPI.DTOs
     {
         public string PhoneNumber { get; set; } = string.Empty;
     }
+
+    // ---------- Profile: editable display info (Full Name / Username) ----------
+    // Deliberately NOT password-gated like the Settings/Account & Security DTOs above --
+    // FullName/Username aren't security-sensitive the way Email/Password/Phone are (they're just
+    // display identity, already visible to anyone in chat/discussions), so there's no
+    // "prove you're still you" step here, same as ChangePhoto having none either.
+    public class UpdateProfileDto
+    {
+        [Required, MaxLength(100)]
+        public string FullName { get; set; } = string.Empty;
+
+        // Same rule as RegisterDto.Username -- kept in sync deliberately (see CheckUsername, which
+        // both registration AND this endpoint's frontend form call).
+        [Required, MinLength(3), MaxLength(30)]
+        [RegularExpression(@"^[a-z0-9._]+$", ErrorMessage = "Username can only contain lowercase letters, numbers, dots, and underscores.")]
+        public string Username { get; set; } = string.Empty;
+    }
+
+    public class UpdateProfileResponseDto
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+    }
+
+    // ---------- GET /api/auth/me ----------
+    // A session created before some field existed on AuthResponseDto (this happened with
+    // PhoneNumber -- it was never returned by Login/Register until now) has that field missing from
+    // the person's cached session in the frontend, with no way to self-heal short of logging out and
+    // back in. This endpoint lets the frontend silently refresh its cached user object once on app
+    // load instead, so old sessions catch up without forcing a re-login -- and any FUTURE field added
+    // to the user's profile gets this same self-healing for free, not just PhoneNumber today.
+    public class MeResponseDto
+    {
+        public Guid UserId { get; set; }
+        public string Username { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string? PhotoUrl { get; set; }
+        public bool NotifyOnGroupMessages { get; set; }
+        public bool NotifyOnDirectMessages { get; set; }
+    }
 }
