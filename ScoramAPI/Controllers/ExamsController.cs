@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +6,7 @@ using ScoramAPI.Data;
 using ScoramAPI.DTOs;
 using ScoramAPI.Extensions;
 using ScoramAPI.Models;
+using ScoramAPI.Services;
 
 namespace ScoramAPI.Controllers
 {
@@ -21,12 +21,12 @@ namespace ScoramAPI.Controllers
         private const long MaxLogoSizeBytes = 2 * 1024 * 1024; // 2 MB
 
         private readonly ScoramDbContext _db;
-        private readonly IWebHostEnvironment _env;
+        private readonly IFileStorageService _fileStorage;
 
-        public ExamsController(ScoramDbContext db, IWebHostEnvironment env)
+        public ExamsController(ScoramDbContext db, IFileStorageService fileStorage)
         {
             _db = db;
-            _env = env;
+            _fileStorage = fileStorage;
         }
 
         // GET /api/exams -- the picker list (also usable as a public "browse by exam" list). Excludes
@@ -90,7 +90,7 @@ namespace ScoramAPI.Controllers
                 var validationError = ValidateLogo(dto.Logo);
                 if (validationError != null) return BadRequest(new { message = validationError });
 
-                logoUrl = await SaveLogoAsync(dto.Logo);
+                logoUrl = await _fileStorage.SaveImageAsync(dto.Logo, "exam-logos");
             }
 
             var exam = new Exam
@@ -158,7 +158,10 @@ namespace ScoramAPI.Controllers
             {
                 var validationError = ValidateLogo(dto.Logo);
                 if (validationError != null) return BadRequest(new { message = validationError });
-                exam.LogoUrl = await SaveLogoAsync(dto.Logo);
+
+                var oldLogoUrl = exam.LogoUrl;
+                exam.LogoUrl = await _fileStorage.SaveImageAsync(dto.Logo, "exam-logos");
+                await _fileStorage.DeleteImageAsync(oldLogoUrl);
             }
 
             await _db.SaveChangesAsync();
@@ -247,24 +250,6 @@ namespace ScoramAPI.Controllers
                 return $"Logo must be one of: {string.Join(", ", AllowedLogoExtensions)}.";
 
             return null;
-        }
-
-        private async Task<string> SaveLogoAsync(IFormFile logo)
-        {
-            // Never trust the original filename (path traversal, collisions) -- generate our own.
-            var ext = Path.GetExtension(logo.FileName).ToLowerInvariant();
-            var fileName = $"{Guid.NewGuid()}{ext}";
-
-            var uploadsDir = Path.Combine(_env.WebRootPath ?? "wwwroot", "uploads", "exam-logos");
-            Directory.CreateDirectory(uploadsDir);
-
-            var fullPath = Path.Combine(uploadsDir, fileName);
-            using (var stream = new FileStream(fullPath, FileMode.Create))
-            {
-                await logo.CopyToAsync(stream);
-            }
-
-            return $"/uploads/exam-logos/{fileName}";
         }
     }
 }

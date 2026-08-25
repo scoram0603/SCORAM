@@ -38,7 +38,6 @@ namespace ScoramAPI.DTOs
     {
         public bool DatabaseHealthy { get; set; }
         public bool SearchIndexHealthy { get; set; }
-        public double StorageUsedMb { get; set; }
     }
 
     public class DashboardGraphPointDto

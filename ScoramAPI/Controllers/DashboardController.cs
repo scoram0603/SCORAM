@@ -19,14 +19,12 @@ namespace ScoramAPI.Controllers
     {
         private readonly ScoramDbContext _db;
         private readonly IInstantSearchService _instantSearch;
-        private readonly IWebHostEnvironment _env;
         private readonly IAdminPermissionService _permissions;
 
-        public DashboardController(ScoramDbContext db, IInstantSearchService instantSearch, IWebHostEnvironment env, IAdminPermissionService permissions)
+        public DashboardController(ScoramDbContext db, IInstantSearchService instantSearch, IAdminPermissionService permissions)
         {
             _db = db;
             _instantSearch = instantSearch;
-            _env = env;
             _permissions = permissions;
         }
 
@@ -57,8 +55,7 @@ namespace ScoramAPI.Controllers
             var system = new DashboardSystemStatusDto
             {
                 DatabaseHealthy = await TryCheckDatabaseAsync(),
-                SearchIndexHealthy = await _instantSearch.IsHealthyAsync(),
-                StorageUsedMb = GetUploadsFolderSizeMb()
+                SearchIndexHealthy = await _instantSearch.IsHealthyAsync()
             };
 
             var dailyUploads = await GetDailyUploadsAsync(today);
@@ -90,27 +87,6 @@ namespace ScoramAPI.Controllers
             catch
             {
                 return false;
-            }
-        }
-
-        private double GetUploadsFolderSizeMb()
-        {
-            try
-            {
-                var uploadsRoot = Path.Combine(_env.WebRootPath ?? "wwwroot", "uploads");
-                if (!Directory.Exists(uploadsRoot)) return 0;
-
-                var totalBytes = new DirectoryInfo(uploadsRoot)
-                    .EnumerateFiles("*", SearchOption.AllDirectories)
-                    .Sum(f => f.Length);
-
-                return Math.Round(totalBytes / 1024.0 / 1024.0, 1);
-            }
-            catch
-            {
-                // A locked file mid-enumeration or a permissions hiccup shouldn't take down the whole
-                // dashboard -- just report "unknown" as zero rather than 500ing the entire request.
-                return 0;
             }
         }
 

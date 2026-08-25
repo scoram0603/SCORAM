@@ -16,7 +16,13 @@ namespace ScoramAPI.Controllers
     // URL for something they already had legitimate access to -- a question they can see, their own
     // profile, a chat/DM they're a participant of -- and blob names are unguessable GUIDs, not
     // sequential IDs.
-    [ApiController]
+    //
+    // Deliberately NOT [ApiController]: that attribute makes NotFound()/BadRequest() auto-wrap into an
+    // "application/problem+json" body. An <img> tag doing a cross-origin (frontend origin != API
+    // origin) request that gets a JSON body back is exactly what Chrome's CORB (Cross-Origin Read
+    // Blocking) is designed to block -- so a missing file would silently CORB-block in the browser
+    // with no 404 ever visible in the console. Staying a plain ControllerBase keeps 404s as a bare,
+    // bodyless 404, matching what app.UseStaticFiles() always returned for a missing file.
     [Route("uploads")]
     [AllowAnonymous]
     public class UploadedFilesController : ControllerBase
