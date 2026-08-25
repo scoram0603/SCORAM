@@ -14,7 +14,9 @@ export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/";
-  const [mode, setMode] = useState("login"); // "login" | "register"
+  // "login" | "register" -- defaults to "login" exactly as before; the landing page's Sign Up CTAs
+  // link to /login?mode=register to open straight into the registration form.
+  const [mode, setMode] = useState(() => (searchParams.get("mode") === "register" ? "register" : "login"));
   const { login, register, isLoading, error, clearError, sessionExpired } = useAuth();
 
   const [form, setForm] = useState({

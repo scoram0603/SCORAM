@@ -8,7 +8,27 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <title>Scoram — Learn, Discuss, Score</title>
+
+    <!-- SEO -- static fallback tags for crawlers/link-unfurlers that don't run JS. The React Seo
+         component (src/components/seo/Seo.jsx) overwrites these per-page once the app hydrates.
+         If the production domain isn't https://scoram.in, update the absolute URLs below and set
+         VITE_SITE_URL to match -- see LANDING_REPORT.md. -->
+    <title>SCORAM – Competitive Exam Preparation | PYQ, Question Bank & Mock Tests</title>
+    <meta name="description" content="Prepare for SSC, Railway and other competitive exams with SCORAM. Practice previous year papers, a topic-wise question bank, mock tests, quizzes, and learn through community discussions." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://scoram.in/" />
+
+    <meta property="og:title" content="SCORAM – Competitive Exam Preparation | PYQ, Question Bank & Mock Tests" />
+    <meta property="og:description" content="Prepare for SSC, Railway and other competitive exams with SCORAM. Practice previous year papers, a topic-wise question bank, mock tests, quizzes, and learn through community discussions." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://scoram.in/" />
+    <meta property="og:site_name" content="SCORAM" />
+    <meta property="og:image" content="https://scoram.in/assets/seo/scoram-og-image.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SCORAM – Competitive Exam Preparation | PYQ, Question Bank & Mock Tests" />
+    <meta name="twitter:description" content="Prepare for SSC, Railway and other competitive exams with SCORAM. Practice previous year papers, a topic-wise question bank, mock tests, quizzes, and learn through community discussions." />
+    <meta name="twitter:image" content="https://scoram.in/assets/seo/scoram-og-image.png" />
   </head>
   <body>
     <div id="root"></div>

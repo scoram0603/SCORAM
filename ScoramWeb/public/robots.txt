@@ -1,0 +1,23 @@
+User-agent: *
+Allow: /
+
+# Auth-gated app areas -- nothing to index behind a login redirect
+Disallow: /login
+Disallow: /profile
+Disallow: /settings
+Disallow: /bookmarks
+Disallow: /leaderboard
+Disallow: /progress
+Disallow: /referrals
+Disallow: /quizzes
+Disallow: /tests/practice
+Disallow: /tests/mock
+Disallow: /tests/my
+Disallow: /tests/instructions/
+Disallow: /tests/attempt/
+Disallow: /tests/result/
+
+# Admin panel -- never public
+Disallow: /admin
+
+Sitemap: https://scoram.in/sitemap.xml

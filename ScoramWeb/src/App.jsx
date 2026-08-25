@@ -14,6 +14,9 @@ import QuestionBankQuestionDetail from "./pages/QuestionBankQuestionDetail";
 import PreviousYearPapers from "./pages/PreviousYearPapers";
 import Quizzes from "./pages/Quizzes";
 import NotFound from "./pages/NotFound";
+// LANDING PAGE -- public support pages linked from the new marketing footer
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import Terms from "./pages/Terms";
 // SCORAM_TESTS
 import Tests from "./pages/Tests";
 import PracticeTests from "./pages/PracticeTests";
@@ -87,6 +90,11 @@ function AppRoutes() {
       <Route element={<AuthLayout />}>
         <Route path="login" element={<Login />} />
       </Route>
+
+      {/* LANDING PAGE -- public support pages, own navbar/footer (LegalPage), no app chrome,
+          so these are top-level routes rather than nested under AppLayout or AuthLayout. */}
+      <Route path="privacy-policy" element={<PrivacyPolicy />} />
+      <Route path="terms" element={<Terms />} />
     </Routes>
   );
 }
