@@ -30,7 +30,12 @@ export default function LandingFooter() {
     <footer className="bg-primary-900 pt-16 text-white">
       <div className="mx-auto grid max-w-7xl grid-cols-2 gap-8 px-4 pb-12 sm:px-6 md:grid-cols-5 lg:px-8">
         <div className="col-span-2 md:col-span-2">
-          <img src={logo} alt="SCORAM" className="h-9 w-auto brightness-0 invert" />
+          {/* Logo PNG has a flat white background baked in (no alpha channel), so it can't be
+              CSS-inverted to white-on-transparent -- it's placed on its own white card instead so
+              it stays crisp and correctly colored against the dark footer. */}
+          <span className="inline-flex rounded-xl bg-white px-3.5 py-2.5 shadow-sm">
+            <img src={logo} alt="SCORAM" className="h-8 w-auto" />
+          </span>
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60">
             SCORAM is an all-in-one learning platform to help you learn, discuss, practice and
             score higher in government exams.
