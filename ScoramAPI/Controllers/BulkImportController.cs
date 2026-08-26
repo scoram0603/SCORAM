@@ -119,6 +119,76 @@ namespace ScoramAPI.Controllers
             });
         }
 
+        // PATCH /api/admin/bulk-import/{jobId}/rows/{rowNumber} -- admin corrects a row's text,
+        // options, correct answer, or explanation during review, before commit (spec section 10: the
+        // preview needs to let a mistake be fixed right there instead of forcing a re-upload).
+        // Overwrites the cached row and re-runs full validation (duplicate Q.No checks depend on
+        // sibling rows, not just this one), so the response's IsValid/Errors reflect the edit
+        // immediately -- the same shape Preview returns, so the frontend can just swap the row in.
+        [HttpPatch("bulk-import/{jobId:guid}/rows/{rowNumber:int}")]
+        public async Task<ActionResult<ImportedQuestionRow>> UpdateRow(Guid jobId, int rowNumber, ImportedQuestionRow edited)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.UploadPaper))
+                return Forbid();
+
+            var job = await _db.ImportJobs.Include(j => j.Paper).FirstOrDefaultAsync(j => j.Id == jobId);
+            if (job == null) return NotFound(new { message = "Import job not found." });
+            if (job.Status != ImportJobStatus.PendingReview)
+                return BadRequest(new { message = $"This import is already {job.Status} and its rows can't be edited anymore." });
+            if (job.Paper == null || job.Paper.Status != PaperStatus.Draft)
+                return BadRequest(new { message = "The paper is no longer in Draft." });
+
+            if (!_cache.TryGetValue(CachePrefix + jobId, out List<ImportedQuestionRow>? rows) || rows == null)
+                return BadRequest(new { message = "This preview has expired (previews last 30 minutes). Please re-upload the file." });
+
+            var row = rows.FirstOrDefault(r => r.RowNumber == rowNumber);
+            if (row == null) return NotFound(new { message = "Row not found in this import." });
+
+            // Only the editable fields -- RowNumber/IsValid/Errors are never trusted from the client,
+            // they're recomputed by Validate() below.
+            row.QuestionNumber = edited.QuestionNumber;
+            row.Subject = edited.Subject;
+            row.Topic = edited.Topic;
+            row.DifficultyLevel = edited.DifficultyLevel;
+            row.QuestionText = edited.QuestionText;
+            row.OptionA = edited.OptionA;
+            row.OptionB = edited.OptionB;
+            row.OptionC = edited.OptionC;
+            row.OptionD = edited.OptionD;
+            row.CorrectOption = edited.CorrectOption;
+            row.Explanation = edited.Explanation;
+            row.SourceReference = edited.SourceReference;
+
+            var existingQuestions = await _db.Questions.Where(q => q.PaperId == job.PaperId).ToListAsync();
+            _importService.Validate(rows, existingQuestions);
+
+            job.ValidRows = rows.Count(r => r.IsValid);
+            job.InvalidRows = rows.Count(r => !r.IsValid);
+            _cache.Set(CachePrefix + jobId, rows, CacheLifetime);
+            await _db.SaveChangesAsync();
+
+            return Ok(row);
+        }
+
+        // GET /api/admin/bulk-import/{jobId}/questions -- the actual Question rows a *committed*
+        // import created (via Question.ImportJobId), for the "Recent imports" history view: an admin
+        // can open a past batch and fix a question in it without hunting through the paper's full
+        // Q.1..Q.N list. Editing itself reuses the normal QuestionsController.Update endpoint (same
+        // Draft-or-PendingReview rule as everywhere else -- nothing job-specific to enforce here).
+        [HttpGet("bulk-import/{jobId:guid}/questions")]
+        public async Task<ActionResult<List<QuestionDetailDto>>> GetJobQuestions(Guid jobId)
+        {
+            var job = await _db.ImportJobs.FindAsync(jobId);
+            if (job == null) return NotFound(new { message = "Import job not found." });
+
+            var questions = await _db.Questions
+                .Where(q => q.ImportJobId == jobId)
+                .OrderBy(q => q.QuestionNumber)
+                .ToListAsync();
+
+            return Ok(questions.Select(QuestionsController.MapToDetailDto).ToList());
+        }
+
         // POST /api/admin/bulk-import/{jobId}/commit
         [HttpPost("bulk-import/{jobId:guid}/commit")]
         public async Task<ActionResult<BulkImportCommitResultDto>> Commit(Guid jobId, BulkImportCommitDto dto)

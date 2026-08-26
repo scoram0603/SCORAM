@@ -749,7 +749,8 @@ function QuestionStep({
   }
 
   return (
-    <div className="max-w-2xl">
+    <div>
+      <div className="max-w-2xl">
       <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-ink-400">
         <span className="rounded-full bg-primary-50 px-2.5 py-1 text-primary-600">{exam?.name}</span>
         <span className="rounded-full bg-primary-50 px-2.5 py-1 text-primary-600">{language}</span>
@@ -771,9 +772,10 @@ function QuestionStep({
         </div>
       )}
       {mappingError && <div className="mb-4"><Alert>{mappingError}</Alert></div>}
+      </div>
 
       {paper.status !== "Draft" ? (
-        <div className="mt-4">
+        <div className="mt-4 max-w-2xl">
           <Alert>
             {paper.status === "Published"
               ? "This paper is already Published, so new questions can't be added here. Unpublish it from the paper's detail page first if you need to add more."
@@ -785,6 +787,7 @@ function QuestionStep({
         </div>
       ) : (
         <>
+      <div className="max-w-2xl">
       {/* This paper's full question list so far, whichever source each one came from -- spec
           section 10, "Question Source Transparency". Students never see this distinction; only
           admins building the paper do. */}
@@ -889,7 +892,10 @@ function QuestionStep({
           Bulk import
         </button>
       </div>
+      </div>
 
+      {/* Deliberately NOT wrapped in max-w-2xl like the rest of this step -- reviewing/editing a
+          bulk-imported row (4 options + explanation) needs real room, not a narrow form column. */}
       {mode === "bulk" && (
         <div className="mt-4">
           <BulkImportPanel paperId={paper.id} token={token} onImported={async () => { await onBulkImported(); refreshMapped(); }} />
@@ -897,6 +903,7 @@ function QuestionStep({
       )}
 
       {mode === "single" && (
+      <div className="max-w-2xl">
       <form onSubmit={handleSubmitQuestion} className="mt-4 flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Question No.">
@@ -971,14 +978,17 @@ function QuestionStep({
           </Button>
         </div>
       </form>
+      </div>
       )}
 
+      <div className="max-w-2xl">
       <div className="mt-4 flex flex-wrap gap-2">
         <Button type="button" variant="secondary" isLoading={finishing} onClick={handleFinish} disabled={!mappedQuestions || mappedQuestions.length === 0}>
           Done — submit paper
         </Button>
       </div>
       {finishError && <Alert>{finishError}</Alert>}
+      </div>
         </>
       )}
     </div>
