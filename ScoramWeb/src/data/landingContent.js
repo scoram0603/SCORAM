@@ -22,7 +22,7 @@ import {
 export const navLinks = [
   { label: "Home", href: "#top" },
   { label: "PYP Practice", to: "/pyq" },
-  { label: "Question Bank", to: "/question-bank" },
+  { label: "PYQs", to: "/question-bank" },
   { label: "Tests", to: "/tests" },
   { label: "Mock Tests", to: "/tests/mock" },
   { label: "Quizzes", to: "/quizzes" },
@@ -34,7 +34,7 @@ export const footerLinks = {
   quick: [
     { label: "Home", href: "#top" },
     { label: "PYP Practice", to: "/pyq" },
-    { label: "Question Bank", to: "/question-bank" },
+    { label: "PYQs", to: "/question-bank" },
     { label: "Tests", to: "/tests" },
     { label: "Mock Tests", to: "/tests/mock" },
     { label: "Quizzes", to: "/quizzes" },
@@ -64,7 +64,7 @@ export const features = [
   },
   {
     icon: Layers,
-    title: "Question Bank",
+    title: "PYQs",
     description: "Practice topic-wise questions with detailed, multi-method solutions.",
   },
   {
@@ -124,15 +124,15 @@ export const faqs = [
   },
   {
     question: "Which exams are supported?",
-    answer: "SCORAM covers a growing list of competitive and government exams. You can browse the full, current list on the Popular Exams section above or in Question Bank.",
+    answer: "SCORAM covers a growing list of competitive and government exams. You can browse the full, current list on the Popular Exams section above or in PYQs.",
   },
   {
     question: "What is PYP Practice?",
     answer: "PYP Practice lets you attempt full previous-year papers as a single timed test, so you experience the real exam pattern instead of solving questions one at a time.",
   },
   {
-    question: "What is the Question Bank?",
-    answer: "Question Bank is SCORAM's topic-wise question library — filter by subject, topic, exam, or year, and see multiple solving methods and discussions on each question.",
+    question: "What is PYQs?",
+    answer: "PYQs is SCORAM's topic-wise question library — filter by subject, topic, exam, or year, and see multiple solving methods and discussions on each question.",
   },
   {
     question: "Can I discuss questions with other students?",

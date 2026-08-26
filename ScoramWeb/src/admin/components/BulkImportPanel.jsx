@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { UploadCloud, CheckCircle2, XCircle, Loader2, AlertTriangle, History, Undo2, Download, SquarePen } from "lucide-react";
+import { UploadCloud, CheckCircle2, XCircle, Loader2, AlertTriangle, History, Undo2, Download, SquarePen, ChevronDown, ChevronRight } from "lucide-react";
 import { previewBulkImport, commitBulkImport, getImportHistory, rollbackImport } from "../api/bulkImport";
-import { Card, Button, Alert, friendlyError } from "./AdminUI";
+import { Card, Button, Alert, friendlyError, ImportRowOptionsDetail } from "./AdminUI";
 
 const ACCEPTED = ".csv,.xlsx,.json";
 
@@ -13,6 +13,7 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState(null); // { jobId, fileName, format, totalRows, validCount, invalidCount, rows }
   const [checkedRows, setCheckedRows] = useState(new Set());
+  const [expandedRows, setExpandedRows] = useState(new Set());
   const [error, setError] = useState(null);
 
   const [committing, setCommitting] = useState(false);
@@ -46,6 +47,7 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
       const res = await previewBulkImport(token, paperId, selectedFile);
       setPreview(res);
       setCheckedRows(new Set(res.rows.filter((r) => r.isValid).map((r) => r.rowNumber)));
+      setExpandedRows(new Set());
     } catch (err) {
       setError(friendlyError(err));
     } finally {
@@ -55,6 +57,15 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
 
   function toggleRow(rowNumber) {
     setCheckedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowNumber)) next.delete(rowNumber);
+      else next.add(rowNumber);
+      return next;
+    });
+  }
+
+  function toggleExpanded(rowNumber) {
+    setExpandedRows((prev) => {
       const next = new Set(prev);
       if (next.has(rowNumber)) next.delete(rowNumber);
       else next.add(rowNumber);
@@ -83,6 +94,7 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
     setPreview(null);
     setCommitResult(null);
     setError(null);
+    setExpandedRows(new Set());
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -178,6 +190,7 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
                 </span>
               )}
               <span className="text-ink-400">{checkedRows.size} selected to import</span>
+              <span className="text-ink-300">· click a row to review its full options &amp; explanation</span>
             </div>
 
             <div className="mt-3 max-h-96 overflow-y-auto rounded-lg border border-primary-100">
@@ -185,6 +198,7 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
                 <thead className="sticky top-0 bg-primary-50 text-ink-600">
                   <tr>
                     <th className="w-8 px-2 py-2"></th>
+                    <th className="w-6 px-2 py-2"></th>
                     <th className="px-2 py-2">Q#</th>
                     <th className="px-2 py-2">Subject</th>
                     <th className="px-2 py-2">Question</th>
@@ -192,35 +206,53 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {preview.rows.map((row) => (
-                    <tr key={row.rowNumber} className={`border-t border-primary-50 ${row.isValid ? "" : "bg-red-50/40"}`}>
-                      <td className="px-2 py-2 align-top">
-                        <input
-                          type="checkbox"
-                          disabled={!row.isValid}
-                          checked={checkedRows.has(row.rowNumber)}
-                          onChange={() => toggleRow(row.rowNumber)}
-                        />
-                      </td>
-                      <td className="px-2 py-2 align-top font-semibold text-ink-900">{row.questionNumber || "—"}</td>
-                      <td className="px-2 py-2 align-top text-ink-600">{row.subject || "—"}</td>
-                      <td className="max-w-xs px-2 py-2 align-top text-ink-600">
-                        <span className="line-clamp-2">{row.questionText || "—"}</span>
-                      </td>
-                      <td className="px-2 py-2 align-top">
-                        {row.errors.length > 0 && (
-                          <ul className="flex flex-col gap-0.5 text-red-600">
-                            {row.errors.map((e, i) => (
-                              <li key={i} className="flex items-start gap-1">
-                                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={2.5} />
-                                {e}
-                              </li>
-                            ))}
-                          </ul>
+                  {preview.rows.map((row) => {
+                    const isExpanded = expandedRows.has(row.rowNumber);
+                    return (
+                      <Fragment key={row.rowNumber}>
+                        <tr
+                          onClick={() => toggleExpanded(row.rowNumber)}
+                          className={`cursor-pointer border-t border-primary-50 hover:bg-primary-50/60 ${row.isValid ? "" : "bg-red-50/40"}`}
+                        >
+                          <td className="px-2 py-2 align-top" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              disabled={!row.isValid}
+                              checked={checkedRows.has(row.rowNumber)}
+                              onChange={() => toggleRow(row.rowNumber)}
+                            />
+                          </td>
+                          <td className="px-2 py-2 align-top text-ink-300">
+                            {isExpanded ? <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} /> : <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />}
+                          </td>
+                          <td className="px-2 py-2 align-top font-semibold text-ink-900">{row.questionNumber || "—"}</td>
+                          <td className="px-2 py-2 align-top text-ink-600">{row.subject || "—"}</td>
+                          <td className="max-w-xs px-2 py-2 align-top text-ink-600">
+                            <span className="line-clamp-2">{row.questionText || "—"}</span>
+                          </td>
+                          <td className="px-2 py-2 align-top">
+                            {row.errors.length > 0 && (
+                              <ul className="flex flex-col gap-0.5 text-red-600">
+                                {row.errors.map((e, i) => (
+                                  <li key={i} className="flex items-start gap-1">
+                                    <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={2.5} />
+                                    {e}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr className="border-t border-primary-50 bg-primary-50/20">
+                            <td colSpan={6} className="px-2 py-2">
+                              <ImportRowOptionsDetail row={row} />
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                    </tr>
-                  ))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

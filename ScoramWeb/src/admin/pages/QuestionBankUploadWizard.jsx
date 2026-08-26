@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, UploadCloud, Download, CheckCircle2, XCircle, Copy, AlertTriangle, History,
+  ArrowLeft, UploadCloud, Download, CheckCircle2, XCircle, Copy, AlertTriangle, History, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import {
   previewQuestionBankImport, commitQuestionBankImport, getQuestionBankImportHistory,
   downloadExcelTemplate, downloadJsonTemplate,
 } from "../api/questionBankImport";
-import { PageHeader, Card, Button, Alert, friendlyError } from "../components/AdminUI";
+import { PageHeader, Card, Button, Alert, friendlyError, ImportRowOptionsDetail } from "../components/AdminUI";
 
 // Spec sections 9-13: Excel or JSON bulk upload, with a mandatory preview → validate → confirm step
 // before anything touches the database (section 10: "DO NOT directly insert an unvalidated Excel
@@ -25,6 +25,9 @@ export default function QuestionBankUploadWizard() {
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState(null);
   const [checkedRows, setCheckedRows] = useState(new Set());
+  // Rows the admin has expanded to review full options/explanation before committing (section 10 --
+  // preview must let the admin actually verify content, not just row-level metadata).
+  const [expandedRows, setExpandedRows] = useState(new Set());
   const [error, setError] = useState(null);
 
   const [committing, setCommitting] = useState(false);
@@ -60,6 +63,7 @@ export default function QuestionBankUploadWizard() {
       // Valid rows are pre-checked (including duplicates -- they'll be merged, not duplicated);
       // invalid rows are never selectable in the first place.
       setCheckedRows(new Set(res.rows.filter((r) => r.isValid).map((r) => r.rowNumber)));
+      setExpandedRows(new Set());
     } catch (err) {
       setError(friendlyError(err));
     } finally {
@@ -69,6 +73,15 @@ export default function QuestionBankUploadWizard() {
 
   function toggleRow(rowNumber) {
     setCheckedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowNumber)) next.delete(rowNumber);
+      else next.add(rowNumber);
+      return next;
+    });
+  }
+
+  function toggleExpanded(rowNumber) {
+    setExpandedRows((prev) => {
       const next = new Set(prev);
       if (next.has(rowNumber)) next.delete(rowNumber);
       else next.add(rowNumber);
@@ -96,6 +109,7 @@ export default function QuestionBankUploadWizard() {
     setPreview(null);
     setCommitResult(null);
     setError(null);
+    setExpandedRows(new Set());
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -116,7 +130,7 @@ export default function QuestionBankUploadWizard() {
         action={
           <Button variant="ghost" onClick={() => navigate("/admin/question-bank")}>
             <ArrowLeft className="h-4 w-4" strokeWidth={2.5} />
-            Back to Question Bank
+            Back to PYQs
           </Button>
         }
       />
@@ -204,7 +218,7 @@ export default function QuestionBankUploadWizard() {
                 {commitResult.skippedCount > 0 ? ` (${commitResult.skippedCount} row(s) not selected/skipped)` : ""}.
               </Alert>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button variant="secondary" onClick={() => navigate("/admin/question-bank")}>Go to Question Bank</Button>
+                <Button variant="secondary" onClick={() => navigate("/admin/question-bank")}>Go to PYQs</Button>
                 <Button variant="secondary" onClick={handleStartOver}>Import another file</Button>
               </div>
             </div>
@@ -231,6 +245,7 @@ export default function QuestionBankUploadWizard() {
                   </span>
                 )}
                 <span className="text-ink-400">{checkedRows.size} selected to import</span>
+                <span className="text-ink-300">· click a row to review its full options &amp; explanation</span>
               </div>
 
               <div className="mt-3 max-h-[28rem] overflow-y-auto rounded-lg border border-primary-100">
@@ -238,6 +253,7 @@ export default function QuestionBankUploadWizard() {
                   <thead className="sticky top-0 bg-primary-50 text-ink-600">
                     <tr>
                       <th className="w-8 px-2 py-2"></th>
+                      <th className="w-6 px-2 py-2"></th>
                       <th className="px-2 py-2">Row</th>
                       <th className="px-2 py-2">Question</th>
                       <th className="px-2 py-2">Subject / Topic</th>
@@ -246,42 +262,60 @@ export default function QuestionBankUploadWizard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.rows.map((row) => (
-                      <tr key={row.rowNumber} className={`border-t border-primary-50 ${!row.isValid ? "bg-red-50/40" : row.isDuplicate ? "bg-accent-50/40" : ""}`}>
-                        <td className="px-2 py-2 align-top">
-                          <input
-                            type="checkbox"
-                            disabled={!row.isValid}
-                            checked={checkedRows.has(row.rowNumber)}
-                            onChange={() => toggleRow(row.rowNumber)}
-                          />
-                        </td>
-                        <td className="px-2 py-2 align-top font-semibold text-ink-900">{row.rowNumber}</td>
-                        <td className="max-w-xs px-2 py-2 align-top text-ink-600">
-                          <span className="line-clamp-2">{row.questionText || "—"}</span>
-                        </td>
-                        <td className="px-2 py-2 align-top text-ink-600">{row.subject} / {row.topic}</td>
-                        <td className="px-2 py-2 align-top text-ink-600">{row.language || <span className="text-ink-300">—</span>}</td>
-                        <td className="px-2 py-2 align-top">
-                          {!row.isValid && (
-                            <ul className="flex flex-col gap-0.5 text-red-600">
-                              {row.errors.map((e, i) => (
-                                <li key={i} className="flex items-start gap-1">
-                                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={2.5} />
-                                  {e}
-                                </li>
-                              ))}
-                            </ul>
+                    {preview.rows.map((row) => {
+                      const isExpanded = expandedRows.has(row.rowNumber);
+                      return (
+                        <Fragment key={row.rowNumber}>
+                          <tr
+                            onClick={() => toggleExpanded(row.rowNumber)}
+                            className={`cursor-pointer border-t border-primary-50 hover:bg-primary-50/60 ${!row.isValid ? "bg-red-50/40" : row.isDuplicate ? "bg-accent-50/40" : ""}`}
+                          >
+                            <td className="px-2 py-2 align-top" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                disabled={!row.isValid}
+                                checked={checkedRows.has(row.rowNumber)}
+                                onChange={() => toggleRow(row.rowNumber)}
+                              />
+                            </td>
+                            <td className="px-2 py-2 align-top text-ink-300">
+                              {isExpanded ? <ChevronDown className="h-3.5 w-3.5" strokeWidth={2.5} /> : <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />}
+                            </td>
+                            <td className="px-2 py-2 align-top font-semibold text-ink-900">{row.rowNumber}</td>
+                            <td className="max-w-xs px-2 py-2 align-top text-ink-600">
+                              <span className="line-clamp-2">{row.questionText || "—"}</span>
+                            </td>
+                            <td className="px-2 py-2 align-top text-ink-600">{row.subject} / {row.topic}</td>
+                            <td className="px-2 py-2 align-top text-ink-600">{row.language || <span className="text-ink-300">—</span>}</td>
+                            <td className="px-2 py-2 align-top">
+                              {!row.isValid && (
+                                <ul className="flex flex-col gap-0.5 text-red-600">
+                                  {row.errors.map((e, i) => (
+                                    <li key={i} className="flex items-start gap-1">
+                                      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={2.5} />
+                                      {e}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {row.isValid && row.isDuplicate && (
+                                <span className="text-accent-600">
+                                  Duplicate of: {row.duplicateOfQuestionTextSnippet}
+                                </span>
+                              )}
+                              {row.isValid && !row.isDuplicate && <span className="text-mint-500">New</span>}
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="border-t border-primary-50 bg-primary-50/20">
+                              <td colSpan={7} className="px-2 py-2">
+                                <ImportRowOptionsDetail row={row} />
+                              </td>
+                            </tr>
                           )}
-                          {row.isValid && row.isDuplicate && (
-                            <span className="text-accent-600">
-                              Duplicate of: {row.duplicateOfQuestionTextSnippet}
-                            </span>
-                          )}
-                          {row.isValid && !row.isDuplicate && <span className="text-mint-500">New</span>}
-                        </td>
-                      </tr>
-                    ))}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

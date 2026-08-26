@@ -35,7 +35,7 @@ export const sidebarNavItems = [
     section: "Practice",
     items: [
       { to: "/pyq", label: "PYP Practice", icon: "BookOpen" },
-      { to: "/question-bank", label: "Question Bank", icon: "Library" },
+      { to: "/question-bank", label: "PYQs", icon: "Library" },
       { to: "/tests", label: "Tests", icon: "ClipboardCheck", highlight: "mint" },
       { to: "/quizzes", label: "Quizzes", icon: "HelpCircle" },
     ],

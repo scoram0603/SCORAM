@@ -98,11 +98,11 @@ export default function QuestionBankSubjectsTopics() {
     <div>
       <PageHeader
         title="Subjects & Topics"
-        subtitle="Question Bank master data"
+        subtitle="PYQs master data"
         action={
           <Button variant="ghost" onClick={() => navigate("/admin/question-bank")}>
             <ArrowLeft className="h-4 w-4" strokeWidth={2.5} />
-            Back to Question Bank
+            Back to PYQs
           </Button>
         }
       />

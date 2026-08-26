@@ -1,5 +1,61 @@
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 
+// Shared full-question preview used by both bulk-import wizards (Question Bank's
+// QuestionBankUploadWizard and the paper-level BulkImportPanel) when an admin expands a preview
+// row -- shows every option with the correct one highlighted, plus explanation/source, so mistakes
+// in the source file are caught before commit instead of after (rows are text-only here; neither
+// importer supports per-option images yet).
+export function ImportRowOptionsDetail({ row }) {
+  const options = [
+    { letter: "A", text: row.optionA },
+    { letter: "B", text: row.optionB },
+    { letter: "C", text: row.optionC },
+    { letter: "D", text: row.optionD },
+  ];
+  const correct = (row.correctOption || "").trim().toUpperCase();
+
+  return (
+    <div className="rounded-lg border border-primary-100 bg-primary-50/40 p-3 text-xs">
+      <p className="whitespace-pre-wrap font-semibold text-ink-900">{row.questionText || "—"}</p>
+
+      <div className="mt-2.5 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+        {options.map((opt) => {
+          const isCorrect = opt.letter === correct;
+          return (
+            <div
+              key={opt.letter}
+              className={`flex items-start gap-1.5 rounded-lg px-2 py-1.5 ${
+                isCorrect ? "bg-mint-50 font-semibold text-mint-600" : "bg-white text-ink-600"
+              }`}
+            >
+              <span
+                className={`mt-px shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  isCorrect ? "bg-mint-500 text-white" : "bg-primary-100 text-ink-600"
+                }`}
+              >
+                {opt.letter}
+              </span>
+              <span className="min-w-0 flex-1">{opt.text || "—"}</span>
+              {isCorrect && <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2.5} />}
+            </div>
+          );
+        })}
+      </div>
+
+      {row.explanation && (
+        <div className="mt-2 rounded-lg bg-white p-2">
+          <span className="font-semibold text-ink-900">Explanation: </span>
+          <span className="text-ink-600">{row.explanation}</span>
+        </div>
+      )}
+
+      {row.sourceReference && (
+        <p className="mt-1.5 text-[11px] text-ink-400">Source: {row.sourceReference}</p>
+      )}
+    </div>
+  );
+}
+
 export function PageHeader({ title, subtitle, action }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3 border-b border-primary-100 bg-white px-6 py-5">

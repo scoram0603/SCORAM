@@ -8,7 +8,7 @@ export const SITE_URL = import.meta.env.VITE_SITE_URL || "https://scoram.in";
 export const seoConfig = {
   siteName: "SCORAM",
   siteUrl: SITE_URL,
-  defaultTitle: "SCORAM – Competitive Exam Preparation | PYQ, Question Bank & Mock Tests",
+  defaultTitle: "SCORAM – Competitive Exam Preparation | PYQs, Previous Year Papers & Mock Tests",
   titleTemplate: "%s | SCORAM",
   defaultDescription:
     "Prepare for SSC, Railway and other competitive exams with SCORAM. Practice previous year papers, a topic-wise question bank, mock tests, quizzes, and learn through community discussions.",

@@ -29,7 +29,7 @@ const NAV_GROUPS = [
   {
     section: "Content",
     items: [
-      { to: "/admin/question-bank", label: "Question Bank", icon: Library, permission: "ManageQuestionBank" },
+      { to: "/admin/question-bank", label: "PYQs", icon: Library, permission: "ManageQuestionBank" },
       { subheader: "PYP Management" },
       { to: "/admin/upload", label: "Add Paper", icon: UploadCloud, indent: true },
       { to: "/admin/papers", label: "All Papers", icon: FileStack, indent: true },

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Mail, Lock, ArrowRight, Loader2, AlertCircle, ShieldCheck, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, ArrowRight, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import logo from "../../assets/scoram-logo-horizontal.png";
 import { useAdminAuth } from "../context/AdminAuthContext";
@@ -8,7 +8,6 @@ export default function AdminLogin() {
   const { login, isAuthenticated, isLoading, error, clearError, sessionExpired } = useAdminAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
-  const [showPassword, setShowPassword] = useState(false);
 
   // Covers a logged-in admin navigating straight to /admin/login by URL.
   useEffect(() => {
@@ -70,7 +69,7 @@ export default function AdminLogin() {
 
           <Field icon={Lock} label="Password">
             <input
-              type={showPassword ? "text" : "password"}
+              type="password"
               required
               value={form.password}
               onChange={(e) => {
@@ -80,15 +79,6 @@ export default function AdminLogin() {
               placeholder="••••••••"
               className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="shrink-0 text-ink-400 hover:text-ink-600"
-              aria-label={showPassword ? "Hide password" : "Show password"}
-              tabIndex={-1}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={2} /> : <Eye className="h-4 w-4" strokeWidth={2} />}
-            </button>
           </Field>
 
           {error && (

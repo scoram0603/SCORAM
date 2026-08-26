@@ -61,7 +61,7 @@ export default function QuestionBankManagement() {
   }
 
   async function handleDelete(q) {
-    if (!window.confirm(`Remove "${q.questionText.slice(0, 60)}..." from the Question Bank?`)) return;
+    if (!window.confirm(`Remove "${q.questionText.slice(0, 60)}..." from PYQs?`)) return;
     try {
       await deleteQuestionBankQuestion(token, q.id);
       refresh();
@@ -95,7 +95,7 @@ export default function QuestionBankManagement() {
   return (
     <div>
       <PageHeader
-        title="Question Bank"
+        title="PYQs"
         subtitle="Individual, searchable PYQ questions — separate from the PYP paper upload flow"
         action={
           <div className="flex flex-wrap gap-2">

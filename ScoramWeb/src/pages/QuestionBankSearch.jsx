@@ -301,13 +301,13 @@ export default function QuestionBankSearch() {
     <div className="mx-auto w-full max-w-6xl px-4 pb-8 pt-4 sm:px-6 lg:flex lg:items-start lg:gap-6 lg:pt-6">
       <div className="min-w-0 lg:max-w-2xl lg:flex-1">
       {/* ---------- Header ---------- */}
-      <h1 className="text-2xl font-extrabold text-ink-900 sm:text-3xl">Question Bank</h1>
+      <h1 className="text-2xl font-extrabold text-ink-900 sm:text-3xl">PYQs</h1>
       <p className="mt-1 text-sm text-ink-400">
         Search, practice, and understand questions from multiple competitive exams.
       </p>
 
       <label className="relative mt-5 block">
-        <span className="sr-only">Search Question Bank</span>
+        <span className="sr-only">Search PYQs</span>
         <Search className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-ink-400" strokeWidth={2} />
         <input
           ref={searchInputRef}

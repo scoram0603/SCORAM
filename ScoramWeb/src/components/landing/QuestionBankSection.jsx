@@ -40,9 +40,9 @@ export default function QuestionBankSection() {
         </ScrollReveal>
 
         <ScrollReveal delay={120} className="order-1 lg:order-2">
-          <p className="text-sm font-semibold uppercase tracking-wide text-accent-500">Question Bank</p>
+          <p className="text-sm font-semibold uppercase tracking-wide text-accent-500">PYQs</p>
           <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
-            Master Every Topic with Question Bank
+            Master Every Topic with PYQs
           </h2>
           <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-ink-600">
             Filter thousands of questions by subject, topic, exam, or year — and see how each one
@@ -60,7 +60,7 @@ export default function QuestionBankSection() {
             to="/question-bank"
             className="mt-7 inline-flex items-center gap-2 rounded-xl bg-primary-600 px-6 py-3.5 text-[15px] font-semibold text-white shadow-floating transition-transform hover:-translate-y-0.5 hover:bg-primary-700"
           >
-            Explore Question Bank
+            Explore PYQs
             <ArrowRight className="h-4 w-4" strokeWidth={2.5} />
           </Link>
         </ScrollReveal>
