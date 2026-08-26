@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Loader2, CheckCircle2, Eye, Flag, Share2 } from "lucide-react";
+import { ArrowLeft, Loader2, Flag, Share2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getQuestionBankQuestion } from "../api/questionBank";
 import SolutionsPanel from "../components/questions/SolutionsPanel";
@@ -8,6 +8,7 @@ import CommentThread from "../components/questions/CommentThread";
 import LikeButton from "../components/questions/LikeButton";
 import BookmarkButton from "../components/questions/BookmarkButton";
 import ShareQuestionModal from "../components/chat/ShareQuestionModal";
+import InteractiveOptions from "../components/questions/InteractiveOptions";
 import { useAuth } from "../context/AuthContext";
 import { API_BASE_URL } from "../api/client";
 
@@ -16,27 +17,26 @@ function imgSrc(url) {
   return url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
 }
 
-const OPTION_LETTERS = ["A", "B", "C", "D"];
-
 // Section 20 of the spec: same fields as the legacy PYQ QuestionDetail page, plus a Like/Dislike and
 // full Discussion thread matching what PYQ questions already have (both reuse the same shared
 // backend infra as Report/Solution above -- see CommentThread's questionType prop and LikeButton).
 // "Asked In" is a LIST of exam+year pairs (a Question Bank question can appear in several), so there's
 // no single difficulty/exam tag the way the legacy page has.
+//
+// Options are click-to-check (InteractiveOptions) -- the correct answer only appears once the
+// student picks something, same interaction as the search feed's cards.
 export default function QuestionBankQuestionDetail() {
   const { questionId } = useParams();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const [question, setQuestion] = useState(null);
   const [status, setStatus] = useState("loading");
-  const [revealed, setRevealed] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
-    setRevealed(false);
     getQuestionBankQuestion(questionId)
       .then((data) => {
         if (cancelled) return;
@@ -82,6 +82,7 @@ export default function QuestionBankQuestionDetail() {
             <div className="flex flex-wrap gap-1.5">
               <Tag className="bg-violet-50 text-violet-500">{question.subject}</Tag>
               <Tag className="bg-primary-50 text-primary-600">{question.topic}</Tag>
+              {question.language && <Tag className="bg-mint-50 text-mint-600">{question.language}</Tag>}
             </div>
 
             <p className="mt-3 text-[15px] font-semibold leading-snug text-ink-900">{question.questionText}</p>
@@ -89,49 +90,9 @@ export default function QuestionBankQuestionDetail() {
               <img src={imgSrc(question.questionImageUrl)} alt="" className="mt-2 max-h-64 rounded-lg border border-primary-100" />
             )}
 
-            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {OPTION_LETTERS.map((letter) => {
-                const text = question[`option${letter}`];
-                const imageUrl = question[`option${letter}ImageUrl`];
-                const isCorrect = revealed && question.correctOption === letter;
-                return (
-                  <div
-                    key={letter}
-                    className={`flex items-start gap-1.5 rounded-lg border px-3 py-2.5 text-sm ${
-                      isCorrect ? "border-mint-500 bg-mint-50 text-mint-700" : "border-primary-100 text-ink-600"
-                    }`}
-                  >
-                    <span className="font-bold">{letter}.</span>
-                    <span className="min-w-0 flex-1">
-                      {text}
-                      {imgSrc(imageUrl) && <img src={imgSrc(imageUrl)} alt="" className="mt-1 max-h-20 rounded border border-primary-100" />}
-                    </span>
-                    {isCorrect && <CheckCircle2 className="h-4 w-4 shrink-0 text-mint-500" strokeWidth={2.25} />}
-                  </div>
-                );
-              })}
+            <div className="mt-4">
+              <InteractiveOptions question={question} />
             </div>
-
-            {!revealed ? (
-              <button
-                type="button"
-                onClick={() => setRevealed(true)}
-                className="mt-4 flex items-center gap-1.5 rounded-xl2 bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700"
-              >
-                <Eye className="h-4 w-4" strokeWidth={2.25} />
-                Reveal answer
-              </button>
-            ) : (
-              question.explanation && (
-                <div className="mt-4 rounded-lg bg-primary-50/60 p-3.5 text-sm leading-snug text-ink-600">
-                  <p className="mb-1 text-xs font-bold text-primary-600">Explanation</p>
-                  {question.explanation}
-                  {imgSrc(question.explanationImageUrl) && (
-                    <img src={imgSrc(question.explanationImageUrl)} alt="" className="mt-2 max-h-64 rounded-lg border border-primary-100" />
-                  )}
-                </div>
-              )
-            )}
 
             {question.sourceReference && (
               <p className="mt-2 text-xs text-ink-400">Source: {question.sourceReference}</p>

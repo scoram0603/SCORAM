@@ -21,6 +21,7 @@ export default function QuestionBankUploadWizard() {
 
   const [format, setFormat] = useState("excel"); // "excel" | "json"
   const [selectedFile, setSelectedFile] = useState(null);
+  const [defaultLanguage, setDefaultLanguage] = useState(""); // "" | "Hindi" | "English"
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState(null);
   const [checkedRows, setCheckedRows] = useState(new Set());
@@ -54,7 +55,7 @@ export default function QuestionBankUploadWizard() {
     setError(null);
     setCommitResult(null);
     try {
-      const res = await previewQuestionBankImport(token, selectedFile, format);
+      const res = await previewQuestionBankImport(token, selectedFile, format, defaultLanguage || undefined);
       setPreview(res);
       // Valid rows are pre-checked (including duplicates -- they'll be merged, not duplicated);
       // invalid rows are never selectable in the first place.
@@ -124,10 +125,15 @@ export default function QuestionBankUploadWizard() {
         <Card>
           <p className="text-xs text-ink-400">
             Expected columns/fields: QuestionText, OptionA–D, CorrectOption, Explanation (optional),
-            Subject, Topic, SourceReference (optional), ExamYears — e.g.{" "}
+            Subject, Topic, SourceReference (optional), Language (optional), ExamYears — e.g.{" "}
             <code className="rounded bg-primary-50 px-1 py-0.5">"SSC CGL:2018; UP TGT:2022"</code>.
             A question that already exists (by normalized text) won't be duplicated — its new
             exam/year pairs are merged into the existing question instead.
+          </p>
+          <p className="mt-1.5 text-xs text-ink-400">
+            <span className="font-semibold text-ink-600">Medium (Hindi/English):</span> either fill
+            the Language column per-row in your file, or pick a Default Language below and leave
+            that column blank — it'll apply to every row that doesn't specify its own.
           </p>
 
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
@@ -165,6 +171,18 @@ export default function QuestionBankUploadWizard() {
                   onChange={handleFileChange}
                   className="text-sm"
                 />
+                <label className="flex items-center gap-1.5 text-xs">
+                  <span className="font-semibold text-ink-600">Default Language:</span>
+                  <select
+                    value={defaultLanguage}
+                    onChange={(e) => setDefaultLanguage(e.target.value)}
+                    className="rounded-lg border border-primary-100 bg-white px-2 py-1.5 text-xs text-ink-900 focus:border-secondary-500 focus:outline-none"
+                  >
+                    <option value="">Not set (use file's own values)</option>
+                    <option value="Hindi">Hindi</option>
+                    <option value="English">English</option>
+                  </select>
+                </label>
                 <Button onClick={handlePreview} disabled={!selectedFile} isLoading={previewing}>
                   <UploadCloud className="h-4 w-4" strokeWidth={2.25} />
                   Preview
@@ -223,6 +241,7 @@ export default function QuestionBankUploadWizard() {
                       <th className="px-2 py-2">Row</th>
                       <th className="px-2 py-2">Question</th>
                       <th className="px-2 py-2">Subject / Topic</th>
+                      <th className="px-2 py-2">Medium</th>
                       <th className="px-2 py-2">Status</th>
                     </tr>
                   </thead>
@@ -242,6 +261,7 @@ export default function QuestionBankUploadWizard() {
                           <span className="line-clamp-2">{row.questionText || "—"}</span>
                         </td>
                         <td className="px-2 py-2 align-top text-ink-600">{row.subject} / {row.topic}</td>
+                        <td className="px-2 py-2 align-top text-ink-600">{row.language || <span className="text-ink-300">—</span>}</td>
                         <td className="px-2 py-2 align-top">
                           {!row.isValid && (
                             <ul className="flex flex-col gap-0.5 text-red-600">

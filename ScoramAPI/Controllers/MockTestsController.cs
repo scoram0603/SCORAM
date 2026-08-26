@@ -30,7 +30,7 @@ namespace ScoramAPI.Controllers
         // see the migration instructions.
         [HttpGet]
         public async Task<ActionResult<PagedResult<MockTestSummaryDto>>> List(
-            string? examName, string? testType, int page = 1, int pageSize = 20)
+            string? examName, string? testType, string? language, int page = 1, int pageSize = 20)
         {
             page = Math.Max(page, 1);
             pageSize = Math.Clamp(pageSize, 1, 100);
@@ -38,6 +38,8 @@ namespace ScoramAPI.Controllers
             var query = _db.MockTests.Where(t => t.Status == TestPublishStatus.Published).AsQueryable();
             if (!string.IsNullOrWhiteSpace(examName)) query = query.Where(t => t.ExamName == examName);
             if (!string.IsNullOrWhiteSpace(testType)) query = query.Where(t => t.TestType.ToString() == testType);
+            if (!string.IsNullOrWhiteSpace(language) && Enum.TryParse<PaperLanguage>(language, ignoreCase: true, out var languageFilter))
+                query = query.Where(t => t.Language == languageFilter);
 
             var totalCount = await query.CountAsync();
 
@@ -51,20 +53,36 @@ namespace ScoramAPI.Controllers
             var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
             Dictionary<Guid, int> myAttemptCounts = new();
             HashSet<Guid> bookmarkedIds = new();
+            var allTestIds = tests.Select(t => t.Id).ToList();
             if (isAuthenticated && tests.Count > 0)
             {
                 var userId = User.GetUserId();
-                var testIds = tests.Select(t => t.Id).ToList();
                 myAttemptCounts = await _db.StudentTestResults
-                    .Where(r => r.UserId == userId && r.MockTestId != null && testIds.Contains(r.MockTestId.Value))
+                    .Where(r => r.UserId == userId && r.MockTestId != null && allTestIds.Contains(r.MockTestId.Value))
                     .GroupBy(r => r.MockTestId!.Value)
                     .Select(g => new { MockTestId = g.Key, Count = g.Count() })
                     .ToDictionaryAsync(g => g.MockTestId, g => g.Count);
 
                 bookmarkedIds = (await _db.Bookmarks
-                    .Where(b => b.UserId == userId && b.MockTestId != null && testIds.Contains(b.MockTestId.Value))
+                    .Where(b => b.UserId == userId && b.MockTestId != null && allTestIds.Contains(b.MockTestId.Value))
                     .Select(b => b.MockTestId!.Value).ToListAsync()).ToHashSet();
             }
+
+            // Total DISTINCT students who've completed each Mock Test on this page -- shown to
+            // every visitor regardless of login state (unlike myAttemptCounts above). Same
+            // (Id, UserId)-distinct-then-group pattern as StudentPapersController.Browse's own
+            // AttemptCount, for the same reason: a student re-attempting the same test shouldn't
+            // inflate "Attempted by X students".
+            var attemptCounts = tests.Count == 0
+                ? new Dictionary<Guid, int>()
+                : await _db.StudentTestResults
+                    .Where(r => r.MockTestId != null && allTestIds.Contains(r.MockTestId.Value)
+                        && (r.Status == TestAttemptStatus.Submitted || r.Status == TestAttemptStatus.AutoSubmitted))
+                    .Select(r => new { MockTestId = r.MockTestId!.Value, r.UserId })
+                    .Distinct()
+                    .GroupBy(r => r.MockTestId)
+                    .Select(g => new { MockTestId = g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(g => g.MockTestId, g => g.Count);
 
             var now = DateTime.UtcNow;
             var items = tests.Select(t => new MockTestSummaryDto
@@ -76,6 +94,7 @@ namespace ScoramAPI.Controllers
                 DurationMinutes = t.DurationMinutes,
                 NegativeMarkingRatio = t.NegativeMarkingRatio,
                 QuestionCount = t.MockTestQuestions.Count,
+                Language = t.Language?.ToString(),
                 Instructions = t.Instructions,
                 ScheduledAt = t.ScheduledAt,
                 EndAt = t.EndAt,
@@ -83,6 +102,7 @@ namespace ScoramAPI.Controllers
                 AvailabilityStatus = ComputeAvailability(t, now),
                 MaxAttempts = t.MaxAttempts,
                 MyAttemptCount = isAuthenticated ? myAttemptCounts.GetValueOrDefault(t.Id, 0) : null,
+                AttemptCount = attemptCounts.GetValueOrDefault(t.Id, 0),
                 IsBookmarked = bookmarkedIds.Contains(t.Id)
             }).ToList();
 
@@ -117,6 +137,12 @@ namespace ScoramAPI.Controllers
                 isBookmarked = await _db.Bookmarks.AnyAsync(b => b.UserId == userId && b.MockTestId == id);
             }
 
+            var attemptCount = await _db.StudentTestResults
+                .Where(r => r.MockTestId == id && (r.Status == TestAttemptStatus.Submitted || r.Status == TestAttemptStatus.AutoSubmitted))
+                .Select(r => r.UserId)
+                .Distinct()
+                .CountAsync();
+
             return Ok(new MockTestSummaryDto
             {
                 Id = test.Id,
@@ -126,6 +152,7 @@ namespace ScoramAPI.Controllers
                 DurationMinutes = test.DurationMinutes,
                 NegativeMarkingRatio = test.NegativeMarkingRatio,
                 QuestionCount = test.MockTestQuestions.Count,
+                Language = test.Language?.ToString(),
                 Instructions = test.Instructions,
                 ScheduledAt = test.ScheduledAt,
                 EndAt = test.EndAt,
@@ -133,6 +160,7 @@ namespace ScoramAPI.Controllers
                 AvailabilityStatus = ComputeAvailability(test, DateTime.UtcNow),
                 MaxAttempts = test.MaxAttempts,
                 MyAttemptCount = isAuthenticated ? myAttemptCount : null,
+                AttemptCount = attemptCount,
                 IsBookmarked = isBookmarked
             });
         }
@@ -463,6 +491,7 @@ namespace ScoramAPI.Controllers
                 NegativeMarkingRatio = dto.NegativeMarkingRatio,
                 IsRandomOrder = dto.IsRandomOrder,
                 IsShuffleOptions = dto.IsShuffleOptions,
+                Language = ParseLanguage(dto.Language),
                 ScheduledAt = dto.ScheduledAt,
                 EndAt = dto.EndAt,
                 Status = status,
@@ -494,6 +523,7 @@ namespace ScoramAPI.Controllers
                 DurationMinutes = test.DurationMinutes,
                 NegativeMarkingRatio = test.NegativeMarkingRatio,
                 QuestionCount = refs.Count,
+                Language = test.Language?.ToString(),
                 ScheduledAt = test.ScheduledAt,
                 EndAt = test.EndAt,
                 Status = test.Status.ToString(),
@@ -572,6 +602,11 @@ namespace ScoramAPI.Controllers
         }
 
         // ---------- helpers ----------
+
+        // Same tolerant parse as QuestionBankAdminController.ParseLanguage -- an empty/unrecognized
+        // value just leaves the Mock Test's medium untagged rather than erroring the whole request.
+        internal static PaperLanguage? ParseLanguage(string? raw) =>
+            !string.IsNullOrWhiteSpace(raw) && Enum.TryParse<PaperLanguage>(raw, ignoreCase: true, out var parsed) ? parsed : null;
 
         internal static string ComputeAvailability(MockTest test, DateTime now)
         {

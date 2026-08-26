@@ -78,21 +78,25 @@ export default function MockTestManagement() {
                 <tr>
                   <th className="px-3 py-2.5">Title</th>
                   <th className="px-3 py-2.5">Exam</th>
+                  <th className="px-3 py-2.5">Medium</th>
                   <th className="px-3 py-2.5">Questions</th>
                   <th className="px-3 py-2.5">Duration</th>
+                  <th className="px-3 py-2.5">Attempts</th>
                   <th className="px-3 py-2.5">Status</th>
                   <th className="px-3 py-2.5"></th>
                 </tr>
               </thead>
               <tbody>
-                {loading && <tr><td colSpan={6} className="px-3 py-6 text-center text-ink-400">Loading…</td></tr>}
-                {!loading && items.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-ink-400">No mock tests yet.</td></tr>}
+                {loading && <tr><td colSpan={8} className="px-3 py-6 text-center text-ink-400">Loading…</td></tr>}
+                {!loading && items.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-ink-400">No mock tests yet.</td></tr>}
                 {items.map((t) => (
                   <tr key={t.id} className="border-t border-primary-50">
                     <td className="px-3 py-2.5 font-medium text-ink-900">{t.title}</td>
                     <td className="px-3 py-2.5 text-ink-600">{t.examName}</td>
+                    <td className="px-3 py-2.5 text-ink-600">{t.language || <span className="text-ink-300">—</span>}</td>
                     <td className="px-3 py-2.5 text-ink-600">{t.questionCount}</td>
                     <td className="px-3 py-2.5 text-ink-600">{t.durationMinutes} min</td>
+                    <td className="px-3 py-2.5 text-ink-600">{t.attemptCount ?? 0}</td>
                     <td className="px-3 py-2.5">
                       <Select value={t.status} onChange={(e) => handleStatusChange(t.id, e.target.value)} className="!h-8 !py-1 text-xs">
                         <option value="Draft">Draft</option>
@@ -126,6 +130,7 @@ function MockTestForm({ token, testId, onCancel, onSaved }) {
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [negativeMarkingRatio, setNegativeMarkingRatio] = useState(0.25);
   const [isRandomOrder, setIsRandomOrder] = useState(false);
+  const [language, setLanguage] = useState(""); // "" | "Hindi" | "English"
   const [scheduledAt, setScheduledAt] = useState("");
   const [endAt, setEndAt] = useState("");
   const [maxAttempts, setMaxAttempts] = useState("");
@@ -144,6 +149,7 @@ function MockTestForm({ token, testId, onCancel, onSaved }) {
       setDurationMinutes(t.durationMinutes);
       setNegativeMarkingRatio(t.negativeMarkingRatio);
       setIsRandomOrder(t.isRandomOrder);
+      setLanguage(t.language || "");
       setScheduledAt(t.scheduledAt ? t.scheduledAt.slice(0, 16) : "");
       setEndAt(t.endAt ? t.endAt.slice(0, 16) : "");
       setMaxAttempts(t.maxAttempts ?? "");
@@ -181,6 +187,7 @@ function MockTestForm({ token, testId, onCancel, onSaved }) {
         negativeMarkingRatio: Number(negativeMarkingRatio),
         isRandomOrder,
         isShuffleOptions: false,
+        language: language || null,
         scheduledAt: scheduledAt || null,
         endAt: endAt || null,
         maxAttempts: maxAttempts === "" ? null : Number(maxAttempts),
@@ -225,6 +232,14 @@ function MockTestForm({ token, testId, onCancel, onSaved }) {
               <FormField label="Duration (minutes)"><TextInput type="number" required value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} /></FormField>
               <FormField label="Negative Marking Ratio"><TextInput type="number" step="0.05" min="0" max="1" value={negativeMarkingRatio} onChange={(e) => setNegativeMarkingRatio(e.target.value)} /></FormField>
             </div>
+
+            <FormField label="Medium / Language (optional)">
+              <Select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                <option value="">Not set (shows for every student)</option>
+                <option value="Hindi">Hindi</option>
+                <option value="English">English</option>
+              </Select>
+            </FormField>
 
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Starts (optional)"><TextInput type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} /></FormField>

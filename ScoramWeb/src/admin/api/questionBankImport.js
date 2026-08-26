@@ -11,9 +11,12 @@ function toQueryString(params = {}) {
 
 // POST /api/admin/question-bank/bulk/excel or /bulk/json -- parses + validates, writes nothing yet.
 // Returns { jobId, fileName, format, totalRows, validCount, invalidCount, duplicateCount, rows }.
-export function previewQuestionBankImport(token, file, format) {
+// "language" (optional -- "Hindi" | "English") is the admin's Default Language pick for this whole
+// upload; see QuestionBankAdminController.Preview's own comment for exactly how it's applied.
+export function previewQuestionBankImport(token, file, format, language) {
   const formData = new FormData();
   formData.append("file", file);
+  if (language) formData.append("language", language);
   const path = format === "json" ? "/api/admin/question-bank/bulk/json" : "/api/admin/question-bank/bulk/excel";
   return apiFetchForm(path, { formData, token });
 }

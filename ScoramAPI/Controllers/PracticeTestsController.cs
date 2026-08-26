@@ -92,8 +92,9 @@ namespace ScoramAPI.Controllers
             }
 
             var userId = User.GetUserId();
+            var languageFilter = MockTestsController.ParseLanguage(dto.Language);
             var refs = await _attemptService.SelectPracticeQuestionsAsync(
-                _db, userId, dto.SubjectId, dto.TopicId, dto.ExamId, dto.YearFrom, dto.YearTo, difficulty, dto.QuestionCount);
+                _db, userId, dto.SubjectId, dto.TopicId, dto.ExamId, dto.YearFrom, dto.YearTo, difficulty, dto.QuestionCount, languageFilter);
 
             if (refs.Count == 0)
                 return BadRequest(new { message = "No questions match those filters yet. Try widening Subject/Topic/Exam/Year/Difficulty." });

@@ -489,17 +489,27 @@ namespace ScoramAPI.Controllers
         // Bulk import — Excel / JSON (sections 9-13)
         // ======================================================================================
 
-        // POST /api/admin/question-bank/bulk/excel  (multipart/form-data, field name "file")
+        // POST /api/admin/question-bank/bulk/excel  (multipart/form-data, field name "file", optional
+        // field "language" -- see Preview's own comment)
         [HttpPost("bulk/excel")]
         [RequestSizeLimit(20 * 1024 * 1024)]
-        public Task<ActionResult<QuestionBankImportPreviewResponseDto>> PreviewExcel(IFormFile file) => Preview(file, ImportFileFormat.Excel);
+        public Task<ActionResult<QuestionBankImportPreviewResponseDto>> PreviewExcel(IFormFile file, [FromForm] string? language) =>
+            Preview(file, ImportFileFormat.Excel, language);
 
-        // POST /api/admin/question-bank/bulk/json  (multipart/form-data, field name "file")
+        // POST /api/admin/question-bank/bulk/json  (multipart/form-data, field name "file", optional
+        // field "language")
         [HttpPost("bulk/json")]
         [RequestSizeLimit(20 * 1024 * 1024)]
-        public Task<ActionResult<QuestionBankImportPreviewResponseDto>> PreviewJson(IFormFile file) => Preview(file, ImportFileFormat.Json);
+        public Task<ActionResult<QuestionBankImportPreviewResponseDto>> PreviewJson(IFormFile file, [FromForm] string? language) =>
+            Preview(file, ImportFileFormat.Json, language);
 
-        private async Task<ActionResult<QuestionBankImportPreviewResponseDto>> Preview(IFormFile file, ImportFileFormat format)
+        // "language" ("Hindi"/"English", optional) is the admin's "Default Language" choice for this
+        // whole upload -- e.g. uploading a pure-Hindi question set without having to type "Hindi" on
+        // every single row of the Excel/JSON file. Applied to every row that doesn't specify its own
+        // Language (see QuestionBankImportService.ValidateAsync); resolved once here at Preview time
+        // (not at Commit) so the preview table already shows exactly what will be saved, and Commit
+        // itself doesn't need to know about it at all.
+        private async Task<ActionResult<QuestionBankImportPreviewResponseDto>> Preview(IFormFile file, ImportFileFormat format, string? language)
         {
             if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageQuestionBank))
                 return Forbid();
@@ -526,7 +536,10 @@ namespace ScoramAPI.Controllers
             if (rows.Count == 0)
                 return BadRequest(new { message = "No question rows found in the file." });
 
-            await _importService.ValidateAsync(rows, _db);
+            if (!string.IsNullOrWhiteSpace(language) && !Enum.TryParse<PaperLanguage>(language.Trim(), ignoreCase: true, out _))
+                return BadRequest(new { message = $"'{language}' isn't a valid Default Language (expected Hindi or English)." });
+
+            await _importService.ValidateAsync(rows, _db, language);
 
             var job = new QuestionBankImportJob
             {
@@ -641,6 +654,7 @@ namespace ScoramAPI.Controllers
                     SubjectId = subject.Id,
                     TopicId = topic.Id,
                     SourceReference = row.SourceReference,
+                    Language = ParseLanguage(row.Language),
                     CreatedByAdminId = adminId,
                     ImportJobId = job.Id,
                     CreatedAt = DateTime.UtcNow
@@ -720,7 +734,10 @@ namespace ScoramAPI.Controllers
         {
             using var workbook = new XLWorkbook();
             var sheet = workbook.Worksheets.Add("Questions");
-            string[] headers = { "QuestionText", "OptionA", "OptionB", "OptionC", "OptionD", "CorrectOption", "Explanation", "Subject", "Topic", "SourceReference", "ExamYears" };
+            // "Language" is optional -- leave the column blank on a row to fall back to whatever
+            // Default Language the admin picks on the upload screen (see QuestionBankAdminController
+            // .Preview), or fill it in per-row ("Hindi"/"English") to mix mediums in one file.
+            string[] headers = { "QuestionText", "OptionA", "OptionB", "OptionC", "OptionD", "CorrectOption", "Explanation", "Subject", "Topic", "SourceReference", "Language", "ExamYears" };
             for (var i = 0; i < headers.Length; i++) sheet.Cell(1, i + 1).Value = headers[i];
             sheet.Row(1).Style.Font.Bold = true;
 
@@ -729,7 +746,7 @@ namespace ScoramAPI.Controllers
                 "भारतीय स्थल पर 'गढ़े सोने' के साक्ष्य निम्नलिखित में से किस स्थान से मिले हैं?",
                 "लोथल और कालीबंगा", "बुर्जहोम और चिरांद", "चोपड़ा और रंगपुर", "रंगपुर और लोथल",
                 "D", "Explanation from source book.", "Ancient History", "Stone Age", "NCERT Class 11, Ch. 4",
-                "UP TGT:2016; UP TGT:2019; SSC CGL:2021"
+                "Hindi", "UP TGT:2016; UP TGT:2019; SSC CGL:2021"
             };
             for (var i = 0; i < sample.Length; i++) sheet.Cell(2, i + 1).Value = sample[i].ToString();
             sheet.Columns().AdjustToContents();
@@ -754,6 +771,9 @@ namespace ScoramAPI.Controllers
                     subject = "Ancient History",
                     topic = "Stone Age",
                     sourceReference = "NCERT Class 11, Ch. 4",
+                    // Optional -- "Hindi" | "English". Omit/leave blank to fall back to the upload's
+                    // Default Language instead.
+                    language = "Hindi",
                     examYears = new[]
                     {
                         new { examName = "UP TGT", year = 2016 },

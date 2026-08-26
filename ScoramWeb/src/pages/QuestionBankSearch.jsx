@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Search, Loader2, ServerCrash, Inbox, ChevronDown, X, BookOpen, GraduationCap, Layers,
-  CalendarDays, Shuffle, History, LayoutList, Rows3,
+  Search, Loader2, ServerCrash, Inbox, X, BookOpen, GraduationCap, Layers,
+  CalendarDays, Shuffle, History, LayoutList, Rows3, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { searchQuestionBank, getQuestionBankSubjects, getQuestionBankTopics, getQuestionBankExams, getQuestionBankYears } from "../api/questionBank";
 import QuestionBankFeedCard from "../components/questions/QuestionBankFeedCard";
 import QuestionBankFeedCardSkeleton from "../components/questions/QuestionBankFeedCardSkeleton";
 import QuestionBankSidebar from "../components/questions/QuestionBankSidebar";
+import SearchableSelect from "../components/ui/SearchableSelect";
 
 const PAGE_SIZE = 10;
 const RECENT_SEARCHES_KEY = "scoram:qb:recent-searches";
+const LANGUAGE_OPTIONS = [
+  { value: "Hindi", label: "Hindi" },
+  { value: "English", label: "English" },
+];
 
 function readRecentSearches() {
   try {
@@ -31,71 +36,105 @@ function pushRecentSearch(term) {
   }
 }
 
-// FEED REDESIGN + PREMIUM UI PASS -- one question per row, everything (View Answer, Discuss,
-// Like/Dislike, Share) inline on the card (see QuestionBankFeedCard), infinite scroll, and a
-// premium header with real stat counts + quick actions. Filter/search state lives in the URL
-// (searchParams) so a result is shareable/bookmarkable. Every number and action here is backed by
-// a real API or a real client-side mechanism (localStorage recent searches, a genuinely random
-// question) -- no fabricated "trending topics" or usage analytics the backend doesn't track.
+// A multi-select filter's values live in the URL as one comma-joined param (?subjectIds=id1,id2)
+// rather than repeated keys -- keeps the address bar tidy and is trivial to read back out.
+function readListParam(searchParams, key) {
+  const raw = searchParams.get(key);
+  return raw ? raw.split(",").filter(Boolean) : [];
+}
+
+// FEED REDESIGN + PREMIUM UI PASS -- one question per row, everything (practice options, Discuss,
+// Like/Dislike, Share) inline on the card (see QuestionBankFeedCard), infinite scroll (or Slide
+// mode -- see below), and a premium header with real stat counts + quick actions. Filter/search
+// state lives in the URL (searchParams) so a result is shareable/bookmarkable. Every number and
+// action here is backed by a real API or a real client-side mechanism (localStorage recent
+// searches, a genuinely random question) -- no fabricated "trending topics" or usage analytics the
+// backend doesn't track.
+//
+// Filters (Subject/Topic/Exam/Year/Language) are multi-select + searchable (SearchableSelect) --
+// a student can pick just one value (works exactly like the old single-select dropdown) or several
+// (e.g. SSC CGL + RRB NTPC together) in the same filter; the backend OR-matches within a filter and
+// AND-matches across filters (see QuestionBankController.Search).
+//
+// Two ways to browse results: Scroll (the original infinite-scroll feed, with its own List/Compact
+// density toggle) or Slide (one question full-screen-width at a time, Prev/Next arrow buttons --
+// same underlying `items`/pagination, just a different way of moving through them).
 export default function QuestionBankSearch() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const search = searchParams.get("q") || "";
-  const subjectId = searchParams.get("subjectId") || "";
-  const topicId = searchParams.get("topicId") || "";
-  const examId = searchParams.get("examId") || "";
-  const year = searchParams.get("year") || "";
-  const language = searchParams.get("language") || "";
+  const subjectIds = useMemo(() => readListParam(searchParams, "subjectIds"), [searchParams]);
+  const topicIds = useMemo(() => readListParam(searchParams, "topicIds"), [searchParams]);
+  const examIds = useMemo(() => readListParam(searchParams, "examIds"), [searchParams]);
+  const years = useMemo(() => readListParam(searchParams, "years"), [searchParams]);
+  const languages = useMemo(() => readListParam(searchParams, "languages"), [searchParams]);
+  const browseMode = searchParams.get("mode") === "slide" ? "slide" : "scroll";
 
   const [subjects, setSubjects] = useState([]);
   const [topics, setTopics] = useState([]);
   const [exams, setExams] = useState([]);
-  const [years, setYears] = useState([]);
+  const [allYears, setAllYears] = useState([]);
   const [totalQuestionCount, setTotalQuestionCount] = useState(null);
 
   const [items, setItems] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [status, setStatus] = useState("loading"); // loading | loading-more | success | error
   const [hasMore, setHasMore] = useState(true);
-  const [view, setView] = useState("list"); // list | compact
+  const [view, setView] = useState("list"); // list | compact -- density, Scroll mode only
   const [recentSearches, setRecentSearches] = useState(readRecentSearches);
   const [shuffling, setShuffling] = useState(false);
   const [shuffled, setShuffled] = useState(null);
+  const [slideIndex, setSlideIndex] = useState(0);
 
   const pageRef = useRef(1);
   const debounceRef = useRef(null);
   const sentinelRef = useRef(null);
   const searchInputRef = useRef(null);
+  const pendingSlideAdvanceRef = useRef(false);
 
   useEffect(() => {
     getQuestionBankSubjects().then(setSubjects).catch(() => {});
     getQuestionBankExams().then(setExams).catch(() => {});
-    getQuestionBankYears().then(setYears).catch(() => {});
+    getQuestionBankYears().then(setAllYears).catch(() => {});
     // Real total, unfiltered -- powers the "X Questions" stat card regardless of active filters.
     searchQuestionBank({ page: 1, pageSize: 1 }).then((d) => setTotalQuestionCount(d.totalCount)).catch(() => {});
   }, []);
 
-  // Topic dropdown depends on the chosen Subject (spec section 18).
+  // Topic dropdown depends on the chosen Subject(s) (spec section 18) -- with several subjects
+  // selected, the Topic list is the union of each subject's topics.
   useEffect(() => {
-    if (!subjectId) {
+    if (subjectIds.length === 0) {
       setTopics([]);
       return;
     }
-    getQuestionBankTopics(subjectId).then(setTopics).catch(() => setTopics([]));
-  }, [subjectId]);
+    Promise.all(subjectIds.map((id) => getQuestionBankTopics(id).catch(() => [])))
+      .then((lists) => {
+        const merged = new Map();
+        lists.flat().forEach((t) => merged.set(t.id, t));
+        setTopics(Array.from(merged.values()));
+      })
+      .catch(() => setTopics([]));
+  }, [subjectIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadPage = useCallback(
     (pageNum, { append }) => {
       const controller = new AbortController();
       setStatus(append ? "loading-more" : "loading");
 
-      searchQuestionBank({ search, subjectId, topicId, examId, year, language, page: pageNum, pageSize: PAGE_SIZE }, { signal: controller.signal })
+      searchQuestionBank(
+        { search, subjectIds, topicIds, examIds, years, languages, page: pageNum, pageSize: PAGE_SIZE },
+        { signal: controller.signal }
+      )
         .then((data) => {
           setItems((prev) => (append ? [...prev, ...data.items] : data.items));
           setTotalCount(data.totalCount);
           setHasMore(pageNum * data.pageSize < data.totalCount);
           pageRef.current = pageNum;
           setStatus("success");
+          if (pendingSlideAdvanceRef.current) {
+            pendingSlideAdvanceRef.current = false;
+            setSlideIndex((i) => i + 1);
+          }
         })
         .catch((err) => {
           if (err.name === "AbortError") return;
@@ -104,7 +143,8 @@ export default function QuestionBankSearch() {
 
       return controller;
     },
-    [search, subjectId, topicId, examId, year, language]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [search, subjectIds.join(","), topicIds.join(","), examIds.join(","), years.join(","), languages.join(",")]
   );
 
   // Filters/search changed -- start over from page 1.
@@ -113,6 +153,7 @@ export default function QuestionBankSearch() {
     let controller;
     debounceRef.current = setTimeout(() => {
       controller = loadPage(1, { append: false });
+      setSlideIndex(0);
       if (search.trim()) {
         pushRecentSearch(search);
         setRecentSearches(readRecentSearches());
@@ -127,9 +168,10 @@ export default function QuestionBankSearch() {
   }, [loadPage]);
 
   // Infinite scroll -- observes a sentinel div just past the last card; fetches the next page once
-  // it enters the viewport (rootMargin gives it a head start).
+  // it enters the viewport (rootMargin gives it a head start). Only active in Scroll mode -- Slide
+  // mode fetches its next page on demand from handleSlideNext instead.
   useEffect(() => {
-    if (!sentinelRef.current) return;
+    if (browseMode !== "scroll" || !sentinelRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && status === "success") {
@@ -140,11 +182,47 @@ export default function QuestionBankSearch() {
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [hasMore, status, loadPage]);
+  }, [hasMore, status, loadPage, browseMode]);
 
   function handleQuestionChange(questionId, patch) {
     setItems((prev) => prev.map((q) => (q.id === questionId ? { ...q, ...patch } : q)));
   }
+
+  function setMode(nextMode) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (nextMode === "scroll") next.delete("mode");
+      else next.set("mode", nextMode);
+      return next;
+    });
+    setSlideIndex(0);
+  }
+
+  function handleSlidePrev() {
+    setSlideIndex((i) => Math.max(0, i - 1));
+  }
+
+  function handleSlideNext() {
+    if (slideIndex + 1 < items.length) {
+      setSlideIndex((i) => i + 1);
+    } else if (hasMore && status !== "loading-more") {
+      pendingSlideAdvanceRef.current = true;
+      loadPage(pageRef.current + 1, { append: true });
+    }
+  }
+
+  // Left/Right arrow keys navigate in Slide mode -- matches the on-screen Prev/Next buttons.
+  useEffect(() => {
+    if (browseMode !== "slide") return;
+    function handleKey(e) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "ArrowRight") handleSlideNext();
+      if (e.key === "ArrowLeft") handleSlidePrev();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [browseMode, slideIndex, items.length, hasMore, status]);
 
   function updateParam(key, value, resetDependents = []) {
     setSearchParams((prev) => {
@@ -156,10 +234,21 @@ export default function QuestionBankSearch() {
     });
   }
 
+  // Multi-select filters store their whole array back into one comma-joined param.
+  function updateListParam(key, values, resetDependents = []) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (values.length > 0) next.set(key, values.join(","));
+      else next.delete(key);
+      resetDependents.forEach((k) => next.delete(k));
+      return next;
+    });
+  }
+
   function clearFilters() {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      ["subjectId", "topicId", "examId", "year", "language"].forEach((k) => next.delete(k));
+      ["subjectIds", "topicIds", "examIds", "years", "languages"].forEach((k) => next.delete(k));
       return next;
     });
   }
@@ -187,24 +276,26 @@ export default function QuestionBankSearch() {
 
   const activeFilterChips = useMemo(() => {
     const chips = [];
-    if (subjectId) {
-      const s = subjects.find((x) => x.id === subjectId);
-      if (s) chips.push({ key: "subjectId", label: s.name, clears: ["subjectId", "topicId"] });
-    }
-    if (topicId) {
-      const t = topics.find((x) => x.id === topicId);
-      if (t) chips.push({ key: "topicId", label: t.name, clears: ["topicId"] });
-    }
-    if (examId) {
-      const e = exams.find((x) => x.id === examId);
-      if (e) chips.push({ key: "examId", label: e.name, clears: ["examId"] });
-    }
-    if (year) chips.push({ key: "year", label: year, clears: ["year"] });
-    if (language) chips.push({ key: "language", label: language, clears: ["language"] });
+    subjectIds.forEach((id) => {
+      const s = subjects.find((x) => String(x.id) === id);
+      if (s) chips.push({ key: `subjectIds:${id}`, label: s.name, onRemove: () => updateListParam("subjectIds", subjectIds.filter((v) => v !== id), id === subjectIds[subjectIds.length - 1] ? [] : []) });
+    });
+    topicIds.forEach((id) => {
+      const t = topics.find((x) => String(x.id) === id);
+      if (t) chips.push({ key: `topicIds:${id}`, label: t.name, onRemove: () => updateListParam("topicIds", topicIds.filter((v) => v !== id)) });
+    });
+    examIds.forEach((id) => {
+      const e = exams.find((x) => String(x.id) === id);
+      if (e) chips.push({ key: `examIds:${id}`, label: e.name, onRemove: () => updateListParam("examIds", examIds.filter((v) => v !== id)) });
+    });
+    years.forEach((y) => chips.push({ key: `years:${y}`, label: y, onRemove: () => updateListParam("years", years.filter((v) => v !== y)) }));
+    languages.forEach((l) => chips.push({ key: `languages:${l}`, label: l, onRemove: () => updateListParam("languages", languages.filter((v) => v !== l)) }));
     return chips;
-  }, [subjectId, topicId, examId, year, language, subjects, topics, exams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectIds, topicIds, examIds, years, languages, subjects, topics, exams]);
 
   const hasActiveFilters = activeFilterChips.length > 0;
+  const currentSlideItem = items[slideIndex];
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-8 pt-4 sm:px-6 lg:flex lg:items-start lg:gap-6 lg:pt-6">
@@ -247,51 +338,100 @@ export default function QuestionBankSearch() {
       )}
 
       {/* ---------- Stat bar -- every number here is real, computed from actual API data ---------- */}
-      <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <StatCard icon={BookOpen} tint="primary" value={totalQuestionCount} label="Questions" />
         <StatCard icon={GraduationCap} tint="accent" value={exams.length} label="Exams" />
         <StatCard icon={Layers} tint="teal" value={subjects.length} label="Subjects" />
-        <StatCard icon={CalendarDays} tint="mint" value={years.length} label="Years" />
+        <StatCard icon={CalendarDays} tint="mint" value={allYears.length} label="Years" />
       </div>
 
-      {/* ---------- Filters ---------- */}
-      <div className="mt-6 flex items-center justify-between">
+      {/* ---------- Filters -- multi-select + searchable (pick one value, works like before; pick
+          several, e.g. two exams at once, and results OR-match within that filter). ---------- */}
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-bold text-ink-900">Filters</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {hasActiveFilters && (
             <button type="button" onClick={clearFilters} className="text-xs font-semibold text-secondary-500 hover:text-secondary-600">
               Clear Filters
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setView((v) => (v === "list" ? "compact" : "list"))}
-            className="flex items-center gap-1.5 rounded-lg bg-primary-50 px-2.5 py-1.5 text-[11px] font-semibold text-primary-600 hover:bg-primary-100"
-            title={view === "list" ? "Switch to compact view" : "Switch to list view"}
-          >
-            {view === "list" ? <Rows3 className="h-3.5 w-3.5" strokeWidth={2.25} /> : <LayoutList className="h-3.5 w-3.5" strokeWidth={2.25} />}
-            {view === "list" ? "Compact" : "List"}
-          </button>
+          {/* Browse mode: Scroll (infinite feed) vs Slide (one question, Prev/Next arrows). */}
+          <div className="flex items-center rounded-lg bg-primary-50 p-0.5">
+            <button
+              type="button"
+              onClick={() => setMode("scroll")}
+              className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+                browseMode === "scroll" ? "bg-white text-primary-600 shadow-sm" : "text-ink-400"
+              }`}
+              title="Scroll through all results"
+            >
+              <Rows3 className="h-3.5 w-3.5" strokeWidth={2.25} />
+              Scroll
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("slide")}
+              className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+                browseMode === "slide" ? "bg-white text-primary-600 shadow-sm" : "text-ink-400"
+              }`}
+              title="One question at a time, with Next/Previous"
+            >
+              <ChevronLeft className="h-3 w-3 -mr-1" strokeWidth={2.5} />
+              <ChevronRight className="h-3 w-3" strokeWidth={2.5} />
+              Slide
+            </button>
+          </div>
+          {browseMode === "scroll" && (
+            <button
+              type="button"
+              onClick={() => setView((v) => (v === "list" ? "compact" : "list"))}
+              className="flex items-center gap-1.5 rounded-lg bg-primary-50 px-2.5 py-1.5 text-[11px] font-semibold text-primary-600 hover:bg-primary-100"
+              title={view === "list" ? "Switch to compact view" : "Switch to list view"}
+            >
+              {view === "list" ? <Rows3 className="h-3.5 w-3.5" strokeWidth={2.25} /> : <LayoutList className="h-3.5 w-3.5" strokeWidth={2.25} />}
+              {view === "list" ? "Compact" : "List"}
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
-        <Dropdown label="Subject" value={subjectId} onChange={(v) => updateParam("subjectId", v, ["topicId"])} placeholder="Any subject">
-          {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </Dropdown>
-        <Dropdown label="Topic" value={topicId} onChange={(v) => updateParam("topicId", v)} placeholder="Any topic" disabled={!subjectId}>
-          {topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </Dropdown>
-        <Dropdown label="Exam" value={examId} onChange={(v) => updateParam("examId", v)} placeholder="Any exam">
-          {exams.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </Dropdown>
-        <Dropdown label="Year" value={year} onChange={(v) => updateParam("year", v)} placeholder="Any year">
-          {years.map((y) => <option key={y} value={y}>{y}</option>)}
-        </Dropdown>
-        <Dropdown label="Language" value={language} onChange={(v) => updateParam("language", v)} placeholder="Any language">
-          <option value="Hindi">Hindi</option>
-          <option value="English">English</option>
-        </Dropdown>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <SearchableSelect
+          label="Subject"
+          placeholder="Any subject"
+          options={subjects.map((s) => ({ value: s.id, label: s.name }))}
+          selected={subjectIds}
+          onChange={(v) => updateListParam("subjectIds", v, ["topicIds"])}
+        />
+        <SearchableSelect
+          label="Topic"
+          placeholder="Any topic"
+          options={topics.map((t) => ({ value: t.id, label: t.name }))}
+          selected={topicIds}
+          onChange={(v) => updateListParam("topicIds", v)}
+          disabled={subjectIds.length === 0}
+        />
+        <SearchableSelect
+          label="Exam"
+          placeholder="Any exam"
+          options={exams.map((e) => ({ value: e.id, label: e.name }))}
+          selected={examIds}
+          onChange={(v) => updateListParam("examIds", v)}
+        />
+        <SearchableSelect
+          label="Year"
+          placeholder="Any year"
+          options={allYears.map((y) => ({ value: String(y), label: String(y) }))}
+          selected={years}
+          onChange={(v) => updateListParam("years", v)}
+        />
+        <SearchableSelect
+          label="Medium"
+          placeholder="Any language"
+          options={LANGUAGE_OPTIONS}
+          selected={languages}
+          onChange={(v) => updateListParam("languages", v)}
+        />
       </div>
 
       {activeFilterChips.length > 0 && (
@@ -300,7 +440,7 @@ export default function QuestionBankSearch() {
             <button
               key={chip.key}
               type="button"
-              onClick={() => updateParam(chip.key, "", chip.clears)}
+              onClick={chip.onRemove}
               className="flex items-center gap-1 rounded-full bg-secondary-50 py-1 pl-3 pr-1.5 text-xs font-semibold text-secondary-600 hover:bg-secondary-100"
             >
               {chip.label}
@@ -331,7 +471,7 @@ export default function QuestionBankSearch() {
       )}
 
       {/* ---------- Results ---------- */}
-      <div className="mt-6">
+      <div className="mt-5">
         {status === "loading" && (
           <div className="flex flex-col gap-3">
             <QuestionBankFeedCardSkeleton />
@@ -367,7 +507,7 @@ export default function QuestionBankSearch() {
           </div>
         )}
 
-        {items.length > 0 && (
+        {items.length > 0 && browseMode === "scroll" && (
           <>
             <p className="text-xs font-medium text-ink-400">
               {totalCount} question{totalCount === 1 ? "" : "s"} found
@@ -384,12 +524,49 @@ export default function QuestionBankSearch() {
             </div>
           </>
         )}
+
+        {items.length > 0 && browseMode === "slide" && currentSlideItem && (
+          <>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-ink-400">
+                Question {slideIndex + 1} of {totalCount}
+              </p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleSlidePrev}
+                  disabled={slideIndex === 0}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 text-primary-600 hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Previous question"
+                >
+                  <ChevronLeft className="h-4 w-4" strokeWidth={2.5} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSlideNext}
+                  disabled={slideIndex + 1 >= totalCount || (slideIndex + 1 >= items.length && !hasMore)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 text-primary-600 hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Next question"
+                >
+                  {status === "loading-more" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.25} />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
+                  )}
+                </button>
+              </div>
+            </div>
+            <div className="mt-2">
+              <QuestionBankFeedCard key={currentSlideItem.id} question={currentSlideItem} onQuestionChange={handleQuestionChange} />
+            </div>
+          </>
+        )}
       </div>
       </div>
 
       <QuestionBankSidebar
         subjects={subjects}
-        onPickSubject={(id) => updateParam("subjectId", id, ["topicId"])}
+        onPickSubject={(id) => updateListParam("subjectIds", [id], ["topicIds"])}
         recentSearches={recentSearches}
         onRunRecentSearch={runRecentSearch}
         onSurpriseMe={handleSurpriseMe}
@@ -408,7 +585,7 @@ function StatCard({ icon: Icon, tint, value, label }) {
     mint: "bg-mint-50 text-mint-500",
   };
   return (
-    <div className="flex items-center gap-2.5 rounded-xl2 border border-primary-100 bg-white p-3 shadow-card">
+    <div className="flex items-center gap-2 rounded-xl2 border border-primary-100 bg-white p-2.5 shadow-card">
       <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${tints[tint]}`}>
         <Icon className="h-4 w-4" strokeWidth={2.25} />
       </span>
@@ -417,25 +594,5 @@ function StatCard({ icon: Icon, tint, value, label }) {
         <p className="mt-0.5 truncate text-[11px] text-ink-400">{label}</p>
       </div>
     </div>
-  );
-}
-
-function Dropdown({ label, value, onChange, placeholder, disabled, children }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-xs font-semibold text-ink-600">{label}</span>
-      <span className="relative block">
-        <select
-          value={value}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-11 w-full appearance-none rounded-xl2 border border-primary-100 bg-white px-3 pr-8 text-sm text-ink-900 focus:border-secondary-500 disabled:bg-primary-50 disabled:text-ink-400"
-        >
-          <option value="">{placeholder}</option>
-          {children}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" strokeWidth={2} />
-      </span>
-    </label>
   );
 }

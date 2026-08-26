@@ -23,6 +23,12 @@ namespace ScoramAPI.Models
 
         public bool IsShuffleOptions { get; set; } = false;
 
+        // Which medium this Mock Test is in -- same enum/reasoning as Paper.Language. Nullable
+        // because this field was added after Mock Tests already existed: an existing test just has
+        // no medium tagged rather than needing a backfill guess, and still shows up (untagged) for
+        // every student regardless of their Language filter choice -- see MockTestsController.List.
+        public PaperLanguage? Language { get; set; }
+
         public DateTime? ScheduledAt { get; set; }
 
         // SCORAM_TESTS additions below -- all additive/nullable-or-defaulted so existing rows and

@@ -95,11 +95,16 @@ namespace ScoramAPI.Controllers
         // coming) admin-curated quiz. No auth required to browse, same as MockTestsController.List/
         // StudentPapersController.Browse -- MyAttemptCount is only populated when authenticated.
         [HttpGet("daily")]
-        public async Task<ActionResult<List<QuizSummaryDto>>> ListDaily()
+        public async Task<ActionResult<List<QuizSummaryDto>>> ListDaily(string? language)
         {
-            var quizzes = await _db.Quizzes
+            var quizzesQuery = _db.Quizzes
                 .Include(q => q.QuizQuestions)
                 .Where(q => q.Status == TestPublishStatus.Published)
+                .AsQueryable();
+            if (!string.IsNullOrWhiteSpace(language) && Enum.TryParse<PaperLanguage>(language, ignoreCase: true, out var languageFilter))
+                quizzesQuery = quizzesQuery.Where(q => q.Language == languageFilter);
+
+            var quizzes = await quizzesQuery
                 .OrderByDescending(q => q.AvailableFrom ?? q.CreatedAt)
                 .ToListAsync();
 

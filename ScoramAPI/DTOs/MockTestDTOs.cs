@@ -26,6 +26,8 @@ namespace ScoramAPI.DTOs
         public decimal NegativeMarkingRatio { get; set; } = 0.25m;
         public bool IsRandomOrder { get; set; }
         public bool IsShuffleOptions { get; set; }
+        // "Hindi" | "English" | null (medium not tagged) -- see Models/MockTestModels.cs.
+        public string? Language { get; set; }
         public DateTime? ScheduledAt { get; set; }
         public DateTime? EndAt { get; set; }
         public int? MaxAttempts { get; set; }
@@ -53,6 +55,9 @@ namespace ScoramAPI.DTOs
         public int DurationMinutes { get; set; }
         public decimal NegativeMarkingRatio { get; set; }
         public int QuestionCount { get; set; }
+        // "Hindi" | "English" | null (medium not tagged) -- lets students filter the Mock Test list
+        // by medium the same way they already can for Question Bank/PYP. See MockTestsController.List.
+        public string? Language { get; set; }
         // Added for the Pre-Exam Instructions screen -- was already on the MockTest model/
         // MockTestDetailDto, just never surfaced on the summary before. Avoids that screen having to
         // call GetById (which also eagerly loads and ships all 100+ questions' full text/options,
@@ -68,6 +73,12 @@ namespace ScoramAPI.DTOs
         public int? MaxAttempts { get; set; }
         // How many attempts THIS student has already used, if authenticated -- null for anonymous.
         public int? MyAttemptCount { get; set; }
+        // Total DISTINCT students who have completed this Mock Test (Submitted/AutoSubmitted only,
+        // never an in-progress attempt) -- shown to every visitor, logged in or not, same "Attempted
+        // by X students" idea as PaperResponseDto.AttemptCount. Distinct per student so someone
+        // retaking the same test several times doesn't inflate this number -- see
+        // MockTestsController.List's own comment for the exact query.
+        public int AttemptCount { get; set; }
         // Whether the current viewer has this mock test bookmarked (false when not logged in).
         public bool IsBookmarked { get; set; }
     }

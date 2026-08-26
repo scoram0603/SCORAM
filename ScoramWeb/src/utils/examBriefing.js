@@ -157,7 +157,7 @@ function loadPracticeAdhoc(state) {
     subtitle: labels.examName || null,
     details: detailRows([
       ["Subject", labels.subjectName], ["Topic", labels.topicName], ["Exam", labels.examName],
-      ["Difficulty", labels.difficultyLabel],
+      ["Difficulty", labels.difficultyLabel], ["Medium", labels.languageLabel],
     ]),
     questionCount: filters.questionCount,
     durationMinutes: filters.durationMinutes,

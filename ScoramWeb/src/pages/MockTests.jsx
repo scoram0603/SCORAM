@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, Clock, Play, RotateCcw } from "lucide-react";
+import { ArrowLeft, Loader2, Clock, Play, RotateCcw, Users } from "lucide-react";
 import { listMockTests } from "../api/mockTests";
 import BookmarkButton from "../components/questions/BookmarkButton";
+import SearchableSelect from "../components/ui/SearchableSelect";
 
 const AVAILABILITY_STYLES = {
   Upcoming: "bg-secondary-50 text-secondary-500",
@@ -10,19 +11,26 @@ const AVAILABILITY_STYLES = {
   Completed: "bg-ink-100 text-ink-400",
 };
 
+const LANGUAGE_OPTIONS = [
+  { value: "Hindi", label: "Hindi" },
+  { value: "English", label: "English" },
+];
+
 export default function MockTests() {
   const navigate = useNavigate();
   const [tests, setTests] = useState(null);
   const [status, setStatus] = useState("loading");
+  const [language, setLanguage] = useState([]); // SearchableSelect works with arrays; single value here
 
   useEffect(() => {
-    listMockTests({ page: 1, pageSize: 50 })
+    setStatus("loading");
+    listMockTests({ page: 1, pageSize: 50, language: language[0] })
       .then((res) => {
         setTests(res.items);
         setStatus("success");
       })
       .catch(() => setStatus("error"));
-  }, []);
+  }, [language]);
 
   function handleStart(id) {
     navigate(`/tests/instructions/mock/${id}`);
@@ -39,8 +47,22 @@ export default function MockTests() {
         Tests
       </button>
 
-      <h1 className="mt-3 text-xl font-extrabold text-ink-900 sm:text-2xl">Mock Tests</h1>
-      <p className="mt-1 text-sm text-ink-400">Experience the real exam pattern with timed mock tests.</p>
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-extrabold text-ink-900 sm:text-2xl">Mock Tests</h1>
+          <p className="mt-1 text-sm text-ink-400">Experience the real exam pattern with timed mock tests.</p>
+        </div>
+        <div className="w-40">
+          <SearchableSelect
+            label="Medium"
+            placeholder="Any language"
+            options={LANGUAGE_OPTIONS}
+            selected={language}
+            onChange={setLanguage}
+            multi={false}
+          />
+        </div>
+      </div>
 
       <div className="mt-5">
         {status === "loading" && (
@@ -65,12 +87,16 @@ export default function MockTests() {
                         {t.availabilityStatus}
                       </span>
                       <span className="text-[11px] font-semibold text-ink-400">{t.examName}</span>
+                      {t.language && <span className="rounded-md bg-mint-50 px-2 py-0.5 text-[11px] font-bold text-mint-600">{t.language}</span>}
                     </div>
                     <p className="mt-1 text-sm font-bold text-ink-900">{t.title}</p>
-                    <p className="mt-0.5 flex items-center gap-1 text-xs text-ink-400">
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs text-ink-400">
                       <Clock className="h-3.5 w-3.5" strokeWidth={2} />
                       {t.durationMinutes} min · {t.questionCount} questions
                       {t.maxAttempts != null && ` · ${t.myAttemptCount ?? 0}/${t.maxAttempts} attempts used`}
+                      <span className="mx-0.5 text-primary-200">·</span>
+                      <Users className="h-3.5 w-3.5" strokeWidth={2} />
+                      {t.attemptCount > 0 ? `Attempted by ${t.attemptCount} student${t.attemptCount === 1 ? "" : "s"}` : "No attempts yet"}
                     </p>
                   </div>
 

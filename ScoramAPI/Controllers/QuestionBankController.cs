@@ -27,7 +27,7 @@ namespace ScoramAPI.Controllers
             _gamification = gamification;
         }
 
-        // GET /api/question-bank/search?search=&subjectId=&topicId=&examId=&year=&page=&pageSize=
+        // GET /api/question-bank/search?search=&subjectIds=&topicIds=&examIds=&years=&languages=&page=&pageSize=
         // Server-side search + filtering + pagination throughout (section 15/16) -- never loads the
         // whole table into memory, works the same whether the bank has 500 questions or 500,000.
         [HttpGet("search")]
@@ -50,12 +50,29 @@ namespace ScoramAPI.Controllers
                 q = q.Where(x => EF.Functions.Like(x.QuestionText, $"%{term}%"));
             }
 
-            if (query.SubjectId.HasValue) q = q.Where(x => x.SubjectId == query.SubjectId);
-            if (query.TopicId.HasValue) q = q.Where(x => x.TopicId == query.TopicId);
-            if (query.ExamId.HasValue) q = q.Where(x => x.ExamMappings.Any(m => m.ExamId == query.ExamId));
-            if (query.Year.HasValue) q = q.Where(x => x.ExamMappings.Any(m => m.Year == query.Year));
-            if (!string.IsNullOrWhiteSpace(query.Language) && Enum.TryParse<PaperLanguage>(query.Language, ignoreCase: true, out var languageFilter))
-                q = q.Where(x => x.Language == languageFilter);
+            // Multi-select: each non-empty filter narrows the result (AND across filters), matching
+            // ANY of its own selected values (OR within that one filter) -- e.g. examIds=[SSC CGL,
+            // RRB NTPC] AND subjectIds=[Reasoning] returns Reasoning questions asked in either exam.
+            // A student who only ever picks one value per filter (the old single-select experience)
+            // gets identical results to before -- .Contains() against a 1-item list is just "==".
+            if (query.SubjectIds is { Count: > 0 } subjectIds)
+                q = q.Where(x => subjectIds.Contains(x.SubjectId));
+            if (query.TopicIds is { Count: > 0 } topicIds)
+                q = q.Where(x => topicIds.Contains(x.TopicId));
+            if (query.ExamIds is { Count: > 0 } examIds)
+                q = q.Where(x => x.ExamMappings.Any(m => examIds.Contains(m.ExamId)));
+            if (query.Years is { Count: > 0 } years)
+                q = q.Where(x => x.ExamMappings.Any(m => years.Contains(m.Year)));
+            if (query.Languages is { Count: > 0 } rawLanguages)
+            {
+                var languageFilters = rawLanguages
+                    .Select(l => Enum.TryParse<PaperLanguage>(l, ignoreCase: true, out var parsed) ? (PaperLanguage?)parsed : null)
+                    .Where(l => l.HasValue)
+                    .Select(l => l!.Value)
+                    .ToList();
+                if (languageFilters.Count > 0)
+                    q = q.Where(x => x.Language != null && languageFilters.Contains(x.Language.Value));
+            }
 
             q = q.OrderByDescending(x => x.CreatedAt);
 

@@ -32,7 +32,7 @@ namespace ScoramAPI.Services
         /// available"). Returns fewer than `count` if the pool genuinely doesn't have enough.</summary>
         Task<List<QuestionRef>> SelectPracticeQuestionsAsync(
             ScoramDbContext db, Guid userId, Guid? subjectId, Guid? topicId, Guid? examId,
-            int? yearFrom, int? yearTo, DifficultyLevel? difficulty, int count);
+            int? yearFrom, int? yearTo, DifficultyLevel? difficulty, int count, PaperLanguage? language = null);
 
         /// <summary>Ranks the subjects behind a student's own graded, wrong-answer-containing history
         /// (across every TestKind, most recent first) from weakest accuracy to strongest, ignoring any
@@ -114,7 +114,7 @@ namespace ScoramAPI.Services
 
         public async Task<List<QuestionRef>> SelectPracticeQuestionsAsync(
             ScoramDbContext db, Guid userId, Guid? subjectId, Guid? topicId, Guid? examId,
-            int? yearFrom, int? yearTo, DifficultyLevel? difficulty, int count)
+            int? yearFrom, int? yearTo, DifficultyLevel? difficulty, int count, PaperLanguage? language = null)
         {
             // Question Bank is the pool for Practice Tests (spec's own architecture diagram: Question
             // Bank -> Practice Tests) -- legacy PYQ Papers aren't included here, since those questions
@@ -127,6 +127,9 @@ namespace ScoramAPI.Services
             if (examId.HasValue) pool = pool.Where(q => q.ExamMappings.Any(m => m.ExamId == examId));
             if (yearFrom.HasValue) pool = pool.Where(q => q.ExamMappings.Any(m => m.Year >= yearFrom));
             if (yearTo.HasValue) pool = pool.Where(q => q.ExamMappings.Any(m => m.Year <= yearTo));
+            // A question with no medium tagged (Language == null) always stays eligible regardless of
+            // this filter -- same "untagged = shows for everyone" rule as Mock Test/Quiz/Paper.
+            if (language.HasValue) pool = pool.Where(q => q.Language == null || q.Language == language);
 
             var eligibleIds = await pool.Select(q => q.Id).ToListAsync();
             if (eligibleIds.Count == 0) return new List<QuestionRef>();

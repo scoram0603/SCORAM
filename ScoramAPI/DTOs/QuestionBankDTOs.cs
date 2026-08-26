@@ -165,12 +165,20 @@ namespace ScoramAPI.DTOs
         // Free-text: matches a keyword OR a fully-pasted question (partial match either way -- see
         // QuestionBankController.Search).
         public string? Search { get; set; }
-        public Guid? SubjectId { get; set; }
-        public Guid? TopicId { get; set; }
-        public Guid? ExamId { get; set; }
-        public int? Year { get; set; }
-        // "Hindi" | "English" -- matches Language exactly (case-insensitive, see Search's parsing).
-        public string? Language { get; set; }
+
+        // Each filter accepts one OR several values -- e.g. ?examIds=guid1&examIds=guid2 matches
+        // questions mapped to EITHER exam (OR within a filter). Selecting values across different
+        // filters narrows the result (AND across filters) -- e.g. examIds=[SSC CGL, RRB NTPC] AND
+        // subjectIds=[Reasoning] returns Reasoning questions from either exam. A student can leave
+        // any filter empty (matches everything) or pick just one value -- multi-select doesn't force
+        // multiple picks, see QuestionBankController.Search for the exact query-building.
+        public List<Guid>? SubjectIds { get; set; }
+        public List<Guid>? TopicIds { get; set; }
+        public List<Guid>? ExamIds { get; set; }
+        public List<int>? Years { get; set; }
+        // "Hindi" | "English", one or several -- matches Language exactly (case-insensitive, see
+        // Search's parsing).
+        public List<string>? Languages { get; set; }
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
     }
@@ -193,6 +201,12 @@ namespace ScoramAPI.DTOs
         public string Subject { get; set; } = string.Empty;
         public string Topic { get; set; } = string.Empty;
         public string? SourceReference { get; set; }
+
+        // "Hindi" | "English" | "" (blank) -- optional per-row medium. A blank value is resolved to
+        // the upload's DefaultLanguage (see Preview's "language" form field) during ValidateAsync,
+        // so admins can either set the medium once for the whole batch OR override it row-by-row in
+        // the file itself -- both are supported (see QuestionBankAdminController.Preview).
+        public string? Language { get; set; }
 
         // Raw "ExamName:Year" pairs as typed in the file (e.g. "SSC CGL:2018; UP TGT:2022") --
         // parsed into structured pairs below once the row passes basic validation.

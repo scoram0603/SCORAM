@@ -19,8 +19,12 @@ namespace ScoramAPI.Services
 
         /// <summary>Annotates each row's IsValid/Errors/IsDuplicate in place. Checks required fields,
         /// a parseable CorrectOption, at least one valid Exam+Year pair, and duplicate detection
-        /// (normalized question text) against both the database and the rest of this same batch.</summary>
-        Task ValidateAsync(List<QuestionBankImportRow> rows, ScoramDbContext db);
+        /// (normalized question text) against both the database and the rest of this same batch.
+        /// <paramref name="defaultLanguage"/> (from the upload's "Default Language" picker -- see
+        /// QuestionBankAdminController.Preview) is applied to any row whose own Language column was
+        /// left blank; a row that DOES specify its own Language (e.g. a batch mixing Hindi and
+        /// English questions in one file) always keeps its own value instead.</summary>
+        Task ValidateAsync(List<QuestionBankImportRow> rows, ScoramDbContext db, string? defaultLanguage = null);
 
         /// <summary>Lowercases, collapses whitespace, and strips basic punctuation -- see section 13 of
         /// the spec ("Who discovered Harappa?" and "Who discovered Harappa ?" must normalize equal).
@@ -35,6 +39,11 @@ namespace ScoramAPI.Services
             "QuestionText", "OptionA", "OptionB", "OptionC", "OptionD", "CorrectOption",
             "Subject", "Topic", "ExamYears"
         };
+
+        // Language is deliberately NOT in RequiredHeaders -- a file without this column at all is
+        // still valid (every row just falls back to the upload's Default Language, or stays unset if
+        // that wasn't provided either). This keeps every template/file created before this feature
+        // existed working unchanged.
 
         public async Task<List<QuestionBankImportRow>> ParseAsync(Stream fileStream, ImportFileFormat format)
         {
@@ -126,6 +135,7 @@ namespace ScoramAPI.Services
                     Subject = (j.Subject ?? "").Trim(),
                     Topic = (j.Topic ?? "").Trim(),
                     SourceReference = string.IsNullOrWhiteSpace(j.SourceReference) ? null : j.SourceReference!.Trim(),
+                    Language = string.IsNullOrWhiteSpace(j.Language) ? null : j.Language!.Trim(),
                     RawExamYears = rawExamYears.Trim()
                 };
                 rows.Add(row);
@@ -146,6 +156,7 @@ namespace ScoramAPI.Services
             Subject = field("Subject"),
             Topic = field("Topic"),
             SourceReference = string.IsNullOrWhiteSpace(field("SourceReference")) ? null : field("SourceReference"),
+            Language = string.IsNullOrWhiteSpace(field("Language")) ? null : field("Language"),
             RawExamYears = field("ExamYears")
         };
 
@@ -159,8 +170,11 @@ namespace ScoramAPI.Services
                     "Use the \"Download Excel Template\" button to get the exact format.");
         }
 
-        public async Task ValidateAsync(List<QuestionBankImportRow> rows, ScoramDbContext db)
+        public async Task ValidateAsync(List<QuestionBankImportRow> rows, ScoramDbContext db, string? defaultLanguage = null)
         {
+            // Normalize once up front -- "" (blank/omitted) counts as "not specified" for the
+            // fallback below, same as null.
+            var normalizedDefault = string.IsNullOrWhiteSpace(defaultLanguage) ? null : defaultLanguage.Trim();
             // Load every existing (NormalizedText -> QuestionId/snippet) pair once, rather than one
             // query per row -- fine up to a few hundred thousand questions; if the bank grows well
             // past that, this can become a per-row indexed lookup instead.
@@ -193,6 +207,19 @@ namespace ScoramAPI.Services
                     row.Errors.Add("Correct option is required (A, B, C, or D).");
                 else if (!Enum.TryParse<OptionLetter>(row.CorrectOption, ignoreCase: true, out _))
                     row.Errors.Add($"'{row.CorrectOption}' isn't a valid correct option (expected A, B, C, or D).");
+
+                // Medium/Language: a row that specifies its own value keeps it (lets one batch mix
+                // Hindi and English rows); a blank row falls back to the upload's Default Language,
+                // if one was chosen. Either way is optional -- a row can still end up with no
+                // Language at all, same as before this feature existed.
+                if (string.IsNullOrWhiteSpace(row.Language))
+                {
+                    row.Language = normalizedDefault;
+                }
+                else if (!Enum.TryParse<PaperLanguage>(row.Language.Trim(), ignoreCase: true, out _))
+                {
+                    row.Errors.Add($"'{row.Language}' isn't a valid Language (expected Hindi or English).");
+                }
 
                 var (examYears, examYearErrors) = ParseExamYears(row.RawExamYears);
                 row.ExamYears = examYears;
@@ -313,6 +340,8 @@ namespace ScoramAPI.Services
             public string? Subject { get; set; }
             public string? Topic { get; set; }
             public string? SourceReference { get; set; }
+            // "Hindi" | "English", optional -- see QuestionBankImportRow.Language's own comment.
+            public string? Language { get; set; }
 
             // Accepts either shape -- see ParseJsonAsync above.
             public List<JsonExamYear>? ExamYears { get; set; }

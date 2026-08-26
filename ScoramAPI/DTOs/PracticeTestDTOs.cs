@@ -10,6 +10,8 @@ namespace ScoramAPI.DTOs
         public int? YearFrom { get; set; }
         public int? YearTo { get; set; }
         public string? Difficulty { get; set; } // Easy | Medium | Hard, null = any
+        // "Hindi" | "English", optional -- see QuestionBankQuestion.Language.
+        public string? Language { get; set; }
         public int QuestionCount { get; set; } = 20;
         public int DurationMinutes { get; set; } = 20;
         public decimal NegativeMarkingRatio { get; set; } = 0m;

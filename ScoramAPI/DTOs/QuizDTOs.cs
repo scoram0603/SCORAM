@@ -42,6 +42,9 @@ namespace ScoramAPI.DTOs
         [Range(0, 2)]
         public decimal NegativeMarkingRatio { get; set; } = 0m;
 
+        // "Hindi" | "English", optional -- see Models/QuizModels.cs's Quiz.Language.
+        public string? Language { get; set; }
+
         public DateTime? AvailableFrom { get; set; }
         public DateTime? AvailableTo { get; set; }
 
@@ -63,6 +66,8 @@ namespace ScoramAPI.DTOs
         public int DurationMinutes { get; set; }
         public decimal NegativeMarkingRatio { get; set; }
         public int QuestionCount { get; set; }
+        // "Hindi" | "English" | null (medium not tagged) -- lets students filter Quizzes by medium.
+        public string? Language { get; set; }
         public DateTime? AvailableFrom { get; set; }
         public DateTime? AvailableTo { get; set; }
         public string Status { get; set; } = string.Empty;

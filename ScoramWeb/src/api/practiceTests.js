@@ -19,8 +19,8 @@ export function getPracticeTestTemplate(id, opts = {}) {
 }
 
 // POST /api/practice-tests/generate -- ad-hoc, student-configured. filters: { subjectId, topicId,
-// examId, yearFrom, yearTo, difficulty, questionCount, durationMinutes, negativeMarkingRatio,
-// isRandomOrder }
+// examId, yearFrom, yearTo, difficulty, language, questionCount, durationMinutes,
+// negativeMarkingRatio, isRandomOrder }
 export function generatePracticeTest(filters) {
   return apiFetch("/api/practice-tests/generate", { method: "POST", auth: true, body: filters });
 }
@@ -37,4 +37,11 @@ export const DIFFICULTY_OPTIONS = [
   { value: "Easy", label: "Easy" },
   { value: "Medium", label: "Medium" },
   { value: "Hard", label: "Hard" },
+];
+
+// Medium/language options for the same form -- must match ScoramAPI.Enums.PaperLanguage.
+export const LANGUAGE_OPTIONS = [
+  { value: "", label: "Any language" },
+  { value: "Hindi", label: "Hindi" },
+  { value: "English", label: "English" },
 ];

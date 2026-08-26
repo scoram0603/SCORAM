@@ -104,6 +104,7 @@ namespace ScoramAPI.Controllers
                 Topic = dto.Topic,
                 DurationMinutes = dto.DurationMinutes,
                 NegativeMarkingRatio = dto.NegativeMarkingRatio,
+                Language = MockTestsController.ParseLanguage(dto.Language),
                 AvailableFrom = dto.AvailableFrom,
                 AvailableTo = dto.AvailableTo,
                 MaxAttempts = dto.MaxAttempts,
@@ -131,6 +132,7 @@ namespace ScoramAPI.Controllers
             quiz.Topic = dto.Topic;
             quiz.DurationMinutes = dto.DurationMinutes;
             quiz.NegativeMarkingRatio = dto.NegativeMarkingRatio;
+            quiz.Language = MockTestsController.ParseLanguage(dto.Language);
             quiz.AvailableFrom = dto.AvailableFrom;
             quiz.AvailableTo = dto.AvailableTo;
             quiz.MaxAttempts = dto.MaxAttempts;
@@ -231,6 +233,7 @@ namespace ScoramAPI.Controllers
                 Topic = source.Topic,
                 DurationMinutes = source.DurationMinutes,
                 NegativeMarkingRatio = source.NegativeMarkingRatio,
+                Language = source.Language,
                 MaxAttempts = source.MaxAttempts,
                 // Deliberately NOT copying AvailableFrom/AvailableTo -- a duplicated quiz's whole
                 // point is usually a different day/window, so those default to unset (admin sets
@@ -343,6 +346,7 @@ namespace ScoramAPI.Controllers
             DurationMinutes = q.DurationMinutes,
             NegativeMarkingRatio = q.NegativeMarkingRatio,
             QuestionCount = q.QuizQuestions.Count,
+            Language = q.Language?.ToString(),
             AvailableFrom = q.AvailableFrom,
             AvailableTo = q.AvailableTo,
             Status = q.Status.ToString(),

@@ -239,6 +239,7 @@ function QuizForm({ token, quizId, onCancel, onCreated, onDone }) {
   const [topic, setTopic] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(10);
   const [negativeMarkingRatio, setNegativeMarkingRatio] = useState(0);
+  const [language, setLanguage] = useState(""); // "" | "Hindi" | "English"
   const [availableFrom, setAvailableFrom] = useState("");
   const [availableTo, setAvailableTo] = useState("");
   const [maxAttempts, setMaxAttempts] = useState(1);
@@ -254,6 +255,7 @@ function QuizForm({ token, quizId, onCancel, onCreated, onDone }) {
       setTopic(q.topic || "");
       setDurationMinutes(q.durationMinutes);
       setNegativeMarkingRatio(q.negativeMarkingRatio);
+      setLanguage(q.language || "");
       setAvailableFrom(q.availableFrom ? q.availableFrom.slice(0, 16) : "");
       setAvailableTo(q.availableTo ? q.availableTo.slice(0, 16) : "");
       setMaxAttempts(q.maxAttempts ?? "");
@@ -267,6 +269,7 @@ function QuizForm({ token, quizId, onCancel, onCreated, onDone }) {
       topic: topic || null,
       durationMinutes: Number(durationMinutes),
       negativeMarkingRatio: Number(negativeMarkingRatio),
+      language: language || null,
       availableFrom: availableFrom || null,
       availableTo: availableTo || null,
       maxAttempts: maxAttempts === "" ? null : Number(maxAttempts),
@@ -353,6 +356,14 @@ function QuizForm({ token, quizId, onCancel, onCreated, onDone }) {
               <FormField label="Duration (minutes)"><TextInput type="number" min="1" required value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} /></FormField>
               <FormField label="Negative Marking Ratio"><TextInput type="number" step="0.05" min="0" max="2" value={negativeMarkingRatio} onChange={(e) => setNegativeMarkingRatio(e.target.value)} /></FormField>
             </div>
+
+            <FormField label="Medium / Language (optional)">
+              <Select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                <option value="">Not set (shows for every student)</option>
+                <option value="Hindi">Hindi</option>
+                <option value="English">English</option>
+              </Select>
+            </FormField>
 
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Live from (optional)"><TextInput type="datetime-local" value={availableFrom} onChange={(e) => setAvailableFrom(e.target.value)} /></FormField>

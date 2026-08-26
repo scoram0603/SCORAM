@@ -1,0 +1,43 @@
+[33mcommit a03b5235d8657e3e40153738905ed22ab955a884[m
+Author: Durgesh Kumar <mr.durgesh06@gamil.com>
+Date:   Wed Aug 26 09:53:53 2026 +0530
+
+    Searchable Select & Add Language Medium
+
+ ScoramAPI/Controllers/MockTestsAdminController.cs  |   19 [32m+[m[31m-[m
+ ScoramAPI/Controllers/MockTestsController.cs       |   43 [32m+[m[31m-[m
+ ScoramAPI/Controllers/PracticeTestsController.cs   |    3 [32m+[m[31m-[m
+ .../Controllers/QuestionBankAdminController.cs     |   38 [32m+[m[31m-[m
+ ScoramAPI/Controllers/QuestionBankController.cs    |   31 [32m+[m[31m-[m
+ ScoramAPI/Controllers/QuizzesAdminController.cs    |    4 [32m+[m
+ ScoramAPI/Controllers/QuizzesController.cs         |    9 [32m+[m[31m-[m
+ ScoramAPI/DTOs/MockTestDTOs.cs                     |   11 [32m+[m
+ ScoramAPI/DTOs/PracticeTestDTOs.cs                 |    2 [32m+[m
+ ScoramAPI/DTOs/QuestionBankDTOs.cs                 |   26 [32m+[m[31m-[m
+ ScoramAPI/DTOs/QuizDTOs.cs                         |    5 [32m+[m
+ ...040832_AddLanguageToMockTestAndQuiz.Designer.cs | 3878 [32m++++++++++++++++++++[m
+ .../20260826040832_AddLanguageToMockTestAndQuiz.cs |   38 [32m+[m
+ .../Migrations/ScoramDbContextModelSnapshot.cs     |    6 [32m+[m
+ ScoramAPI/Models/MockTestModels.cs                 |    6 [32m+[m
+ ScoramAPI/Models/QuizModels.cs                     |    5 [32m+[m
+ ScoramAPI/Services/QuestionBankImportService.cs    |   35 [32m+[m[31m-[m
+ ScoramAPI/Services/TestAttemptService.cs           |    7 [32m+[m[31m-[m
+ ScoramAPI/appsettings.json                         |    8 [32m+[m[31m-[m
+ ScoramWeb/src/admin/api/questionBankImport.js      |    5 [32m+[m[31m-[m
+ ScoramWeb/src/admin/pages/MockTestManagement.jsx   |   19 [32m+[m[31m-[m
+ .../src/admin/pages/QuestionBankUploadWizard.jsx   |   24 [32m+[m[31m-[m
+ ScoramWeb/src/admin/pages/QuizManagement.jsx       |   11 [32m+[m
+ ScoramWeb/src/api/practiceTests.js                 |   11 [32m+[m[31m-[m
+ ScoramWeb/src/api/questionBank.js                  |   26 [32m+[m[31m-[m
+ ScoramWeb/src/components/landing/LandingFooter.jsx |    9 [32m+[m[31m-[m
+ ScoramWeb/src/components/landing/LandingNavbar.jsx |    4 [32m+[m[31m-[m
+ .../components/questions/InteractiveOptions.jsx    |  100 [32m+[m
+ .../components/questions/QuestionBankFeedCard.jsx  |   70 [32m+[m[31m-[m
+ ScoramWeb/src/components/ui/SearchableSelect.jsx   |  165 [32m+[m
+ ScoramWeb/src/pages/MockTests.jsx                  |   38 [32m+[m[31m-[m
+ ScoramWeb/src/pages/PracticeTests.jsx              |   10 [32m+[m[31m-[m
+ ScoramWeb/src/pages/QuestionBankQuestionDetail.jsx |   55 [32m+[m[31m-[m
+ ScoramWeb/src/pages/QuestionBankSearch.jsx         |  351 [32m+[m[31m-[m
+ ScoramWeb/src/pages/Quizzes.jsx                    |    1 [32m+[m
+ ScoramWeb/src/utils/examBriefing.js                |    2 [32m+[m[31m-[m
+ 36 files changed, 4807 insertions(+), 268 deletions(-)

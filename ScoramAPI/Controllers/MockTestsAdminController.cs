@@ -48,6 +48,18 @@ namespace ScoramAPI.Controllers
             var tests = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
 
             var now = DateTime.UtcNow;
+            var testIds = tests.Select(t => t.Id).ToList();
+            var attemptCounts = testIds.Count == 0
+                ? new Dictionary<Guid, int>()
+                : await _db.StudentTestResults
+                    .Where(r => r.MockTestId != null && testIds.Contains(r.MockTestId.Value)
+                        && (r.Status == TestAttemptStatus.Submitted || r.Status == TestAttemptStatus.AutoSubmitted))
+                    .Select(r => new { MockTestId = r.MockTestId!.Value, r.UserId })
+                    .Distinct()
+                    .GroupBy(r => r.MockTestId)
+                    .Select(g => new { MockTestId = g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(g => g.MockTestId, g => g.Count);
+
             var items = tests.Select(t => new MockTestSummaryDto
             {
                 Id = t.Id,
@@ -57,11 +69,13 @@ namespace ScoramAPI.Controllers
                 DurationMinutes = t.DurationMinutes,
                 NegativeMarkingRatio = t.NegativeMarkingRatio,
                 QuestionCount = t.MockTestQuestions.Count,
+                Language = t.Language?.ToString(),
                 ScheduledAt = t.ScheduledAt,
                 EndAt = t.EndAt,
                 Status = t.Status.ToString(),
                 AvailabilityStatus = MockTestsController.ComputeAvailability(t, now),
-                MaxAttempts = t.MaxAttempts
+                MaxAttempts = t.MaxAttempts,
+                AttemptCount = attemptCounts.GetValueOrDefault(t.Id, 0)
             }).ToList();
 
             return Ok(new PagedResult<MockTestSummaryDto> { Items = items, TotalCount = totalCount, Page = page, PageSize = pageSize });
@@ -89,6 +103,7 @@ namespace ScoramAPI.Controllers
                 test.NegativeMarkingRatio,
                 test.IsRandomOrder,
                 test.IsShuffleOptions,
+                Language = test.Language?.ToString(),
                 test.ScheduledAt,
                 test.EndAt,
                 Status = test.Status.ToString(),
@@ -128,6 +143,7 @@ namespace ScoramAPI.Controllers
             test.NegativeMarkingRatio = dto.NegativeMarkingRatio;
             test.IsRandomOrder = dto.IsRandomOrder;
             test.IsShuffleOptions = dto.IsShuffleOptions;
+            test.Language = MockTestsController.ParseLanguage(dto.Language);
             test.ScheduledAt = dto.ScheduledAt;
             test.EndAt = dto.EndAt;
             test.MaxAttempts = dto.MaxAttempts;
@@ -179,6 +195,7 @@ namespace ScoramAPI.Controllers
                 NegativeMarkingRatio = source.NegativeMarkingRatio,
                 IsRandomOrder = source.IsRandomOrder,
                 IsShuffleOptions = source.IsShuffleOptions,
+                Language = source.Language,
                 Instructions = source.Instructions,
                 MaxAttempts = source.MaxAttempts,
                 Status = TestPublishStatus.Draft,

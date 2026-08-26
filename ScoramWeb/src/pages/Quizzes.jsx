@@ -200,6 +200,7 @@ function DailyQuizzesSection() {
                 <p className="text-sm font-bold text-ink-900">
                   {q.title}
                   {isUpcoming && <span className="ml-2 rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-bold text-primary-600">Upcoming</span>}
+                  {q.language && <span className="ml-2 rounded-full bg-mint-50 px-2 py-0.5 text-[10px] font-bold text-mint-600">{q.language}</span>}
                 </p>
                 <p className="mt-0.5 text-xs text-ink-400">
                   {q.topic ? `${q.topic} · ` : ""}{q.questionCount} Q · {q.durationMinutes} min

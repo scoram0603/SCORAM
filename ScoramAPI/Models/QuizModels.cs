@@ -28,6 +28,11 @@ namespace ScoramAPI.Models
 
         public decimal NegativeMarkingRatio { get; set; } = 0m;
 
+        // Which medium this Quiz is in -- same reasoning as MockTest.Language/Paper.Language.
+        // Nullable/optional so an existing Quiz just has no medium tagged rather than needing a
+        // backfill guess, and keeps showing up (untagged) regardless of a student's Language filter.
+        public PaperLanguage? Language { get; set; }
+
         // The window during which students can see/start this quiz -- same idea as
         // MockTest.ScheduledAt/EndAt, named differently here since "Scheduled" implies a single
         // sitting whereas a quiz is meant to just be "live" for however long an admin sets (a whole

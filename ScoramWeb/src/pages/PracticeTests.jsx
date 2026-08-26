@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, ChevronDown, Sparkles, Play } from "lucide-react";
 import { getQuestionBankSubjects, getQuestionBankTopics, getQuestionBankExams } from "../api/questionBank";
-import { listPracticeTestTemplates, DIFFICULTY_OPTIONS } from "../api/practiceTests";
+import { listPracticeTestTemplates, DIFFICULTY_OPTIONS, LANGUAGE_OPTIONS } from "../api/practiceTests";
 
 const QUESTION_COUNT_OPTIONS = [10, 20, 30, 50];
 const DURATION_OPTIONS = [10, 20, 30, 45, 60];
@@ -17,6 +17,7 @@ export default function PracticeTests() {
   const [topicId, setTopicId] = useState("");
   const [examId, setExamId] = useState("");
   const [difficulty, setDifficulty] = useState("");
+  const [language, setLanguage] = useState(""); // "" | "Hindi" | "English"
   const [questionCount, setQuestionCount] = useState(20);
   const [durationMinutes, setDurationMinutes] = useState(20);
   const [generating, setGenerating] = useState(false);
@@ -45,6 +46,7 @@ export default function PracticeTests() {
     const topicName = topics.find((t) => t.id === topicId)?.name || null;
     const examName = exams.find((x) => x.id === examId)?.name || null;
     const difficultyLabel = DIFFICULTY_OPTIONS.find((d) => d.value === difficulty)?.label || null;
+    const languageLabel = LANGUAGE_OPTIONS.find((l) => l.value === language)?.label || null;
 
     navigate("/tests/instructions/practice-adhoc/adhoc", {
       state: {
@@ -53,12 +55,13 @@ export default function PracticeTests() {
           topicId: topicId || null,
           examId: examId || null,
           difficulty: difficulty || null,
+          language: language || null,
           questionCount,
           durationMinutes,
           negativeMarkingRatio: 0,
           isRandomOrder: true,
         },
-        labels: { subjectName, topicName, examName, difficultyLabel },
+        labels: { subjectName, topicName, examName, difficultyLabel, languageLabel },
       },
     });
   }
@@ -90,6 +93,9 @@ export default function PracticeTests() {
           </Dropdown>
           <Dropdown label="Difficulty" value={difficulty} onChange={setDifficulty} placeholder={DIFFICULTY_OPTIONS[0].label}>
             {DIFFICULTY_OPTIONS.slice(1).map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+          </Dropdown>
+          <Dropdown label="Medium" value={language} onChange={setLanguage} placeholder={LANGUAGE_OPTIONS[0].label}>
+            {LANGUAGE_OPTIONS.slice(1).map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
           </Dropdown>
           <Dropdown label="Number of Questions" value={String(questionCount)} onChange={(v) => setQuestionCount(Number(v))}>
             {QUESTION_COUNT_OPTIONS.map((n) => <option key={n} value={n}>{n} questions</option>)}
