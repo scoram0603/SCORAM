@@ -211,6 +211,30 @@ export default function QuestionBankSearch() {
     }
   }
 
+  // Swipe-to-navigate for Slide mode on touch devices -- the Prev/Next buttons stay as a fallback
+  // (desktop, accessibility), but a finger swipe shouldn't require hitting a tiny arrow. Only a
+  // mostly-horizontal drag past the threshold counts, so a normal tap on an option/like/discuss
+  // button (or a vertical scroll) is never mistaken for a swipe.
+  const touchStartRef = useRef(null);
+  const SWIPE_THRESHOLD_PX = 60;
+
+  function handleCardTouchStart(e) {
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+  }
+
+  function handleCardTouchEnd(e) {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) < SWIPE_THRESHOLD_PX || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx < 0) handleSlideNext();
+    else handleSlidePrev();
+  }
+
   // Left/Right arrow keys navigate in Slide mode -- matches the on-screen Prev/Next buttons.
   useEffect(() => {
     if (browseMode !== "slide") return;
@@ -527,38 +551,37 @@ export default function QuestionBankSearch() {
 
         {items.length > 0 && browseMode === "slide" && currentSlideItem && (
           <>
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-ink-400">
-                Question {slideIndex + 1} of {totalCount}
-              </p>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={handleSlidePrev}
-                  disabled={slideIndex === 0}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 text-primary-600 hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label="Previous question"
-                >
-                  <ChevronLeft className="h-4 w-4" strokeWidth={2.5} />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSlideNext}
-                  disabled={slideIndex + 1 >= totalCount || (slideIndex + 1 >= items.length && !hasMore)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 text-primary-600 hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label="Next question"
-                >
-                  {status === "loading-more" ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.25} />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
-                  )}
-                </button>
-              </div>
-            </div>
-            <div className="mt-2">
+            <p className="text-xs font-medium text-ink-400">
+              Question {slideIndex + 1} of {totalCount}
+            </p>
+            <div className="mt-2" onTouchStart={handleCardTouchStart} onTouchEnd={handleCardTouchEnd}>
               <QuestionBankFeedCard key={currentSlideItem.id} question={currentSlideItem} onQuestionChange={handleQuestionChange} />
             </div>
+            <div className="mt-3 flex items-center justify-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleSlidePrev}
+                disabled={slideIndex === 0}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 text-primary-600 hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Previous question"
+              >
+                <ChevronLeft className="h-4 w-4" strokeWidth={2.5} />
+              </button>
+              <button
+                type="button"
+                onClick={handleSlideNext}
+                disabled={slideIndex + 1 >= totalCount || (slideIndex + 1 >= items.length && !hasMore)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 text-primary-600 hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Next question"
+              >
+                {status === "loading-more" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.25} />
+                ) : (
+                  <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
+                )}
+              </button>
+            </div>
+            <p className="mt-1 text-center text-[11px] text-ink-300 sm:hidden">Swipe left or right to change question</p>
           </>
         )}
       </div>

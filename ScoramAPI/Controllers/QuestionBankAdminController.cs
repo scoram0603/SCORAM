@@ -570,6 +570,55 @@ namespace ScoramAPI.Controllers
             });
         }
 
+        // PATCH /api/admin/question-bank/bulk/{jobId}/rows/{rowNumber} -- admin corrects a row's
+        // text, options, correct answer, explanation, subject/topic, or exam/year pairs during
+        // review, before commit (same "fix it right here instead of re-uploading" idea as
+        // BulkImportController's paper-level equivalent). Overwrites the cached row and re-runs full
+        // ValidateAsync (duplicate checks depend on sibling rows, not just this one), so the response
+        // reflects whether the edit actually fixed the problem.
+        [HttpPatch("bulk/{jobId:guid}/rows/{rowNumber:int}")]
+        public async Task<ActionResult<QuestionBankImportRow>> UpdateRow(Guid jobId, int rowNumber, QuestionBankImportRow edited)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageQuestionBank))
+                return Forbid();
+
+            var job = await _db.QuestionBankImportJobs.FindAsync(jobId);
+            if (job == null) return NotFound(new { message = "Import job not found." });
+            if (job.Status != ImportJobStatus.PendingReview)
+                return BadRequest(new { message = $"This import is already {job.Status} and its rows can't be edited anymore." });
+
+            if (!_cache.TryGetValue(CachePrefix + jobId, out List<QuestionBankImportRow>? rows) || rows == null)
+                return BadRequest(new { message = "This preview has expired (previews last 30 minutes). Please re-upload the file." });
+
+            var row = rows.FirstOrDefault(r => r.RowNumber == rowNumber);
+            if (row == null) return NotFound(new { message = "Row not found in this import." });
+
+            // Only the editable fields -- RowNumber/IsValid/Errors/duplicate flags are never trusted
+            // from the client, they're recomputed by ValidateAsync below.
+            row.QuestionText = edited.QuestionText;
+            row.OptionA = edited.OptionA;
+            row.OptionB = edited.OptionB;
+            row.OptionC = edited.OptionC;
+            row.OptionD = edited.OptionD;
+            row.CorrectOption = edited.CorrectOption;
+            row.Explanation = edited.Explanation;
+            row.Subject = edited.Subject;
+            row.Topic = edited.Topic;
+            row.SourceReference = edited.SourceReference;
+            row.Language = edited.Language;
+            row.RawExamYears = edited.RawExamYears;
+
+            await _importService.ValidateAsync(rows, _db);
+
+            job.ValidRows = rows.Count(r => r.IsValid);
+            job.InvalidRows = rows.Count(r => !r.IsValid);
+            job.DuplicateRows = rows.Count(r => r.IsDuplicate);
+            _cache.Set(CachePrefix + jobId, rows, CacheLifetime);
+            await _db.SaveChangesAsync();
+
+            return Ok(row);
+        }
+
         // POST /api/admin/question-bank/bulk/{jobId}/commit
         // Valid + non-duplicate rows create a new QuestionBankQuestion. Valid + duplicate rows don't
         // create a second question -- their exam/year pairs are merged onto the existing question's

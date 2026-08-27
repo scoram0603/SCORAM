@@ -31,6 +31,31 @@ export function commitQuestionBankImport(token, jobId, rowNumbers) {
   });
 }
 
+// PATCH /api/admin/question-bank/bulk/{jobId}/rows/{rowNumber} -- corrects a row's fields during
+// review, before commit. Returns the updated row with fresh isValid/errors/duplicate info from
+// server-side re-validation.
+export function updatePreviewRow(token, jobId, rowNumber, row) {
+  return apiFetch(`/api/admin/question-bank/bulk/${jobId}/rows/${rowNumber}`, {
+    method: "PATCH",
+    token,
+    body: {
+      rowNumber,
+      questionText: row.questionText,
+      optionA: row.optionA,
+      optionB: row.optionB,
+      optionC: row.optionC,
+      optionD: row.optionD,
+      correctOption: row.correctOption,
+      explanation: row.explanation,
+      subject: row.subject,
+      topic: row.topic,
+      sourceReference: row.sourceReference,
+      language: row.language,
+      rawExamYears: row.rawExamYears,
+    },
+  });
+}
+
 export function getQuestionBankImportStatus(token, jobId) {
   return apiFetch(`/api/admin/question-bank/bulk/${jobId}`, { token });
 }

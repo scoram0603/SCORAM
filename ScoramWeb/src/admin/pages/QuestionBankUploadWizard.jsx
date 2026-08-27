@@ -5,10 +5,10 @@ import {
 } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import {
-  previewQuestionBankImport, commitQuestionBankImport, getQuestionBankImportHistory,
+  previewQuestionBankImport, commitQuestionBankImport, getQuestionBankImportHistory, updatePreviewRow,
   downloadExcelTemplate, downloadJsonTemplate,
 } from "../api/questionBankImport";
-import { PageHeader, Card, Button, Alert, friendlyError, ImportRowOptionsDetail } from "../components/AdminUI";
+import { PageHeader, Card, Button, FormField, TextInput, TextArea, Select, Alert, friendlyError } from "../components/AdminUI";
 
 // Spec sections 9-13: Excel or JSON bulk upload, with a mandatory preview → validate → confirm step
 // before anything touches the database (section 10: "DO NOT directly insert an unvalidated Excel
@@ -85,6 +85,34 @@ export default function QuestionBankUploadWizard() {
       const next = new Set(prev);
       if (next.has(rowNumber)) next.delete(rowNumber);
       else next.add(rowNumber);
+      return next;
+    });
+  }
+
+  // Called after a row's edit form saves successfully -- swaps the corrected (and freshly
+  // re-validated) row into the preview, keeps checkedRows in sync (a just-fixed row gets
+  // auto-checked; one that somehow became invalid gets unchecked), and collapses it back down.
+  function handleRowSaved(updatedRow) {
+    setPreview((prev) => {
+      if (!prev) return prev;
+      const rows = prev.rows.map((r) => (r.rowNumber === updatedRow.rowNumber ? updatedRow : r));
+      return {
+        ...prev,
+        rows,
+        validCount: rows.filter((r) => r.isValid).length,
+        invalidCount: rows.filter((r) => !r.isValid).length,
+        duplicateCount: rows.filter((r) => r.isDuplicate).length,
+      };
+    });
+    setCheckedRows((prev) => {
+      const next = new Set(prev);
+      if (updatedRow.isValid) next.add(updatedRow.rowNumber);
+      else next.delete(updatedRow.rowNumber);
+      return next;
+    });
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      next.delete(updatedRow.rowNumber);
       return next;
     });
   }
@@ -245,7 +273,7 @@ export default function QuestionBankUploadWizard() {
                   </span>
                 )}
                 <span className="text-ink-400">{checkedRows.size} selected to import</span>
-                <span className="text-ink-300">· click a row to review its full options &amp; explanation</span>
+                <span className="text-ink-300">· click a row to review &amp; edit it before importing</span>
               </div>
 
               <div className="mt-3 max-h-[28rem] overflow-y-auto rounded-lg border border-primary-100">
@@ -309,7 +337,7 @@ export default function QuestionBankUploadWizard() {
                           {isExpanded && (
                             <tr className="border-t border-primary-50 bg-primary-50/20">
                               <td colSpan={7} className="px-2 py-2">
-                                <ImportRowOptionsDetail row={row} />
+                                <QuestionBankRowEditor row={row} jobId={preview.jobId} token={token} onSaved={handleRowSaved} />
                               </td>
                             </tr>
                           )}
@@ -347,5 +375,120 @@ export default function QuestionBankUploadWizard() {
         )}
       </div>
     </div>
+  );
+}
+
+// Editable form for one not-yet-committed preview row -- lets the admin fix a wrong option,
+// correct answer, explanation, subject/topic, or exam/year tags right here during review instead of
+// correcting the source file and re-uploading. Saves via PATCH .../rows/{rowNumber}, which
+// re-validates server-side (including duplicate detection), so the row that comes back reflects
+// whether the edit actually fixed the problem.
+function QuestionBankRowEditor({ row, jobId, token, onSaved }) {
+  const [fields, setFields] = useState({
+    questionText: row.questionText,
+    optionA: row.optionA,
+    optionB: row.optionB,
+    optionC: row.optionC,
+    optionD: row.optionD,
+    correctOption: row.correctOption,
+    explanation: row.explanation || "",
+    subject: row.subject,
+    topic: row.topic,
+    sourceReference: row.sourceReference || "",
+    language: row.language || "",
+    rawExamYears: row.rawExamYears || "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  function updateField(key, value) {
+    setFields((f) => ({ ...f, [key]: value }));
+  }
+
+  async function handleSave(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await updatePreviewRow(token, jobId, row.rowNumber, fields);
+      onSaved(updated);
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSave} className="flex flex-col gap-3 rounded-lg border border-primary-100 bg-white p-3">
+      {row.errors?.length > 0 && (
+        <ul className="flex flex-col gap-0.5 text-xs text-red-600">
+          {row.errors.map((e, i) => (
+            <li key={i} className="flex items-start gap-1">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={2.5} />
+              {e}
+            </li>
+          ))}
+        </ul>
+      )}
+      {row.isDuplicate && (
+        <p className="text-xs text-accent-600">Duplicate of: {row.duplicateOfQuestionTextSnippet}</p>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Subject"><TextInput required value={fields.subject} onChange={(e) => updateField("subject", e.target.value)} /></FormField>
+        <FormField label="Topic"><TextInput required value={fields.topic} onChange={(e) => updateField("topic", e.target.value)} /></FormField>
+      </div>
+
+      <FormField label="Question text">
+        <TextArea required rows={2} value={fields.questionText} onChange={(e) => updateField("questionText", e.target.value)} />
+      </FormField>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {["A", "B", "C", "D"].map((letter) => (
+          <FormField key={letter} label={`Option ${letter}`}>
+            <div className="flex items-center gap-2">
+              <input
+                type="radio"
+                name={`correct-${jobId}-${row.rowNumber}`}
+                checked={fields.correctOption === letter}
+                onChange={() => updateField("correctOption", letter)}
+                className="h-4 w-4 accent-mint-500"
+                title={`Mark ${letter} as the correct option`}
+              />
+              <TextInput required value={fields[`option${letter}`]} onChange={(e) => updateField(`option${letter}`, e.target.value)} />
+            </div>
+          </FormField>
+        ))}
+      </div>
+      <p className="text-xs text-ink-400">Select the radio button next to the correct option.</p>
+
+      <FormField label="Explanation (optional)">
+        <TextArea rows={2} value={fields.explanation} onChange={(e) => updateField("explanation", e.target.value)} />
+      </FormField>
+
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Source reference (optional)">
+          <TextInput value={fields.sourceReference} onChange={(e) => updateField("sourceReference", e.target.value)} />
+        </FormField>
+        <FormField label="Medium">
+          <Select value={fields.language} onChange={(e) => updateField("language", e.target.value)}>
+            <option value="">Not set</option>
+            <option value="Hindi">Hindi</option>
+            <option value="English">English</option>
+          </Select>
+        </FormField>
+      </div>
+
+      <FormField label={<>Exam:Year pairs <span className="font-normal text-ink-400">— e.g. "SSC CGL:2018; UP TGT:2022"</span></>}>
+        <TextInput value={fields.rawExamYears} onChange={(e) => updateField("rawExamYears", e.target.value)} />
+      </FormField>
+
+      {error && <Alert>{error}</Alert>}
+
+      <div>
+        <Button type="submit" isLoading={saving}>Save changes</Button>
+      </div>
+    </form>
   );
 }
