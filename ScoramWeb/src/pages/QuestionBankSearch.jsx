@@ -323,7 +323,7 @@ export default function QuestionBankSearch() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-8 pt-4 sm:px-6 lg:flex lg:items-start lg:gap-6 lg:pt-6">
-      <div className="min-w-0 lg:max-w-2xl lg:flex-1">
+      <div className="min-w-0 lg:max-w-3xl lg:flex-1">
       {/* ---------- Header ---------- */}
       <h1 className="text-2xl font-extrabold text-ink-900 sm:text-3xl">PYQs</h1>
       <p className="mt-1 text-sm text-ink-400">

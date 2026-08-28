@@ -54,6 +54,78 @@ namespace ScoramAPI.Controllers
             });
         }
 
+        // GET /api/gamification/progress-analytics -- subject-wise accuracy, per-activity-type
+        // average score, and a recent score trend, computed straight from StudentAnswer /
+        // StudentTestResult (no new tables, no precomputed cache). This is what lets Progress show
+        // WHERE a student needs to improve, not just their XP/streak totals.
+        [HttpGet("progress-analytics")]
+        public async Task<ActionResult<ProgressAnalyticsDto>> ProgressAnalytics()
+        {
+            var userId = User.GetUserId();
+
+            var completedAttempts = await _db.StudentTestResults
+                .Where(r => r.UserId == userId && r.Status != TestAttemptStatus.InProgress)
+                .Include(r => r.Answers)
+                .OrderBy(r => r.AttemptedAt)
+                .ToListAsync();
+
+            // Subject-wise accuracy -- from each answer's frozen snapshot (not the live
+            // Question/QuestionBank record), so a subject renamed/retagged later never retroactively
+            // reshuffles old history. Skipped questions are excluded: not attempting isn't the same
+            // signal as attempting and getting it wrong.
+            var bySubject = completedAttempts
+                .SelectMany(r => r.Answers)
+                .Where(a => !string.IsNullOrWhiteSpace(a.SubjectSnapshot) && a.SelectedOption != null)
+                .GroupBy(a => a.SubjectSnapshot!)
+                .Select(g =>
+                {
+                    var answers = g.ToList();
+                    var correct = answers.Count(a => a.IsCorrect);
+                    return new SubjectPerformanceDto
+                    {
+                        Subject = g.Key,
+                        Attempted = answers.Count,
+                        Correct = correct,
+                        AccuracyPercent = Math.Round((decimal)correct / answers.Count * 100, 1),
+                    };
+                })
+                // A subject seen only once or twice is too noisy to call a "weak area" yet.
+                .Where(s => s.Attempted >= 3)
+                .OrderBy(s => s.AccuracyPercent)
+                .ToList();
+
+            // Per-activity-type average score -- so a student can see e.g. "doing fine on Quizzes,
+            // struggling on Mocks" instead of one undifferentiated overall number.
+            var byActivity = completedAttempts
+                .GroupBy(r => r.TestKind)
+                .Select(g =>
+                {
+                    var attempts = g.ToList();
+                    return new ActivityPerformanceDto
+                    {
+                        TestKind = g.Key.ToString(),
+                        AttemptCount = attempts.Count,
+                        AvgScorePercent = Math.Round(attempts.Average(r => r.Answers.Count == 0 ? 0 : r.Score / r.Answers.Count * 100), 1),
+                    };
+                })
+                .OrderByDescending(a => a.AttemptCount)
+                .ToList();
+
+            // Last 15 completed attempts, oldest first, so a line chart reads left-to-right as
+            // "over time" the same way the rest of the app expects.
+            var recentScoreTrend = completedAttempts
+                .TakeLast(15)
+                .Select(r => new ScoreTrendPointDto
+                {
+                    Date = r.AttemptedAt,
+                    ScorePercent = r.Answers.Count == 0 ? 0 : Math.Round(r.Score / r.Answers.Count * 100, 1),
+                    TestKind = r.TestKind.ToString(),
+                })
+                .ToList();
+
+            return Ok(new ProgressAnalyticsDto { BySubject = bySubject, ByActivity = byActivity, RecentScoreTrend = recentScoreTrend });
+        }
+
         // GET /api/gamification/badges -- full master list, flagged per-student
         [HttpGet("badges")]
         public async Task<ActionResult<List<BadgeDto>>> Badges()

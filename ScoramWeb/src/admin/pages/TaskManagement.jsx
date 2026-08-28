@@ -73,7 +73,7 @@ export default function TaskManagement() {
         )}
 
         {showAssignForm && (
-          <div className="mb-6 max-w-lg">
+          <div className="mx-auto mb-6 max-w-lg">
             <AssignTaskForm
               token={token}
               admins={admins}

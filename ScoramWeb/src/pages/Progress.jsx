@@ -1,17 +1,37 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, Flame, Zap, Snowflake, Lock, Award } from "lucide-react";
-import { getGamificationSummary, getBadges } from "../api/gamification";
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { getGamificationSummary, getBadges, getProgressAnalytics } from "../api/gamification";
 
 // Mirrors GamificationService.LevelForXp on the backend -- used only to draw the XP progress bar
 // (the API tells us xpToNextLevel, but not this level's starting point, which is needed to compute
 // a percentage). If the backend thresholds ever change, this must be updated to match.
 const LEVEL_FLOOR = { Beginner: 0, Intermediate: 500, Expert: 2000, Master: 5000 };
 
+// Same activity -> color convention as the Home page's Quick Access tiles (mint=Mock,
+// accent=Practice, violet=Quizzes, secondary=PYQs) -- a student already associates these colors
+// with these activities from the rest of the app, so the chart doesn't need its own legend to learn.
+const ACTIVITY_META = {
+  Mock: { label: "Mock Tests", color: "#1E9E5A" },
+  Practice: { label: "Practice", color: "#FF6B00" },
+  Quiz: { label: "Quizzes", color: "#7C3AED" },
+  PreviousYearPaper: { label: "PYQs", color: "#1E63D5" },
+};
+
+// Traffic-light coding for "where do I need to improve" -- deliberately NOT the activity colors
+// above, since this chart is about subject strength, not activity type.
+function accuracyColor(pct) {
+  if (pct < 50) return "#DC2626";
+  if (pct < 70) return "#FF6B00";
+  return "#1E9E5A";
+}
+
 export default function Progress() {
   const navigate = useNavigate();
   const [summary, setSummary] = useState(null);
   const [badges, setBadges] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
   const [status, setStatus] = useState("loading");
 
   useEffect(() => {
@@ -23,6 +43,12 @@ export default function Progress() {
         setStatus("success");
       })
       .catch(() => setStatus("error"));
+
+    // Fetched independently -- if this newer endpoint ever fails, the core streak/XP/badges view
+    // (which already works today) shouldn't go down with it.
+    getProgressAnalytics()
+      .then(setAnalytics)
+      .catch(() => setAnalytics(null));
   }, []);
 
   const floor = summary ? LEVEL_FLOOR[summary.currentLevel] ?? 0 : 0;
@@ -122,6 +148,92 @@ export default function Progress() {
               </div>
             ))}
           </div>
+
+          {analytics && (analytics.byActivity.length > 0 || analytics.bySubject.length > 0) && (
+            <>
+              <h2 className="mt-6 text-sm font-bold text-ink-900">Performance analytics</h2>
+              <p className="mt-1 text-xs text-ink-400">See where you're doing well, and where to focus next.</p>
+
+              {analytics.byActivity.length > 0 && (
+                <div className="mt-3 rounded-xl2 border border-primary-100 bg-white p-4 shadow-card">
+                  <h3 className="text-xs font-bold text-ink-900">Average score by activity</h3>
+                  <div className="mt-3 h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={analytics.byActivity.map((a) => ({ ...a, label: ACTIVITY_META[a.testKind]?.label || a.testKind }))}
+                        margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EAEEF6" />
+                        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#8A93A6" }} axisLine={false} tickLine={false} />
+                        <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#8A93A6" }} axisLine={false} tickLine={false} unit="%" />
+                        <Tooltip
+                          cursor={{ fill: "#EAEEF6" }}
+                          contentStyle={{ borderRadius: 10, border: "1px solid #EAEEF6", fontSize: 12 }}
+                          formatter={(value, _name, props) => [`${value}%`, `${props.payload.attemptCount} attempt${props.payload.attemptCount === 1 ? "" : "s"}`]}
+                        />
+                        <Bar dataKey="avgScorePercent" radius={[6, 6, 0, 0]}>
+                          {analytics.byActivity.map((a) => (
+                            <Cell key={a.testKind} fill={ACTIVITY_META[a.testKind]?.color || "#8A93A6"} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {analytics.bySubject.length > 0 && (
+                <div className="mt-3 rounded-xl2 border border-primary-100 bg-white p-4 shadow-card">
+                  <h3 className="text-xs font-bold text-ink-900">Accuracy by subject</h3>
+                  <p className="mt-0.5 text-[11px] text-ink-400">Weakest first — these are worth extra practice.</p>
+                  <div className="mt-3" style={{ height: Math.max(160, analytics.bySubject.length * 40) }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={analytics.bySubject} layout="vertical" margin={{ top: 4, right: 28, left: 8, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#EAEEF6" />
+                        <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: "#8A93A6" }} axisLine={false} tickLine={false} unit="%" />
+                        <YAxis type="category" dataKey="subject" width={110} tick={{ fontSize: 11, fill: "#1B1F2A" }} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          cursor={{ fill: "#EAEEF6" }}
+                          contentStyle={{ borderRadius: 10, border: "1px solid #EAEEF6", fontSize: 12 }}
+                          formatter={(value, _name, props) => [`${value}% (${props.payload.correct}/${props.payload.attempted} correct)`, "Accuracy"]}
+                        />
+                        <Bar dataKey="accuracyPercent" radius={[0, 6, 6, 0]}>
+                          {analytics.bySubject.map((s) => (
+                            <Cell key={s.subject} fill={accuracyColor(s.accuracyPercent)} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {analytics.recentScoreTrend.length >= 2 && (
+                <div className="mt-3 rounded-xl2 border border-primary-100 bg-white p-4 shadow-card">
+                  <h3 className="text-xs font-bold text-ink-900">Score trend</h3>
+                  <p className="mt-0.5 text-[11px] text-ink-400">Your last {analytics.recentScoreTrend.length} attempts.</p>
+                  <div className="mt-3 h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={analytics.recentScoreTrend.map((p, i) => ({ ...p, index: i + 1 }))}
+                        margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EAEEF6" />
+                        <XAxis dataKey="index" tick={{ fontSize: 11, fill: "#8A93A6" }} axisLine={false} tickLine={false} />
+                        <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#8A93A6" }} axisLine={false} tickLine={false} unit="%" />
+                        <Tooltip
+                          contentStyle={{ borderRadius: 10, border: "1px solid #EAEEF6", fontSize: 12 }}
+                          formatter={(value, _name, props) => [`${value}%`, ACTIVITY_META[props.payload.testKind]?.label || props.payload.testKind]}
+                          labelFormatter={(_, payload) => (payload?.[0] ? new Date(payload[0].payload.date).toLocaleDateString() : "")}
+                        />
+                        <Line type="monotone" dataKey="scorePercent" stroke="#1E63D5" strokeWidth={2.5} dot={{ r: 3, fill: "#1E63D5" }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </>
       )}
     </div>

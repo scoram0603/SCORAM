@@ -24,3 +24,9 @@ export function getBadges(opts = {}) {
 export function getLeaderboard(params = {}, opts = {}) {
   return apiFetch(`/api/gamification/leaderboard${toQueryString(params)}`, { ...opts, auth: true });
 }
+
+// GET /api/gamification/progress-analytics -- subject-wise accuracy, per-activity average score,
+// and a recent score trend, for the Progress page's charts.
+export function getProgressAnalytics(opts = {}) {
+  return apiFetch("/api/gamification/progress-analytics", { ...opts, auth: true });
+}

@@ -75,4 +75,34 @@ namespace ScoramAPI.DTOs
         public string ReferredFullName { get; set; } = string.Empty;
         public DateTime? JoinedAt { get; set; }
     }
+
+    // GET /api/gamification/progress-analytics
+    public class ProgressAnalyticsDto
+    {
+        public List<SubjectPerformanceDto> BySubject { get; set; } = new();
+        public List<ActivityPerformanceDto> ByActivity { get; set; } = new();
+        public List<ScoreTrendPointDto> RecentScoreTrend { get; set; } = new();
+    }
+
+    public class SubjectPerformanceDto
+    {
+        public string Subject { get; set; } = string.Empty;
+        public int Attempted { get; set; }
+        public int Correct { get; set; }
+        public decimal AccuracyPercent { get; set; }
+    }
+
+    public class ActivityPerformanceDto
+    {
+        public string TestKind { get; set; } = string.Empty; // "Practice" | "Mock" | "PreviousYearPaper" | "Quiz"
+        public int AttemptCount { get; set; }
+        public decimal AvgScorePercent { get; set; }
+    }
+
+    public class ScoreTrendPointDto
+    {
+        public DateTime Date { get; set; }
+        public decimal ScorePercent { get; set; }
+        public string TestKind { get; set; } = string.Empty;
+    }
 }

@@ -31,6 +31,19 @@ export default function AppLayout() {
     return <Landing />;
   }
 
+  // FULLSCREEN TEST ATTEMPT -- Practice, Mock, PYP, and Quiz attempts all converge on this one
+  // route (SCORAM_TESTS' shared attempt backbone -- see TestRunner.jsx). While a timed attempt is
+  // actually in progress, the sidebar/header/footer/bottom-nav would just be a distraction (and an
+  // easy accidental way to lose focus mid-test), so this route renders with none of it -- TestRunner
+  // already has its own compact header with the countdown and an explicit exit control.
+  if (/^\/tests\/attempt\/[^/]+$/.test(location.pathname)) {
+    return (
+      <div className="min-h-screen bg-surface">
+        <Outlet />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-surface lg:flex">
       {isAuthenticated && <ChatNotificationBridge onUnseenChatActivity={() => setHasUnseenChat(true)} />}

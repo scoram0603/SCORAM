@@ -166,7 +166,7 @@ function CreateExamForm({ token, onDone, onCancel }) {
   }
 
   return (
-    <Card className="max-w-lg">
+    <Card className="mx-auto max-w-lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-ink-900">New Exam</h3>
@@ -211,7 +211,7 @@ function EditExamForm({ token, exam, onDone, onCancel }) {
   }
 
   return (
-    <Card className="max-w-lg">
+    <Card className="mx-auto max-w-lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-ink-900">Edit "{exam.name}"</h3>

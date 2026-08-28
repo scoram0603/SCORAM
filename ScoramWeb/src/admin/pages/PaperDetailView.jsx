@@ -224,7 +224,7 @@ export default function PaperDetailView() {
         </div>
 
         {showRejectForm && (
-          <Card className="mb-6 max-w-lg">
+          <Card className="mx-auto mb-6 max-w-lg">
             <h3 className="text-sm font-bold text-ink-900">Reject this paper</h3>
             <FormField label="Reason" hint="Shown to the admin who submitted it.">
               <TextArea rows={2} required value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} autoFocus />

@@ -68,7 +68,7 @@ export default function ManageAdmins() {
 
       <div className="p-6">
         {showCreateForm && (
-          <div className="mb-6 max-w-md">
+          <div className="mx-auto mb-6 max-w-md">
             <CreateAdminForm
               token={token}
               onCreated={() => {

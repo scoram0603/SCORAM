@@ -314,7 +314,7 @@ function ExamStep({ exams, isLoading, onSelect, onExamCreated, token }) {
       )}
 
       {showNewExamForm && (
-        <div className="mt-6 max-w-md">
+        <div className="mx-auto mt-6 max-w-md">
           <Card>
             <h3 className="text-sm font-bold text-ink-900">Create a new exam</h3>
             <form onSubmit={handleCreate} className="mt-4 flex flex-col gap-3">
@@ -362,7 +362,7 @@ function ExamStep({ exams, isLoading, onSelect, onExamCreated, token }) {
 // ---------- Step 2: choose language ----------
 function LanguageStep({ exam, language, onChangeLanguage, onBack, onNext }) {
   return (
-    <div className="max-w-md">
+    <div className="mx-auto max-w-md">
       <h2 className="text-sm font-bold text-ink-900">
         What language are these <span className="text-primary-600">{exam?.name}</span> questions in?
       </h2>
@@ -487,7 +487,7 @@ function PaperDetailsStep({
   }
 
   return (
-    <div className="max-w-md">
+    <div className="mx-auto max-w-md">
       <h2 className="text-sm font-bold text-ink-900">
         <span className="text-primary-600">{exam?.name}</span> · {language} — which paper is this?
       </h2>
@@ -735,7 +735,7 @@ function QuestionStep({
   if (finishResult) {
     const published = finishResult.status === "Published";
     return (
-      <div className="max-w-xl">
+      <div className="mx-auto max-w-xl">
         <Alert type="success">
           {published
             ? `Paper published! ${finishResult.questionCount} questions are now live for students.`

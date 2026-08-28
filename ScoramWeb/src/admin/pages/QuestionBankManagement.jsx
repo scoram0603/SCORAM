@@ -367,7 +367,7 @@ function QuestionForm({ token, subjects, existing, onCancel, onSaved }) {
       />
 
       <div className="p-6">
-        <Card className="max-w-3xl">
+        <Card className="mx-auto max-w-3xl">
           {duplicate && (
             <div className="mb-4">
               <Alert>

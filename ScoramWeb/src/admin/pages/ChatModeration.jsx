@@ -130,7 +130,7 @@ function CreateRoomForm({ token, onDone, onCancel }) {
   }
 
   return (
-    <Card className="mb-4 max-w-lg">
+    <Card className="mx-auto mb-4 max-w-lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <FormField label="Group name">
           <TextInput required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Daily Doubt Room" autoFocus />
@@ -273,7 +273,7 @@ function EditRoomForm({ token, room, onDone, onCancel }) {
   }
 
   return (
-    <Card className="max-w-lg">
+    <Card className="mx-auto max-w-lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <FormField label="Group name">
           <TextInput required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
@@ -325,7 +325,7 @@ function RoomSettingsForm({ token, room, onDone, onCancel }) {
   }
 
   return (
-    <Card className="mt-3 max-w-lg">
+    <Card className="mx-auto mt-3 max-w-lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <h3 className="text-sm font-bold text-ink-900">Group Settings</h3>
 
@@ -472,7 +472,7 @@ function NoticeForm({ token, roomId, onDone }) {
   }
 
   return (
-    <Card className="mt-3 max-w-lg">
+    <Card className="mx-auto mt-3 max-w-lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <FormField label="Notice text">
           <TextArea required rows={3} value={text} onChange={(e) => setText(e.target.value)} autoFocus />
@@ -513,7 +513,7 @@ function PollForm({ token, roomId, onDone }) {
   }
 
   return (
-    <Card className="mt-3 max-w-lg">
+    <Card className="mx-auto mt-3 max-w-lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <FormField label="Question">
           <TextInput required value={question} onChange={(e) => setQuestion(e.target.value)} autoFocus />
@@ -638,7 +638,7 @@ function BannedWordsSection({ token, hasPermission }) {
   }
 
   return (
-    <div className="max-w-lg">
+    <div className="mx-auto max-w-lg">
       <form onSubmit={handleAdd} className="flex gap-2">
         <TextInput value={newWord} onChange={(e) => setNewWord(e.target.value)} placeholder="Word or phrase to restrict" />
         <Button type="submit"><Plus className="h-4 w-4" strokeWidth={2.5} />Add</Button>
