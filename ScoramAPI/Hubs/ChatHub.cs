@@ -42,7 +42,7 @@ namespace ScoramAPI.Hubs
 
             // Only students are ever room *members* in the current design -- an admin's JWT would also
             // parse a "sub" claim, but there's no ChatRoomMembership row for admins to look up.
-            if (Context.User.IsInRole("Student"))
+            if (Context.User!.IsInRole("Student"))
             {
                 var roomIds = await _db.ChatRoomMemberships
                     .Where(m => m.UserId == userId && !m.IsBanned)

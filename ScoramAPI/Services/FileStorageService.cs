@@ -16,6 +16,13 @@ namespace ScoramAPI.Services
         /// into a 400.</summary>
         Task<string?> SaveImageAsync(IFormFile? file, string subfolder);
 
+        /// <summary>Same validation/behavior as SaveImageAsync, but for a raw byte stream with a
+        /// known original filename and length instead of an IFormFile -- used when staging an image
+        /// that came from inside an uploaded ZIP (bulk import), where there's no IFormFile to begin
+        /// with, only bytes already read out of a ZipArchiveEntry. Throws ArgumentException on the
+        /// same validation failures as SaveImageAsync (bad extension / too large / empty).</summary>
+        Task<string?> SaveImageFromStreamAsync(Stream stream, string originalFileName, long length, string subfolder);
+
         /// <summary>Same contract as SaveImageAsync, but for a chat attachment which may be an image OR
         /// a document (PDF/Word/Excel/PowerPoint) -- returns which kind it turned out to be so the
         /// caller can set ChatMessage.MessageType accordingly.</summary>
@@ -40,6 +47,14 @@ namespace ScoramAPI.Services
         /// -- giving each its own physical file means deleting/replacing one's image can never break
         /// the other's, the way sharing a single URL between two records would.</summary>
         Task<string?> CopyImageAsync(string? sourceRelativeUrl, string subfolder);
+
+        /// <summary>Best-effort delete of every blob under a given subfolder (e.g.
+        /// "bulk-import-staging/{jobId}") -- used to clean up a bulk-import job's temporary staged
+        /// images once they're no longer needed (after commit, each image that made it into a
+        /// question has already been copied elsewhere via CopyImageAsync; for an
+        /// abandoned/expired preview, none of them are needed at all). Never throws -- same
+        /// "cleanup nicety, not a request-failing concern" contract as DeleteImageAsync.</summary>
+        Task DeleteFolderAsync(string subfolder);
     }
 
     public class FileStorageService : IFileStorageService
@@ -86,6 +101,9 @@ namespace ScoramAPI.Services
         public Task<string?> SaveImageAsync(IFormFile? file, string subfolder) =>
             SaveFileAsync(file, subfolder, ImageExtensions, MaxImageSizeBytes, "Images");
 
+        public Task<string?> SaveImageFromStreamAsync(Stream stream, string originalFileName, long length, string subfolder) =>
+            SaveStreamAsync(stream, originalFileName, length, subfolder, ImageExtensions, MaxImageSizeBytes, "Images");
+
         public async Task<(string? url, bool isDocument)> SaveChatAttachmentAsync(IFormFile? file)
         {
             if (file == null) return (null, false);
@@ -131,10 +149,21 @@ namespace ScoramAPI.Services
         private async Task<string?> SaveFileAsync(IFormFile? file, string subfolder, string[] allowedExtensions, long maxSizeBytes, string kindLabel)
         {
             if (file == null) return null;
-            if (file.Length == 0) throw new ArgumentException("An uploaded file is empty.");
-            if (file.Length > maxSizeBytes) throw new ArgumentException($"{kindLabel} must be {maxSizeBytes / (1024 * 1024)} MB or smaller.");
+            await using var stream = file.OpenReadStream();
+            return await SaveStreamAsync(stream, file.FileName, file.Length, subfolder, allowedExtensions, maxSizeBytes, kindLabel);
+        }
 
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        // The actual validate-then-upload logic, shared by the IFormFile-based path above (the
+        // normal multipart-form upload case) and SaveImageFromStreamAsync (bytes already extracted
+        // from a ZIP entry, with no IFormFile wrapper). Behavior is identical either way -- same
+        // extension/size checks, same GUID-based blob naming, same "return the relative /uploads/...
+        // URL" contract.
+        private async Task<string?> SaveStreamAsync(Stream stream, string originalFileName, long length, string subfolder, string[] allowedExtensions, long maxSizeBytes, string kindLabel)
+        {
+            if (length == 0) throw new ArgumentException("An uploaded file is empty.");
+            if (length > maxSizeBytes) throw new ArgumentException($"{kindLabel} must be {maxSizeBytes / (1024 * 1024)} MB or smaller.");
+
+            var ext = Path.GetExtension(originalFileName).ToLowerInvariant();
             if (!allowedExtensions.Contains(ext))
                 throw new ArgumentException($"{kindLabel} must be one of: {string.Join(", ", allowedExtensions)}.");
 
@@ -142,10 +171,7 @@ namespace ScoramAPI.Services
             var fileName = $"{Guid.NewGuid()}{ext}";
             var blobName = $"{subfolder}/{fileName}";
 
-            await using (var stream = file.OpenReadStream())
-            {
-                await _blobService.UploadAsync(blobName, stream, GetContentType(ext));
-            }
+            await _blobService.UploadAsync(blobName, stream, GetContentType(ext));
 
             return $"{UploadsUrlPrefix}{subfolder}/{fileName}";
         }
@@ -197,5 +223,21 @@ namespace ScoramAPI.Services
 
         private static string GetContentType(string extension) =>
             ContentTypeByExtension.TryGetValue(extension, out var contentType) ? contentType : "application/octet-stream";
+
+        public async Task DeleteFolderAsync(string subfolder)
+        {
+            if (string.IsNullOrWhiteSpace(subfolder)) return;
+
+            try
+            {
+                var prefix = subfolder.TrimEnd('/') + "/";
+                await _blobService.DeleteByPrefixAsync(prefix);
+            }
+            catch
+            {
+                // Best-effort cleanup, same contract as DeleteImageAsync -- an abandoned staging
+                // folder is a non-issue, but failing the caller's request over it would be worse.
+            }
+        }
     }
 }

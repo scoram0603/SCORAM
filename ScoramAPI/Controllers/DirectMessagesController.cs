@@ -202,7 +202,7 @@ namespace ScoramAPI.Controllers
                 otherUserId,
                 NotificationType.DirectMessage,
                 responseDto.SenderFullName,
-                PreviewFor(saved),
+                PreviewFor(saved) ?? string.Empty,
                 "/chat?tab=messages"
             );
 
@@ -260,7 +260,7 @@ namespace ScoramAPI.Controllers
                 otherUserId,
                 NotificationType.DirectMessage,
                 responseDto.SenderFullName,
-                PreviewFor(saved),
+                PreviewFor(saved) ?? string.Empty,
                 "/chat?tab=messages"
             );
 

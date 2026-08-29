@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using ClosedXML.Excel;
+using CsvHelper;
 using Microsoft.EntityFrameworkCore;
 using ScoramAPI.Data;
 using ScoramAPI.DTOs;
@@ -11,11 +13,20 @@ namespace ScoramAPI.Services
 {
     public interface IQuestionBankImportService
     {
-        /// <summary>Reads an Excel (.xlsx) or JSON file into a common row shape. Column/property names
-        /// are matched case-insensitively: QuestionText, OptionA-D, CorrectOption, Explanation, Subject,
-        /// Topic, SourceReference, ExamYears. Throws InvalidDataException with a human-readable message
-        /// on structural problems (missing required columns, unreadable file).</summary>
+        /// <summary>Reads a CSV, Excel (.xlsx), or JSON file into a common row shape. Column/property
+        /// names are matched case-insensitively: QuestionText, OptionA-D, CorrectOption, Explanation,
+        /// Subject, Topic, SourceReference, ExamYears. Throws InvalidDataException with a
+        /// human-readable message on structural problems (missing required columns, unreadable
+        /// file).</summary>
         Task<List<QuestionBankImportRow>> ParseAsync(Stream fileStream, ImportFileFormat format);
+
+        /// <summary>Parses a ZIP-bundled questions.json (same JSON schema as the standalone .json
+        /// upload, plus optional per-field image filenames and an optional contentBlocks array) and
+        /// stages any referenced images from the ZIP's images/ folder via IFileStorageService, under
+        /// the given staging subfolder. Mirrors IBulkImportService.ParseZipAsync exactly -- see that
+        /// method's own doc comment for the missing-image / failed-validation behavior (recorded on
+        /// the row, never fails the whole batch).</summary>
+        Task<List<QuestionBankImportRow>> ParseZipAsync(string questionsJson, IReadOnlyDictionary<string, byte[]> images, string stagingSubfolder);
 
         /// <summary>Annotates each row's IsValid/Errors/IsDuplicate in place. Checks required fields,
         /// a parseable CorrectOption, at least one valid Exam+Year pair, and duplicate detection
@@ -45,14 +56,42 @@ namespace ScoramAPI.Services
         // that wasn't provided either). This keeps every template/file created before this feature
         // existed working unchanged.
 
+        private readonly IFileStorageService _fileStorage;
+
+        public QuestionBankImportService(IFileStorageService fileStorage)
+        {
+            _fileStorage = fileStorage;
+        }
+
         public async Task<List<QuestionBankImportRow>> ParseAsync(Stream fileStream, ImportFileFormat format)
         {
             return format switch
             {
+                ImportFileFormat.Csv => await ParseCsvAsync(fileStream),
                 ImportFileFormat.Excel => ParseExcel(fileStream),
                 ImportFileFormat.Json => await ParseJsonAsync(fileStream),
-                _ => throw new InvalidDataException("Question Bank bulk import only supports Excel (.xlsx) or JSON.")
+                _ => throw new InvalidDataException("Question Bank bulk import only supports CSV, Excel (.xlsx), or JSON via ParseAsync -- ZIP goes through ParseZipAsync instead.")
             };
+        }
+
+        private async Task<List<QuestionBankImportRow>> ParseCsvAsync(Stream fileStream)
+        {
+            using var reader = new StreamReader(fileStream);
+            using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
+
+            if (!await csv.ReadAsync() || !csv.ReadHeader())
+                throw new InvalidDataException("The CSV file appears to be empty.");
+
+            CheckHeaders(csv.HeaderRecord ?? Array.Empty<string>());
+
+            var rows = new List<QuestionBankImportRow>();
+            var rowNumber = 0;
+            while (await csv.ReadAsync())
+            {
+                rowNumber++;
+                rows.Add(MapRow(rowNumber, header => csv.GetField(header) ?? string.Empty));
+            }
+            return rows;
         }
 
         private List<QuestionBankImportRow> ParseExcel(Stream fileStream)
@@ -143,6 +182,96 @@ namespace ScoramAPI.Services
             return rows;
         }
 
+        // See IQuestionBankImportService.ParseZipAsync's own doc comment. Reuses MapRow for every
+        // text field exactly like ParseJsonAsync does, then layers on ContentBlocksJson and staged
+        // image URLs -- mirrors BulkImportService.ParseZipAsync exactly.
+        public async Task<List<QuestionBankImportRow>> ParseZipAsync(string questionsJson, IReadOnlyDictionary<string, byte[]> images, string stagingSubfolder)
+        {
+            List<JsonRow>? parsed;
+            try
+            {
+                parsed = JsonSerializer.Deserialize<List<JsonRow>>(questionsJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidDataException($"questions.json doesn't look like valid JSON: {ex.Message}");
+            }
+
+            if (parsed == null || parsed.Count == 0)
+                throw new InvalidDataException("questions.json contains no questions (expected a top-level array).");
+
+            var rows = new List<QuestionBankImportRow>();
+            for (var i = 0; i < parsed.Count; i++)
+            {
+                var j = parsed[i];
+
+                string rawExamYears;
+                if (j.ExamYears != null && j.ExamYears.Count > 0)
+                {
+                    rawExamYears = string.Join("; ", j.ExamYears.Select(e => $"{e.ExamName}:{e.Year}"));
+                }
+                else
+                {
+                    rawExamYears = j.ExamYearsRaw ?? string.Empty;
+                }
+
+                var row = new QuestionBankImportRow
+                {
+                    RowNumber = i + 1,
+                    QuestionText = (j.QuestionText ?? "").Trim(),
+                    OptionA = (j.OptionA ?? "").Trim(),
+                    OptionB = (j.OptionB ?? "").Trim(),
+                    OptionC = (j.OptionC ?? "").Trim(),
+                    OptionD = (j.OptionD ?? "").Trim(),
+                    CorrectOption = (j.CorrectOption ?? "").Trim(),
+                    Explanation = string.IsNullOrWhiteSpace(j.Explanation) ? null : j.Explanation!.Trim(),
+                    Subject = (j.Subject ?? "").Trim(),
+                    Topic = (j.Topic ?? "").Trim(),
+                    SourceReference = string.IsNullOrWhiteSpace(j.SourceReference) ? null : j.SourceReference!.Trim(),
+                    Language = string.IsNullOrWhiteSpace(j.Language) ? null : j.Language!.Trim(),
+                    RawExamYears = rawExamYears.Trim()
+                };
+
+                if (j.ContentBlocks is { Count: > 0 })
+                    row.ContentBlocksJson = JsonSerializer.Serialize(j.ContentBlocks);
+
+                row.QuestionImageUrl = await TryStageImageAsync(row, "questionImage", j.QuestionImage, images, stagingSubfolder);
+                row.OptionAImageUrl = await TryStageImageAsync(row, "optionAImage", j.OptionAImage, images, stagingSubfolder);
+                row.OptionBImageUrl = await TryStageImageAsync(row, "optionBImage", j.OptionBImage, images, stagingSubfolder);
+                row.OptionCImageUrl = await TryStageImageAsync(row, "optionCImage", j.OptionCImage, images, stagingSubfolder);
+                row.OptionDImageUrl = await TryStageImageAsync(row, "optionDImage", j.OptionDImage, images, stagingSubfolder);
+                row.ExplanationImageUrl = await TryStageImageAsync(row, "explanationImage", j.ExplanationImage, images, stagingSubfolder);
+
+                rows.Add(row);
+            }
+            return rows;
+        }
+
+        // Identical contract to BulkImportService's own TryStageImageAsync -- see that method's
+        // comment for why staging errors are recorded on the row rather than thrown.
+        private async Task<string?> TryStageImageAsync(QuestionBankImportRow row, string fieldLabel, string? fileName, IReadOnlyDictionary<string, byte[]> images, string stagingSubfolder)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return null;
+
+            if (!images.TryGetValue(fileName, out var bytes))
+            {
+                row.ImageErrors.Add($"Image \"{fileName}\" referenced by {fieldLabel} wasn't found in the ZIP's images/ folder.");
+                return null;
+            }
+
+            try
+            {
+                using var ms = new MemoryStream(bytes);
+                return await _fileStorage.SaveImageFromStreamAsync(ms, fileName, bytes.Length, stagingSubfolder);
+            }
+            catch (ArgumentException ex)
+            {
+                row.ImageErrors.Add($"{fieldLabel} (\"{fileName}\"): {ex.Message}");
+                return null;
+            }
+        }
+
         private static QuestionBankImportRow MapRow(int rowNumber, Func<string, string> field) => new QuestionBankImportRow
         {
             RowNumber = rowNumber,
@@ -190,7 +319,10 @@ namespace ScoramAPI.Services
 
             foreach (var row in rows)
             {
-                row.Errors.Clear();
+                // Start from any image-staging errors (ZIP upload only) -- see
+                // QuestionBankImportRow.ImageErrors's own comment for why these live separately from
+                // Errors and have to be re-seeded here on every validation pass.
+                row.Errors = new List<string>(row.ImageErrors);
                 row.IsDuplicate = false;
                 row.DuplicateOfQuestionId = null;
                 row.DuplicateOfQuestionTextSnippet = null;
@@ -245,6 +377,21 @@ namespace ScoramAPI.Services
                     else
                     {
                         seenInBatch[normalized] = row.RowNumber;
+                    }
+                }
+
+                // Same reasoning as BulkImportService.Validate's own version of this check -- a ZIP's
+                // questions.json can hand-author an invalid contentBlocks array just as easily as a
+                // form field can.
+                if (!string.IsNullOrWhiteSpace(row.ContentBlocksJson))
+                {
+                    try
+                    {
+                        row.ContentBlocksJson = ContentBlocksJsonHelper.ValidateAndSerialize(row.ContentBlocksJson);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        row.Errors.Add($"Content blocks: {ex.Message}");
                     }
                 }
 
@@ -327,7 +474,11 @@ namespace ScoramAPI.Services
 
         private static string Snippet(string text) => text.Length > 140 ? text[..140] + "…" : text;
 
-        // Matches JSON property names case-insensitively via JsonSerializerOptions above.
+        // Matches JSON property names case-insensitively via JsonSerializerOptions above. The image
+        // filename fields and ContentBlocks are only ever populated for a ZIP upload's
+        // questions.json -- a plain .json upload leaves them null, indistinguishable from "this
+        // question has no images/rich content" (backward compatible, same as BulkImportService's
+        // own JsonRow).
         private class JsonRow
         {
             public string? QuestionText { get; set; }
@@ -347,6 +498,14 @@ namespace ScoramAPI.Services
             public List<JsonExamYear>? ExamYears { get; set; }
             [System.Text.Json.Serialization.JsonPropertyName("examYearsRaw")]
             public string? ExamYearsRaw { get; set; }
+
+            public string? QuestionImage { get; set; }
+            public string? OptionAImage { get; set; }
+            public string? OptionBImage { get; set; }
+            public string? OptionCImage { get; set; }
+            public string? OptionDImage { get; set; }
+            public string? ExplanationImage { get; set; }
+            public List<ContentBlockDto>? ContentBlocks { get; set; }
         }
 
         private class JsonExamYear

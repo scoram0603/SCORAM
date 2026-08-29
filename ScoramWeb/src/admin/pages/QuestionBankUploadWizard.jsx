@@ -9,17 +9,28 @@ import {
   downloadExcelTemplate, downloadJsonTemplate,
 } from "../api/questionBankImport";
 import { PageHeader, Card, Button, FormField, TextInput, TextArea, Select, Alert, friendlyError } from "../components/AdminUI";
+import { MathText } from "../../components/questions/MathText";
+import { RowBadges, StagedContentPreview } from "../components/BulkImportRowPreview";
 
-// Spec sections 9-13: Excel or JSON bulk upload, with a mandatory preview → validate → confirm step
-// before anything touches the database (section 10: "DO NOT directly insert an unvalidated Excel
-// file"). Rows flagged IsDuplicate stay selectable -- committing them merges their exam/year pairs
-// into the existing question instead of creating a second copy (see QuestionBankAdminController.Commit).
+const FORMATS = [
+  { key: "csv", label: ".csv", accept: ".csv" },
+  { key: "excel", label: ".xlsx", accept: ".xlsx" },
+  { key: "json", label: ".json", accept: ".json" },
+  { key: "zip", label: ".zip", accept: ".zip" },
+];
+
+// Spec sections 9-13, 18-20, 44: CSV/Excel/JSON/ZIP bulk upload, with a mandatory preview →
+// validate → confirm step before anything touches the database (section 10: "DO NOT directly
+// insert an unvalidated Excel file"). Rows flagged IsDuplicate stay selectable -- committing them
+// merges their exam/year pairs into the existing question instead of creating a second copy (see
+// QuestionBankAdminController.Commit). A .zip additionally supports per-question images and a
+// ContentBlocks sequence (math/text/image/table) -- see BulkUploadZipService on the backend.
 export default function QuestionBankUploadWizard() {
   const { token } = useAdminAuth();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
-  const [format, setFormat] = useState("excel"); // "excel" | "json"
+  const [format, setFormat] = useState("excel"); // "csv" | "excel" | "json" | "zip"
   const [selectedFile, setSelectedFile] = useState(null);
   const [defaultLanguage, setDefaultLanguage] = useState(""); // "" | "Hindi" | "English"
   const [previewing, setPreviewing] = useState(false);
@@ -154,7 +165,7 @@ export default function QuestionBankUploadWizard() {
     <div>
       <PageHeader
         title="Bulk Upload Questions"
-        subtitle="Excel (.xlsx) or JSON — validated and previewed before anything is saved"
+        subtitle="CSV, Excel (.xlsx), JSON, or ZIP (with images) — validated and previewed before anything is saved"
         action={
           <Button variant="ghost" onClick={() => navigate("/admin/question-bank")}>
             <ArrowLeft className="h-4 w-4" strokeWidth={2.5} />
@@ -170,12 +181,23 @@ export default function QuestionBankUploadWizard() {
             Subject, Topic, SourceReference (optional), Language (optional), ExamYears — e.g.{" "}
             <code className="rounded bg-primary-50 px-1 py-0.5">"SSC CGL:2018; UP TGT:2022"</code>.
             A question that already exists (by normalized text) won't be duplicated — its new
-            exam/year pairs are merged into the existing question instead.
+            exam/year pairs are merged into the existing question instead. Math renders from
+            $inline$ or $$display$$ LaTeX in any text field.
           </p>
           <p className="mt-1.5 text-xs text-ink-400">
             <span className="font-semibold text-ink-600">Medium (Hindi/English):</span> either fill
             the Language column per-row in your file, or pick a Default Language below and leave
             that column blank — it'll apply to every row that doesn't specify its own.
+          </p>
+          <p className="mt-1.5 text-xs text-ink-400">
+            <span className="font-semibold text-ink-600">Images:</span> not supported in CSV/Excel/JSON
+            (add them afterward from the question list) — upload a .zip instead, containing{" "}
+            <code className="rounded bg-primary-50 px-1">questions.json</code> (same columns, plus
+            optional <code className="rounded bg-primary-50 px-1">questionImage</code>,{" "}
+            <code className="rounded bg-primary-50 px-1">optionAImage</code>…
+            <code className="rounded bg-primary-50 px-1">explanationImage</code> filename fields) and
+            an <code className="rounded bg-primary-50 px-1">images/</code> folder with the referenced
+            files.
           </p>
 
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
@@ -193,14 +215,14 @@ export default function QuestionBankUploadWizard() {
           {!commitResult && (
             <>
               <div className="mt-3 flex gap-2">
-                {["excel", "json"].map((f) => (
+                {FORMATS.map((f) => (
                   <button
-                    key={f}
+                    key={f.key}
                     type="button"
-                    onClick={() => { setFormat(f); handleStartOver(); }}
-                    className={`rounded-xl2 px-3.5 py-2 text-xs font-semibold transition-colors ${format === f ? "bg-primary-600 text-white" : "bg-primary-50 text-primary-600 hover:bg-primary-100"}`}
+                    onClick={() => { setFormat(f.key); handleStartOver(); }}
+                    className={`rounded-xl2 px-3.5 py-2 text-xs font-semibold transition-colors ${format === f.key ? "bg-primary-600 text-white" : "bg-primary-50 text-primary-600 hover:bg-primary-100"}`}
                   >
-                    {f === "excel" ? ".xlsx" : ".json"}
+                    {f.label}
                   </button>
                 ))}
               </div>
@@ -209,7 +231,7 @@ export default function QuestionBankUploadWizard() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept={format === "excel" ? ".xlsx" : ".json"}
+                  accept={FORMATS.find((f) => f.key === format)?.accept}
                   onChange={handleFileChange}
                   className="text-sm"
                 />
@@ -312,6 +334,7 @@ export default function QuestionBankUploadWizard() {
                             <td className="px-2 py-2 align-top font-semibold text-ink-900">{row.rowNumber}</td>
                             <td className="max-w-xs px-2 py-2 align-top text-ink-600">
                               <span className="line-clamp-2">{row.questionText || "—"}</span>
+                              <RowBadges row={row} />
                             </td>
                             <td className="px-2 py-2 align-top text-ink-600">{row.subject} / {row.topic}</td>
                             <td className="px-2 py-2 align-top text-ink-600">{row.language || <span className="text-ink-300">—</span>}</td>
@@ -435,6 +458,11 @@ function QuestionBankRowEditor({ row, jobId, token, onSaved }) {
         <p className="text-xs text-accent-600">Duplicate of: {row.duplicateOfQuestionTextSnippet}</p>
       )}
 
+      {/* Staged images and any ContentBlocks came from the ZIP's images/ folder and questions.json
+          at parse time -- shown here read-only since the preview-row edit API only covers the plain
+          text fields below; to change an image, fix the ZIP and re-upload. */}
+      <StagedContentPreview row={row} />
+
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Subject"><TextInput required value={fields.subject} onChange={(e) => updateField("subject", e.target.value)} /></FormField>
         <FormField label="Topic"><TextInput required value={fields.topic} onChange={(e) => updateField("topic", e.target.value)} /></FormField>
@@ -443,6 +471,9 @@ function QuestionBankRowEditor({ row, jobId, token, onSaved }) {
       <FormField label="Question text">
         <TextArea required rows={2} value={fields.questionText} onChange={(e) => updateField("questionText", e.target.value)} />
       </FormField>
+      {fields.questionText?.includes("$") && (
+        <p className="-mt-2 rounded-lg bg-primary-50/50 px-3 py-2 text-sm text-ink-700"><MathText text={fields.questionText} /></p>
+      )}
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {["A", "B", "C", "D"].map((letter) => (
@@ -466,6 +497,9 @@ function QuestionBankRowEditor({ row, jobId, token, onSaved }) {
       <FormField label="Explanation (optional)">
         <TextArea rows={2} value={fields.explanation} onChange={(e) => updateField("explanation", e.target.value)} />
       </FormField>
+      {fields.explanation?.includes("$") && (
+        <p className="-mt-2 rounded-lg bg-primary-50/50 px-3 py-2 text-sm text-ink-700"><MathText text={fields.explanation} /></p>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Source reference (optional)">

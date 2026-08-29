@@ -7,8 +7,10 @@ import {
 import { previewBulkImport, commitBulkImport, getImportHistory, rollbackImport, updatePreviewRow, getImportJobQuestions } from "../api/bulkImport";
 import { Card, Button, FormField, TextInput, TextArea, Select, Alert, friendlyError } from "./AdminUI";
 import { QuestionCard, QuestionEditForm } from "./QuestionEditor";
+import { MathText } from "../../components/questions/MathText";
+import { RowBadges, StagedContentPreview } from "./BulkImportRowPreview";
 
-const ACCEPTED = ".csv,.xlsx,.json";
+const ACCEPTED = ".csv,.xlsx,.json,.zip";
 const DIFFICULTIES = ["Easy", "Medium", "Hard"];
 
 export default function BulkImportPanel({ paperId, token, onImported }) {
@@ -165,10 +167,15 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
     <div className="flex flex-col gap-4">
       <Card>
         <p className="text-xs text-ink-400">
-          Bulk-add text-only questions from a spreadsheet instead of one at a time. Expected columns:
-          QuestionNumber, Subject, Topic, DifficultyLevel, QuestionText, OptionA–D, CorrectOption,
-          Explanation (optional), SourceReference (optional). Images aren't supported here yet — add
-          them afterward from the paper's question list.
+          Bulk-add questions from a spreadsheet, or a ZIP package for questions with images and math.
+          Expected columns (CSV/Excel/JSON): QuestionNumber, Subject, Topic, DifficultyLevel,
+          QuestionText, OptionA–D, CorrectOption, Explanation (optional), SourceReference (optional).
+          Math renders from $inline$ or $$display$$ LaTeX in any text field. For images, upload a
+          .zip containing <code className="rounded bg-primary-50 px-1">questions.json</code> (same
+          columns, plus optional <code className="rounded bg-primary-50 px-1">questionImage</code>,{" "}
+          <code className="rounded bg-primary-50 px-1">optionAImage</code>…
+          <code className="rounded bg-primary-50 px-1">explanationImage</code> filename fields) and an{" "}
+          <code className="rounded bg-primary-50 px-1">images/</code> folder with the referenced files.
         </p>
 
         <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
@@ -280,6 +287,7 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
                           <td className="px-2 py-2 align-top text-ink-600">{row.subject || "—"}</td>
                           <td className="max-w-xs px-2 py-2 align-top text-ink-600">
                             <span className="line-clamp-2">{row.questionText || "—"}</span>
+                            <RowBadges row={row} />
                           </td>
                           <td className="px-2 py-2 align-top">
                             {row.errors.length > 0 && (
@@ -457,6 +465,12 @@ function PreviewRowEditor({ row, jobId, token, onSaved }) {
         </ul>
       )}
 
+      {/* Staged images and any ContentBlocks came from the ZIP's images/ folder and questions.json
+          at parse time (see BulkUploadZipService / ParseZipAsync on the backend) -- shown here
+          read-only since the preview-row edit API only covers the plain text fields below; to
+          change an image, fix the ZIP and re-upload. */}
+      <StagedContentPreview row={row} />
+
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Question No."><TextInput required type="number" value={fields.questionNumber} onChange={(e) => updateField("questionNumber", e.target.value)} /></FormField>
         <FormField label="Subject"><TextInput required value={fields.subject} onChange={(e) => updateField("subject", e.target.value)} /></FormField>
@@ -471,6 +485,9 @@ function PreviewRowEditor({ row, jobId, token, onSaved }) {
       <FormField label="Question text">
         <TextArea required rows={2} value={fields.questionText} onChange={(e) => updateField("questionText", e.target.value)} />
       </FormField>
+      {fields.questionText?.includes("$") && (
+        <p className="-mt-2 rounded-lg bg-primary-50/50 px-3 py-2 text-sm text-ink-700"><MathText text={fields.questionText} /></p>
+      )}
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {["A", "B", "C", "D"].map((letter) => (
@@ -494,6 +511,9 @@ function PreviewRowEditor({ row, jobId, token, onSaved }) {
       <FormField label="Explanation (optional)">
         <TextArea rows={2} value={fields.explanation} onChange={(e) => updateField("explanation", e.target.value)} />
       </FormField>
+      {fields.explanation?.includes("$") && (
+        <p className="-mt-2 rounded-lg bg-primary-50/50 px-3 py-2 text-sm text-ink-700"><MathText text={fields.explanation} /></p>
+      )}
       <FormField label="Source reference (optional)">
         <TextInput value={fields.sourceReference} onChange={(e) => updateField("sourceReference", e.target.value)} />
       </FormField>

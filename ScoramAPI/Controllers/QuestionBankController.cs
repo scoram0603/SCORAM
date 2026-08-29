@@ -274,6 +274,7 @@ namespace ScoramAPI.Controllers
             CorrectOption = x.CorrectOption.ToString(),
             Explanation = x.Explanation,
             ExplanationImageUrl = x.ExplanationImageUrl,
+            ContentBlocks = ContentBlocksJsonHelper.Parse(x.ContentBlocksJson),
             Subject = x.Subject?.Name ?? string.Empty,
             Topic = x.Topic?.Name ?? string.Empty,
             SourceReference = x.SourceReference,

@@ -39,6 +39,13 @@ namespace ScoramAPI.Services
         /// genuine storage-layer failure (auth, network, ...), which the caller should treat as "do
         /// not delete the SQL metadata row yet" (Step 13).</summary>
         Task<bool> DeleteAsync(string blobName, CancellationToken cancellationToken = default);
+
+        /// <summary>Deletes every blob whose name starts with the given prefix (e.g.
+        /// "bulk-import-staging/{jobId}/"). Used to clean up an entire bulk-import job's temporary
+        /// staging folder in one call rather than tracking every individual staged file's name
+        /// somewhere durable just to delete them one at a time later. Best-effort per blob -- one
+        /// failed delete doesn't stop the rest from being attempted.</summary>
+        Task DeleteByPrefixAsync(string prefix, CancellationToken cancellationToken = default);
     }
 
     public class AzureBlobService : IAzureBlobService
@@ -120,6 +127,28 @@ namespace ScoramAPI.Services
             _logger.LogInformation("Blob deletion completed for {BlobName} (existed: {Existed})", blobName, response.Value);
 
             return response.Value;
+        }
+
+        public async Task DeleteByPrefixAsync(string prefix, CancellationToken cancellationToken = default)
+        {
+            var deletedCount = 0;
+            await foreach (var blobItem in _containerClient.GetBlobsAsync(BlobTraits.None, BlobStates.None, prefix, cancellationToken))
+            {
+                try
+                {
+                    await _containerClient.GetBlobClient(blobItem.Name).DeleteIfExistsAsync(cancellationToken: cancellationToken);
+                    deletedCount++;
+                }
+                catch (RequestFailedException ex)
+                {
+                    // Best-effort, same reasoning as DeleteAsync's own callers -- one blob that
+                    // wouldn't delete (transient network blip, permissions hiccup) shouldn't stop the
+                    // rest of the folder from being cleaned up.
+                    _logger.LogWarning(ex, "Failed to delete blob {BlobName} while clearing prefix {Prefix}", blobItem.Name, prefix);
+                }
+            }
+
+            _logger.LogInformation("Deleted {Count} blob(s) under prefix {Prefix}", deletedCount, prefix);
         }
     }
 }

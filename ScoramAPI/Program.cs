@@ -47,6 +47,8 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPushNotificationService, PushNotificationService>();
 builder.Services.AddScoped<IBulkImportService, BulkImportService>();
 builder.Services.AddScoped<IQuestionBankImportService, QuestionBankImportService>(); // SCORAM_QUESTION_BANK
+builder.Services.AddScoped<IBulkUploadZipService, BulkUploadZipService>(); // rich PYP/PYQ bulk upload -- ZIP package extraction
+builder.Services.AddHostedService<BulkImportStagingCleanupService>(); // sweeps abandoned bulk-import staged images
 builder.Services.AddScoped<IQuestionBankMirrorService, QuestionBankMirrorService>(); // auto-mirrors new PYQ questions into the Question Bank
 builder.Services.AddScoped<ITestAttemptService, TestAttemptService>(); // SCORAM_TESTS
 builder.Services.AddScoped<IGamificationService, GamificationService>(); // GAMIFICATION

@@ -279,6 +279,7 @@ namespace ScoramAPI.Controllers
                 question.OptionCImageUrl = await _fileStorage.SaveImageAsync(dto.OptionCImage, "question-images");
                 question.OptionDImageUrl = await _fileStorage.SaveImageAsync(dto.OptionDImage, "question-images");
                 question.ExplanationImageUrl = await _fileStorage.SaveImageAsync(dto.ExplanationImage, "question-images");
+                question.ContentBlocksJson = ContentBlocksJsonHelper.ValidateAndSerialize(dto.ContentBlocksJson);
             }
             catch (ArgumentException ex)
             {
@@ -364,6 +365,7 @@ namespace ScoramAPI.Controllers
                 question.OptionCImageUrl = await ApplyImageUpdate(dto.OptionCImage, dto.RemoveOptionCImage, question.OptionCImageUrl);
                 question.OptionDImageUrl = await ApplyImageUpdate(dto.OptionDImage, dto.RemoveOptionDImage, question.OptionDImageUrl);
                 question.ExplanationImageUrl = await ApplyImageUpdate(dto.ExplanationImage, dto.RemoveExplanationImage, question.ExplanationImageUrl);
+                question.ContentBlocksJson = ContentBlocksJsonHelper.ValidateAndSerialize(dto.ContentBlocksJson);
             }
             catch (ArgumentException ex)
             {
@@ -458,6 +460,7 @@ namespace ScoramAPI.Controllers
             OptionCImageUrl = x.OptionCImageUrl,
             OptionD = x.OptionD,
             OptionDImageUrl = x.OptionDImageUrl,
+            ContentBlocks = ContentBlocksJsonHelper.Parse(x.ContentBlocksJson),
             SolutionCount = x.Solutions?.Count ?? 0
         };
 
@@ -487,6 +490,7 @@ namespace ScoramAPI.Controllers
                 OptionCImageUrl = baseDto.OptionCImageUrl,
                 OptionD = baseDto.OptionD,
                 OptionDImageUrl = baseDto.OptionDImageUrl,
+                ContentBlocks = baseDto.ContentBlocks,
                 SolutionCount = baseDto.SolutionCount,
                 CorrectOption = x.CorrectOption.ToString(),
                 Explanation = x.Explanation,

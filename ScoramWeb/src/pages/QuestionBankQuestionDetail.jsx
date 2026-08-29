@@ -9,6 +9,7 @@ import LikeButton from "../components/questions/LikeButton";
 import BookmarkButton from "../components/questions/BookmarkButton";
 import ShareQuestionModal from "../components/chat/ShareQuestionModal";
 import InteractiveOptions from "../components/questions/InteractiveOptions";
+import { RichQuestionBody } from "../components/questions/MathText";
 import { useAuth } from "../context/AuthContext";
 import { API_BASE_URL } from "../api/client";
 
@@ -85,7 +86,9 @@ export default function QuestionBankQuestionDetail() {
               {question.language && <Tag className="bg-mint-50 text-mint-600">{question.language}</Tag>}
             </div>
 
-            <p className="mt-3 text-[15px] font-semibold leading-snug text-ink-900">{question.questionText}</p>
+            <p className="mt-3 text-[15px] font-semibold leading-snug text-ink-900">
+              <RichQuestionBody contentBlocks={question.contentBlocks} fallbackText={question.questionText} />
+            </p>
             {imgSrc(question.questionImageUrl) && (
               <img src={imgSrc(question.questionImageUrl)} alt="" className="mt-2 max-h-64 rounded-lg border border-primary-100" />
             )}

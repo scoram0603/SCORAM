@@ -101,6 +101,11 @@ namespace ScoramAPI.Models
 
         public string? Explanation { get; set; }
 
+        // Optional additive rich-content sequence (text/math/image/table blocks, in order) on top of
+        // the plain QuestionText above -- mirrors Question.ContentBlocksJson exactly (same DTO, same
+        // DTOs/ContentBlockDto.cs helper). Null for every question created before this existed.
+        public string? ContentBlocksJson { get; set; }
+
         public Guid SubjectId { get; set; }
         public QuestionBankSubject? Subject { get; set; }
 
@@ -171,7 +176,7 @@ namespace ScoramAPI.Models
         [MaxLength(255)]
         public string FileName { get; set; } = string.Empty;
 
-        public ImportFileFormat Format { get; set; } // Excel or Json only for Question Bank
+        public ImportFileFormat Format { get; set; } // CSV, Excel, JSON, or ZIP for Question Bank
 
         public ImportJobStatus Status { get; set; } = ImportJobStatus.PendingReview;
 

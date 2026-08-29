@@ -68,6 +68,11 @@ namespace ScoramAPI.DTOs
         public string? Language { get; set; }
         public List<QuestionBankExamYearInputDto> ExamYears { get; set; } = new();
 
+        // Optional JSON array of { type, content } blocks -- see DTOs/ContentBlockDto.cs. Mirrors
+        // QuestionCreateDto.ContentBlocksJson exactly (Create/Update here are plain JSON bodies, not
+        // multipart, but the field's shape and validation are identical).
+        public string? ContentBlocksJson { get; set; }
+
         // If true and a near-identical question already exists, the API still creates this as a
         // separate row instead of returning 409 Conflict -- used only after an admin has explicitly
         // reviewed the "Duplicate Question Found" prompt and chosen "Create anyway".
@@ -88,6 +93,7 @@ namespace ScoramAPI.DTOs
         public string? SourceReference { get; set; }
         public string? Language { get; set; }
         public List<QuestionBankExamYearInputDto> ExamYears { get; set; } = new();
+        public string? ContentBlocksJson { get; set; }
     }
 
     // Student-facing -- deliberately omits internal fields (ImportJobId, CreatedByAdminId, etc, per
@@ -108,6 +114,9 @@ namespace ScoramAPI.DTOs
         public string CorrectOption { get; set; } = string.Empty;
         public string? Explanation { get; set; }
         public string? ExplanationImageUrl { get; set; }
+        // Optional rich-content sequence -- see DTOs/ContentBlockDto.cs. Empty for every question
+        // that doesn't use this feature.
+        public List<ContentBlockDto> ContentBlocks { get; set; } = new();
         public string Subject { get; set; } = string.Empty;
         public string Topic { get; set; } = string.Empty;
         public string? SourceReference { get; set; }
@@ -202,6 +211,26 @@ namespace ScoramAPI.DTOs
         public string Topic { get; set; } = string.Empty;
         public string? SourceReference { get; set; }
 
+        // Populated only for a ZIP upload (JSON/Excel/CSV rows leave these null) -- once an image
+        // referenced by filename in the row is validated and staged, this holds the STAGED relative
+        // "/uploads/bulk-import-staging/{jobId}/..." URL, not the original filename. Commit copies
+        // the staged blob into the permanent "question-images" folder (see
+        // IFileStorageService.CopyImageAsync) and deletes the staging copy; an expired/abandoned job
+        // has its staging folder cleaned up the same way. See Services/QuestionBankImportService for
+        // where these get set.
+        public string? QuestionImageUrl { get; set; }
+        public string? OptionAImageUrl { get; set; }
+        public string? OptionBImageUrl { get; set; }
+        public string? OptionCImageUrl { get; set; }
+        public string? OptionDImageUrl { get; set; }
+        public string? ExplanationImageUrl { get; set; }
+
+        // Optional JSON array of { type, content } blocks -- see DTOs/ContentBlockDto.cs. Only
+        // meaningful for JSON/ZIP uploads (a spreadsheet column holding a JSON blob is awkward, but
+        // not disallowed -- ValidateAsync applies the same ContentBlocksJsonHelper validation either
+        // way).
+        public string? ContentBlocksJson { get; set; }
+
         // "Hindi" | "English" | "" (blank) -- optional per-row medium. A blank value is resolved to
         // the upload's DefaultLanguage (see Preview's "language" form field) during ValidateAsync,
         // so admins can either set the medium once for the whole batch OR override it row-by-row in
@@ -212,6 +241,12 @@ namespace ScoramAPI.DTOs
         // parsed into structured pairs below once the row passes basic validation.
         public string RawExamYears { get; set; } = string.Empty;
         public List<QuestionBankExamYearInputDto> ExamYears { get; set; } = new();
+
+        // Errors recorded while staging this row's images (ZIP upload only) -- same purpose and the
+        // same "survives ValidateAsync's clear-and-recompute" contract as
+        // ImportedQuestionRow.ImageErrors (see that field's own comment for why this can't just be
+        // folded into Errors directly).
+        public List<string> ImageErrors { get; set; } = new();
 
         public bool IsValid { get; set; } = true;
         public List<string> Errors { get; set; } = new();

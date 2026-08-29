@@ -19,6 +19,26 @@ namespace ScoramAPI.DTOs
         public string? Explanation { get; set; }
         public string? SourceReference { get; set; }
 
+        // Populated only for a ZIP upload (CSV/Excel/JSON rows leave these null) -- see
+        // QuestionBankImportRow's own comment on the staged-URL contract, which this mirrors exactly.
+        public string? QuestionImageUrl { get; set; }
+        public string? OptionAImageUrl { get; set; }
+        public string? OptionBImageUrl { get; set; }
+        public string? OptionCImageUrl { get; set; }
+        public string? OptionDImageUrl { get; set; }
+        public string? ExplanationImageUrl { get; set; }
+
+        // Optional JSON array of { type, content } blocks -- see DTOs/ContentBlockDto.cs.
+        public string? ContentBlocksJson { get; set; }
+
+        // Errors recorded while staging this row's images (ZIP upload only) -- e.g. a referenced
+        // filename wasn't found in the ZIP, or failed image validation. Kept separate from Errors
+        // because BulkImportService.Validate() clears and fully recomputes Errors from scratch on
+        // every call (including every PATCH re-validation of a text edit); folding these into Errors
+        // directly would make them vanish the next time a row's text is corrected and re-validated.
+        // Validate() seeds Errors from this list before adding its own text-validation errors.
+        public List<string> ImageErrors { get; set; } = new();
+
         public bool IsValid { get; set; } = true;
         public List<string> Errors { get; set; } = new();
     }

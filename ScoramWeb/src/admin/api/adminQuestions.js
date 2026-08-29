@@ -32,6 +32,7 @@ export function createQuestion(token, question, images = {}) {
       CorrectOption: question.correctOption,
       Explanation: question.explanation,
       SourceReference: question.sourceReference,
+      ContentBlocksJson: question.contentBlocksJson,
     },
     {
       QuestionImage: images.questionImage,
@@ -64,6 +65,7 @@ export function updateQuestion(token, id, question, images = {}, removeImages = 
       CorrectOption: question.correctOption,
       Explanation: question.explanation,
       SourceReference: question.sourceReference,
+      ContentBlocksJson: question.contentBlocksJson,
       RemoveQuestionImage: removeImages.questionImage ? "true" : "false",
       RemoveOptionAImage: removeImages.optionAImage ? "true" : "false",
       RemoveOptionBImage: removeImages.optionBImage ? "true" : "false",

@@ -30,6 +30,7 @@ namespace ScoramAPI.Controllers
         private readonly ScoramDbContext _db;
         private readonly IAdminPermissionService _permissions;
         private readonly IQuestionBankImportService _importService;
+        private readonly IBulkUploadZipService _zipService;
         private readonly IMemoryCache _cache;
         private readonly IAuditLogService _audit;
         private readonly ILogger<QuestionBankAdminController> _logger;
@@ -37,12 +38,13 @@ namespace ScoramAPI.Controllers
 
         public QuestionBankAdminController(
             ScoramDbContext db, IAdminPermissionService permissions, IQuestionBankImportService importService,
-            IMemoryCache cache, IAuditLogService audit, ILogger<QuestionBankAdminController> logger,
-            IFileStorageService fileStorage)
+            IBulkUploadZipService zipService, IMemoryCache cache, IAuditLogService audit,
+            ILogger<QuestionBankAdminController> logger, IFileStorageService fileStorage)
         {
             _db = db;
             _permissions = permissions;
             _importService = importService;
+            _zipService = zipService;
             _cache = cache;
             _audit = audit;
             _logger = logger;
@@ -140,6 +142,16 @@ namespace ScoramAPI.Controllers
             var topic = await _db.QuestionBankTopics.FindAsync(dto.TopicId);
             if (topic == null || topic.SubjectId != dto.SubjectId) return BadRequest(new { message = "Topic not found under the selected Subject." });
 
+            string? contentBlocksJson;
+            try
+            {
+                contentBlocksJson = ContentBlocksJsonHelper.ValidateAndSerialize(dto.ContentBlocksJson);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
             var adminId = User.GetAdminId();
             var normalized = _importService.NormalizeForDuplicateCheck(dto.QuestionText);
 
@@ -174,6 +186,7 @@ namespace ScoramAPI.Controllers
                 TopicId = dto.TopicId,
                 SourceReference = string.IsNullOrWhiteSpace(dto.SourceReference) ? null : dto.SourceReference.Trim(),
                 Language = ParseLanguage(dto.Language),
+                ContentBlocksJson = contentBlocksJson,
                 CreatedByAdminId = adminId,
                 CreatedAt = DateTime.UtcNow
             };
@@ -225,6 +238,16 @@ namespace ScoramAPI.Controllers
             var topic = await _db.QuestionBankTopics.FindAsync(dto.TopicId);
             if (topic == null || topic.SubjectId != dto.SubjectId) return BadRequest(new { message = "Topic not found under the selected Subject." });
 
+            string? contentBlocksJson;
+            try
+            {
+                contentBlocksJson = ContentBlocksJsonHelper.ValidateAndSerialize(dto.ContentBlocksJson);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
             var adminId = User.GetAdminId();
 
             question.QuestionText = dto.QuestionText.Trim();
@@ -239,6 +262,7 @@ namespace ScoramAPI.Controllers
             question.TopicId = dto.TopicId;
             question.SourceReference = string.IsNullOrWhiteSpace(dto.SourceReference) ? null : dto.SourceReference.Trim();
             question.Language = ParseLanguage(dto.Language);
+            question.ContentBlocksJson = contentBlocksJson;
             question.UpdatedAt = DateTime.UtcNow;
 
             // Diff the exam/year mapping set instead of blanket-deleting and recreating every row on
@@ -486,8 +510,15 @@ namespace ScoramAPI.Controllers
         }
 
         // ======================================================================================
-        // Bulk import — Excel / JSON (sections 9-13)
+        // Bulk import — CSV / Excel / JSON / ZIP (sections 9-13, 18-20, 44)
         // ======================================================================================
+
+        // POST /api/admin/question-bank/bulk/csv  (multipart/form-data, field name "file", optional
+        // field "language" -- see Preview's own comment)
+        [HttpPost("bulk/csv")]
+        [RequestSizeLimit(20 * 1024 * 1024)]
+        public Task<ActionResult<QuestionBankImportPreviewResponseDto>> PreviewCsv(IFormFile file, [FromForm] string? language) =>
+            Preview(file, ImportFileFormat.Csv, language);
 
         // POST /api/admin/question-bank/bulk/excel  (multipart/form-data, field name "file", optional
         // field "language" -- see Preview's own comment)
@@ -503,6 +534,15 @@ namespace ScoramAPI.Controllers
         public Task<ActionResult<QuestionBankImportPreviewResponseDto>> PreviewJson(IFormFile file, [FromForm] string? language) =>
             Preview(file, ImportFileFormat.Json, language);
 
+        // POST /api/admin/question-bank/bulk/zip  (multipart/form-data, field name "file", optional
+        // field "language") -- a SCORAM-BULK-UPLOAD.zip package (questions.json + images/ + optional
+        // metadata.json). The only one of the four bulk-import formats that supports per-question
+        // images and a ContentBlocks sequence; see Services/BulkUploadZipService.cs.
+        [HttpPost("bulk/zip")]
+        [RequestSizeLimit(250 * 1024 * 1024)] // 250 MB -- generous for a ZIP full of question images
+        public Task<ActionResult<QuestionBankImportPreviewResponseDto>> PreviewZip(IFormFile file, [FromForm] string? language) =>
+            Preview(file, ImportFileFormat.Zip, language);
+
         // "language" ("Hindi"/"English", optional) is the admin's "Default Language" choice for this
         // whole upload -- e.g. uploading a pure-Hindi question set without having to type "Hindi" on
         // every single row of the Excel/JSON file. Applied to every row that doesn't specify its own
@@ -515,13 +555,27 @@ namespace ScoramAPI.Controllers
                 return Forbid();
 
             if (file == null || file.Length == 0)
-                return BadRequest(new { message = $"Attach a {(format == ImportFileFormat.Excel ? ".xlsx" : ".json")} file." });
+                return BadRequest(new { message = $"Attach a {ExpectedExtensionLabel(format)} file." });
+
+            // Same "generate the id up front" reasoning as BulkImportController.Preview -- a ZIP
+            // upload's images get staged under this id before the QuestionBankImportJob row (which
+            // reuses the same id) even exists.
+            var stagingId = Guid.NewGuid();
 
             List<QuestionBankImportRow> rows;
             try
             {
-                await using var stream = file.OpenReadStream();
-                rows = await _importService.ParseAsync(stream, format);
+                if (format == ImportFileFormat.Zip)
+                {
+                    await using var zipStream = file.OpenReadStream();
+                    var contents = _zipService.Extract(zipStream);
+                    rows = await _importService.ParseZipAsync(contents.QuestionsJson, contents.Images, $"bulk-import-staging/{stagingId}");
+                }
+                else
+                {
+                    await using var stream = file.OpenReadStream();
+                    rows = await _importService.ParseAsync(stream, format);
+                }
             }
             catch (InvalidDataException ex)
             {
@@ -543,6 +597,7 @@ namespace ScoramAPI.Controllers
 
             var job = new QuestionBankImportJob
             {
+                Id = stagingId,
                 CreatedByAdminId = User.GetAdminId(),
                 FileName = file.FileName,
                 Format = format,
@@ -569,6 +624,14 @@ namespace ScoramAPI.Controllers
                 Rows = rows
             });
         }
+
+        private static string ExpectedExtensionLabel(ImportFileFormat format) => format switch
+        {
+            ImportFileFormat.Csv => ".csv",
+            ImportFileFormat.Excel => ".xlsx",
+            ImportFileFormat.Zip => ".zip",
+            _ => ".json"
+        };
 
         // PATCH /api/admin/question-bank/bulk/{jobId}/rows/{rowNumber} -- admin corrects a row's
         // text, options, correct answer, explanation, subject/topic, or exam/year pairs during
@@ -655,7 +718,11 @@ namespace ScoramAPI.Controllers
                 if (row.IsDuplicate && row.DuplicateOfQuestionId.HasValue)
                 {
                     // Merge: add any exam/year pairs from this row that the existing question doesn't
-                    // already have, rather than inserting a second copy of the same question.
+                    // already have, rather than inserting a second copy of the same question. Any
+                    // staged images or ContentBlocks this row carried (ZIP upload only) are discarded
+                    // here, same as Explanation/SourceReference/etc. already were before this
+                    // feature existed -- they're never copied onto the existing question, and get
+                    // swept up by this method's own staging-folder cleanup at the end.
                     var existingMappings = await _db.QuestionBankExamMappings
                         .Where(m => m.QuestionBankQuestionId == row.DuplicateOfQuestionId.Value)
                         .ToListAsync();
@@ -700,6 +767,7 @@ namespace ScoramAPI.Controllers
                     OptionD = row.OptionD.Trim(),
                     CorrectOption = Enum.Parse<OptionLetter>(row.CorrectOption, ignoreCase: true),
                     Explanation = row.Explanation,
+                    ContentBlocksJson = row.ContentBlocksJson,
                     SubjectId = subject.Id,
                     TopicId = topic.Id,
                     SourceReference = row.SourceReference,
@@ -708,6 +776,18 @@ namespace ScoramAPI.Controllers
                     ImportJobId = job.Id,
                     CreatedAt = DateTime.UtcNow
                 };
+
+                // Any images were staged (ZIP upload only -- see Preview) under
+                // "bulk-import-staging/{jobId}"; copy each into the permanent "question-images"
+                // folder, same reasoning as BulkImportController.Commit -- the whole staging folder
+                // gets deleted once this method finishes. CopyImageAsync no-ops to null for a null
+                // source, so safe to call unconditionally for a non-ZIP import too.
+                question.QuestionImageUrl = await _fileStorage.CopyImageAsync(row.QuestionImageUrl, "question-images");
+                question.OptionAImageUrl = await _fileStorage.CopyImageAsync(row.OptionAImageUrl, "question-images");
+                question.OptionBImageUrl = await _fileStorage.CopyImageAsync(row.OptionBImageUrl, "question-images");
+                question.OptionCImageUrl = await _fileStorage.CopyImageAsync(row.OptionCImageUrl, "question-images");
+                question.OptionDImageUrl = await _fileStorage.CopyImageAsync(row.OptionDImageUrl, "question-images");
+                question.ExplanationImageUrl = await _fileStorage.CopyImageAsync(row.ExplanationImageUrl, "question-images");
 
                 foreach (var ey in row.ExamYears)
                 {
@@ -726,6 +806,13 @@ namespace ScoramAPI.Controllers
             job.CommittedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
+
+            // Whatever was staged for this job (used by a committed question above, discarded by a
+            // merge, or belonging to a row left invalid/skipped) has either already been copied
+            // elsewhere or is no longer needed -- safe to delete the whole staging folder now. A
+            // no-op for a non-ZIP import.
+            await _fileStorage.DeleteFolderAsync($"bulk-import-staging/{job.Id}");
+
             _cache.Remove(CachePrefix + jobId);
             await _audit.LogAsync(adminId, "QuestionBank.BulkImport.Commit", "QuestionBankImportJob", job.Id,
                 $"{importedCount} new, {mergedCount} merged, from {job.FileName}");
@@ -1016,6 +1103,7 @@ namespace ScoramAPI.Controllers
             CorrectOption = x.CorrectOption.ToString(),
             Explanation = x.Explanation,
             ExplanationImageUrl = x.ExplanationImageUrl,
+            ContentBlocks = ContentBlocksJsonHelper.Parse(x.ContentBlocksJson),
             Subject = x.Subject?.Name ?? string.Empty,
             Topic = x.Topic?.Name ?? string.Empty,
             SourceReference = x.SourceReference,

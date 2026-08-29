@@ -112,6 +112,14 @@ namespace ScoramAPI.Services
                     DifficultyLevel = question.DifficultyLevel,
                     Explanation = question.Explanation,
                     ExplanationImageUrl = explanationImageUrl,
+                    // Image URLs in ContentBlocksJson (if any) intentionally are NOT re-pointed at
+                    // freshly-copied mirror-side files here, unlike QuestionImageUrl etc. above --
+                    // doing that correctly means parsing the JSON, finding every "image" block, and
+                    // copying each one, which is more machinery than this best-effort mirror
+                    // (see this method's own catch block) should risk failing partway through. A
+                    // mirrored question's content blocks simply point at the same images as its PYQ
+                    // source until an admin edits the mirror directly.
+                    ContentBlocksJson = question.ContentBlocksJson,
                     SubjectId = subject.Id,
                     TopicId = topic.Id,
                     SourceReference = question.SourceReference,
@@ -154,6 +162,9 @@ namespace ScoramAPI.Services
                 mirror.DifficultyLevel = question.DifficultyLevel;
                 mirror.Explanation = question.Explanation;
                 mirror.SourceReference = question.SourceReference;
+                // Same caveat as MirrorFromPyqAsync: any image URLs embedded inside the JSON itself
+                // aren't re-copied, only the JSON's text/math content stays in sync.
+                mirror.ContentBlocksJson = question.ContentBlocksJson;
 
                 // Re-copy each image fresh (independent files, not shared URLs -- see
                 // MirrorFromPyqAsync's own comment) only when the source side actually changed;

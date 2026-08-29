@@ -68,6 +68,13 @@ namespace ScoramAPI.Models
         public string? Explanation { get; set; }
         public string? ExplanationImageUrl { get; set; }
 
+        // Optional additive rich-content sequence (text/math/image/table blocks, in order) on top of
+        // the plain QuestionText above -- see DTOs/ContentBlockDto.cs for the shape and why this is a
+        // raw JSON string rather than a child table. Null for every question created before this
+        // existed, and for any question that doesn't need more than plain text + one image; nothing
+        // reads or writes this unless a question actually has blocks.
+        public string? ContentBlocksJson { get; set; }
+
         [MaxLength(255)]
         public string? SourceReference { get; set; }
 

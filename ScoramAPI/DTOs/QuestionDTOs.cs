@@ -36,6 +36,11 @@ namespace ScoramAPI.DTOs
         public string? Explanation { get; set; }
         public IFormFile? ExplanationImage { get; set; }
 
+        // Optional JSON array of { type, content } blocks -- see DTOs/ContentBlockDto.cs. A plain
+        // form-text field (not a file), so it rides alongside the image fields in the same
+        // multipart/form-data request. Omit or send empty to skip rich content entirely.
+        public string? ContentBlocksJson { get; set; }
+
         public string? SourceReference { get; set; }
     }
 
@@ -72,6 +77,11 @@ namespace ScoramAPI.DTOs
         public IFormFile? ExplanationImage { get; set; }
         public bool RemoveExplanationImage { get; set; }
 
+        // Same contract as QuestionCreateDto.ContentBlocksJson. Send the full desired list to
+        // replace existing blocks, or omit/leave empty to clear them -- there's no separate "leave
+        // unchanged" signal because, unlike images, this field isn't expensive to resend in full.
+        public string? ContentBlocksJson { get; set; }
+
         public string? SourceReference { get; set; }
     }
 
@@ -100,6 +110,10 @@ namespace ScoramAPI.DTOs
         public string? OptionCImageUrl { get; set; }
         public string OptionD { get; set; } = string.Empty;
         public string? OptionDImageUrl { get; set; }
+        // Optional rich-content sequence -- see DTOs/ContentBlockDto.cs. Empty for every question
+        // that doesn't use this feature (the overwhelming majority), so existing clients that ignore
+        // unknown response fields see no behavior change.
+        public List<ContentBlockDto> ContentBlocks { get; set; } = new();
         public int SolutionCount { get; set; }
         public int LikeCount { get; set; }
         public int DislikeCount { get; set; }

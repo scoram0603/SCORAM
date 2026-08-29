@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CheckCircle2, XCircle, RotateCcw } from "lucide-react";
 import { API_BASE_URL } from "../../api/client";
+import { MathText } from "./MathText";
 
 function imgSrc(url) {
   if (!url) return null;
@@ -60,7 +61,7 @@ export default function InteractiveOptions({ question, onInteract, size = "md" }
             >
               <span className="font-bold">{letter}.</span>
               <span className="min-w-0 flex-1">
-                {text}
+                <MathText text={text} />
                 {imgSrc(imageUrl) && <img src={imgSrc(imageUrl)} alt="" className="mt-1 max-h-20 rounded border border-primary-100" />}
               </span>
               {answered && isCorrectOption && <CheckCircle2 className="h-4 w-4 shrink-0 text-mint-500" strokeWidth={2.25} />}
@@ -89,7 +90,7 @@ export default function InteractiveOptions({ question, onInteract, size = "md" }
       {answered && question.explanation && (
         <div className="mt-2.5 rounded-lg bg-primary-50/60 p-3.5 text-sm leading-snug text-ink-600">
           <p className="mb-1 text-xs font-bold text-primary-600">Explanation</p>
-          {question.explanation}
+          <MathText text={question.explanation} />
           {imgSrc(question.explanationImageUrl) && (
             <img src={imgSrc(question.explanationImageUrl)} alt="" className="mt-2 max-h-64 rounded-lg border border-primary-100" />
           )}

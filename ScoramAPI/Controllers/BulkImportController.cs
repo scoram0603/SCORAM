@@ -11,10 +11,13 @@ using ScoramAPI.Services;
 
 namespace ScoramAPI.Controllers
 {
-    // Bulk question import: CSV/Excel/JSON only (text fields -- no bulk image import yet; a question's
-    // images can still be added afterward one at a time via the normal edit form). Two-step flow:
-    // preview (parse + validate, nothing written to Questions yet) then commit (writes the rows the
-    // admin actually confirms). Only ever targets a Draft paper -- same rule as the one-by-one
+    // Bulk question import: CSV/Excel/JSON/ZIP. CSV/Excel/JSON are text-only (a question's images can
+    // still be added afterward one at a time via the normal edit form); a ZIP package
+    // (questions.json + images/ + optional metadata.json, see spec section 51) additionally supports
+    // per-question images and an optional rich ContentBlocks sequence -- see
+    // Services/BulkUploadZipService.cs and IBulkImportService.ParseZipAsync. Two-step flow: preview
+    // (parse + validate, nothing written to Questions yet) then commit (writes the rows the admin
+    // actually confirms). Only ever targets a Draft paper -- same rule as the one-by-one
     // QuestionsController.Create.
     [ApiController]
     [Route("api/admin")]
@@ -23,13 +26,18 @@ namespace ScoramAPI.Controllers
     {
         // Preview rows live here between preview and commit, keyed by ImportJob.Id -- see the
         // "deliberate simplicity tradeoff" note on Models/ImportJob.cs for what this does and doesn't
-        // survive (an app restart loses any in-progress review).
+        // survive (an app restart loses any in-progress review). A ZIP upload's staged images live in
+        // Azure Blob Storage under "bulk-import-staging/{jobId}/" for the same window -- cleaned up
+        // explicitly at the end of Commit(), and by BulkImportStagingCleanupService for anything
+        // abandoned past that window.
         private const string CachePrefix = "bulk-import-rows:";
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
 
         private readonly ScoramDbContext _db;
         private readonly IAdminPermissionService _permissions;
         private readonly IBulkImportService _importService;
+        private readonly IBulkUploadZipService _zipService;
+        private readonly IFileStorageService _fileStorage;
         private readonly IMemoryCache _cache;
         private readonly IAuditLogService _audit;
         private readonly ILogger<BulkImportController> _logger;
@@ -37,12 +45,15 @@ namespace ScoramAPI.Controllers
 
         public BulkImportController(
             ScoramDbContext db, IAdminPermissionService permissions, IBulkImportService importService,
+            IBulkUploadZipService zipService, IFileStorageService fileStorage,
             IMemoryCache cache, IAuditLogService audit, ILogger<BulkImportController> logger,
             IQuestionBankMirrorService mirror)
         {
             _db = db;
             _permissions = permissions;
             _importService = importService;
+            _zipService = zipService;
+            _fileStorage = fileStorage;
             _cache = cache;
             _audit = audit;
             _logger = logger;
@@ -50,8 +61,10 @@ namespace ScoramAPI.Controllers
         }
 
         // POST /api/admin/papers/{paperId}/bulk-import/preview  (multipart/form-data, field name "file")
+        // Format is auto-detected from the file extension (.csv/.xlsx/.json/.zip) -- one endpoint for
+        // all four, same as before ZIP support existed for the other three.
         [HttpPost("papers/{paperId:guid}/bulk-import/preview")]
-        [RequestSizeLimit(20 * 1024 * 1024)] // 20 MB -- generous for a text-only spreadsheet/JSON file
+        [RequestSizeLimit(250 * 1024 * 1024)] // 250 MB -- generous for a ZIP full of question images; plain CSV/Excel/JSON are tiny in comparison
         public async Task<ActionResult<BulkImportPreviewResponseDto>> Preview(Guid paperId, IFormFile file)
         {
             if (!await _permissions.HasPermissionAsync(User, AdminPermission.UploadPaper))
@@ -63,17 +76,31 @@ namespace ScoramAPI.Controllers
                 return BadRequest(new { message = "Questions can only be bulk-imported into a Draft paper." });
 
             if (file == null || file.Length == 0)
-                return BadRequest(new { message = "Attach a CSV, Excel (.xlsx), or JSON file." });
+                return BadRequest(new { message = "Attach a CSV, Excel (.xlsx), JSON, or ZIP file." });
 
             var format = DetectFormat(file.FileName);
             if (format == null)
-                return BadRequest(new { message = "Unrecognized file type -- expected .csv, .xlsx, or .json." });
+                return BadRequest(new { message = "Unrecognized file type -- expected .csv, .xlsx, .json, or .zip." });
+
+            // A ZIP upload's images get staged under this id -- generated up front (rather than
+            // waiting for the ImportJob row below) so the very first staged image and the eventual
+            // ImportJob.Id agree, letting Commit()/cleanup find them later by job id alone.
+            var stagingId = Guid.NewGuid();
 
             List<ImportedQuestionRow> rows;
             try
             {
-                await using var stream = file.OpenReadStream();
-                rows = await _importService.ParseAsync(stream, format.Value);
+                if (format == ImportFileFormat.Zip)
+                {
+                    await using var zipStream = file.OpenReadStream();
+                    var contents = _zipService.Extract(zipStream);
+                    rows = await _importService.ParseZipAsync(contents.QuestionsJson, contents.Images, $"bulk-import-staging/{stagingId}");
+                }
+                else
+                {
+                    await using var stream = file.OpenReadStream();
+                    rows = await _importService.ParseAsync(stream, format.Value);
+                }
             }
             catch (InvalidDataException ex)
             {
@@ -93,6 +120,7 @@ namespace ScoramAPI.Controllers
 
             var job = new ImportJob
             {
+                Id = stagingId,
                 PaperId = paperId,
                 CreatedByAdminId = User.GetAdminId(),
                 FileName = file.FileName,
@@ -229,10 +257,26 @@ namespace ScoramAPI.Controllers
                     CorrectOption = Enum.Parse<OptionLetter>(row.CorrectOption, ignoreCase: true),
                     Explanation = row.Explanation,
                     SourceReference = row.SourceReference,
+                    ContentBlocksJson = row.ContentBlocksJson,
                     CreatedByAdminId = adminId,
                     ImportJobId = job.Id,
                     CreatedAt = DateTime.UtcNow
                 };
+
+                // Any images were staged (ZIP upload only -- see Preview) under
+                // "bulk-import-staging/{jobId}"; copy each one into the permanent "question-images"
+                // folder rather than pointing the question straight at the staging blob, since the
+                // whole staging folder gets deleted below once this loop finishes. CopyImageAsync
+                // (already used by QuestionBankMirrorService for the same "needs its own independent
+                // copy" reason) no-ops to null for a null source, so this is safe to call
+                // unconditionally even for a non-ZIP import where these are all null.
+                question.QuestionImageUrl = await _fileStorage.CopyImageAsync(row.QuestionImageUrl, "question-images");
+                question.OptionAImageUrl = await _fileStorage.CopyImageAsync(row.OptionAImageUrl, "question-images");
+                question.OptionBImageUrl = await _fileStorage.CopyImageAsync(row.OptionBImageUrl, "question-images");
+                question.OptionCImageUrl = await _fileStorage.CopyImageAsync(row.OptionCImageUrl, "question-images");
+                question.OptionDImageUrl = await _fileStorage.CopyImageAsync(row.OptionDImageUrl, "question-images");
+                question.ExplanationImageUrl = await _fileStorage.CopyImageAsync(row.ExplanationImageUrl, "question-images");
+
                 _db.Questions.Add(question);
                 createdQuestions.Add(question);
             }
@@ -245,15 +289,22 @@ namespace ScoramAPI.Controllers
 
             // Auto-mirror every newly-imported PYQ question into the Question Bank (see
             // IQuestionBankMirrorService) -- same reasoning as QuestionsController.Create: a bulk
-            // import is just as much "a PYQ upload" as the one-by-one form, and bulk-imported
-            // questions have no images to lose in the mirror (this flow doesn't support images at
-            // all -- see this controller's own class comment), so nothing is lost in translation here.
+            // import is just as much "a PYQ upload" as the one-by-one form. Now that bulk-imported
+            // questions CAN have images (ZIP upload) and ContentBlocks, MirrorFromPyqAsync/
+            // SyncMirrorAsync carry both across -- see that service's own comments on what is and
+            // isn't re-copied.
             foreach (var question in createdQuestions)
             {
                 var mirrorId = await _mirror.MirrorFromPyqAsync(_db, question, job.Paper.ExamId, job.Paper.Year, adminId);
                 if (mirrorId.HasValue) question.MirroredToQuestionBankQuestionId = mirrorId;
             }
             try { await _db.SaveChangesAsync(); } catch { /* non-critical, see MirrorFromPyqAsync's own comment */ }
+
+            // Whatever was staged for this job (whether it made it into a committed question above,
+            // or belonged to a row that got skipped/left invalid) has either already been copied
+            // elsewhere or is no longer needed -- safe to delete the whole staging folder now. A
+            // no-op for a non-ZIP import (nothing was ever staged under this job's id).
+            await _fileStorage.DeleteFolderAsync($"bulk-import-staging/{job.Id}");
 
             _cache.Remove(CachePrefix + jobId);
             await _audit.LogAsync(adminId, "BulkImport.Commit", "Paper", job.PaperId, $"{toCommit.Count} question(s) imported from {job.FileName}");
@@ -321,12 +372,26 @@ namespace ScoramAPI.Controllers
                 return BadRequest(new { message = "The paper is no longer Draft -- roll back individual questions by hand instead." });
 
             var imported = await _db.Questions.Where(q => q.ImportJobId == jobId).ToListAsync();
+
+            // Now that a ZIP-based bulk import can give a question images, a rollback needs to clean
+            // those up too -- same imageUrls-array-then-delete-after-remove pattern as
+            // QuestionsController.Delete. A no-op for questions from a CSV/Excel/JSON import, which
+            // never had any of these fields set.
+            var imageUrls = imported
+                .SelectMany(q => new[]
+                {
+                    q.QuestionImageUrl, q.OptionAImageUrl, q.OptionBImageUrl,
+                    q.OptionCImageUrl, q.OptionDImageUrl, q.ExplanationImageUrl
+                })
+                .ToList();
+
             _db.Questions.RemoveRange(imported);
 
             job.Status = ImportJobStatus.RolledBack;
             job.RolledBackAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
+            foreach (var url in imageUrls) await _fileStorage.DeleteImageAsync(url);
             await _audit.LogAsync(User.GetAdminId(), "BulkImport.Rollback", "Paper", job.PaperId, $"{imported.Count} question(s) removed from {job.FileName}");
 
             return NoContent();
@@ -340,6 +405,7 @@ namespace ScoramAPI.Controllers
                 ".csv" => ImportFileFormat.Csv,
                 ".xlsx" => ImportFileFormat.Excel,
                 ".json" => ImportFileFormat.Json,
+                ".zip" => ImportFileFormat.Zip,
                 _ => null
             };
         }

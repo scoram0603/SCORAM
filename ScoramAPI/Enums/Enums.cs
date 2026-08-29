@@ -267,7 +267,12 @@ namespace ScoramAPI.Enums
     {
         Csv,
         Excel,
-        Json
+        Json,
+        // A SCORAM-BULK-UPLOAD.zip package (questions.json + images/ + optional metadata.json) --
+        // see Services/BulkUploadZipService.cs. Appended at the end rather than inserted
+        // alphabetically so ImportJob.Format (stored as a plain int, no HasConversion) keeps every
+        // existing row's numeric value stable.
+        Zip
     }
 
     public enum ImportJobStatus

@@ -9,15 +9,24 @@ function toQueryString(params = {}) {
   return qs ? `?${qs}` : "";
 }
 
-// POST /api/admin/question-bank/bulk/excel or /bulk/json -- parses + validates, writes nothing yet.
-// Returns { jobId, fileName, format, totalRows, validCount, invalidCount, duplicateCount, rows }.
-// "language" (optional -- "Hindi" | "English") is the admin's Default Language pick for this whole
-// upload; see QuestionBankAdminController.Preview's own comment for exactly how it's applied.
+// POST /api/admin/question-bank/bulk/csv, /bulk/excel, /bulk/json, or /bulk/zip -- parses +
+// validates, writes nothing yet. Returns { jobId, fileName, format, totalRows, validCount,
+// invalidCount, duplicateCount, rows }. "language" (optional -- "Hindi" | "English") is the admin's
+// Default Language pick for this whole upload; see QuestionBankAdminController.Preview's own
+// comment for exactly how it's applied. A .zip additionally supports per-question images and a
+// ContentBlocks sequence -- see BulkUploadZipService on the backend.
+const FORMAT_PATHS = {
+  csv: "/api/admin/question-bank/bulk/csv",
+  excel: "/api/admin/question-bank/bulk/excel",
+  json: "/api/admin/question-bank/bulk/json",
+  zip: "/api/admin/question-bank/bulk/zip",
+};
+
 export function previewQuestionBankImport(token, file, format, language) {
   const formData = new FormData();
   formData.append("file", file);
   if (language) formData.append("language", language);
-  const path = format === "json" ? "/api/admin/question-bank/bulk/json" : "/api/admin/question-bank/bulk/excel";
+  const path = FORMAT_PATHS[format] || FORMAT_PATHS.excel;
   return apiFetchForm(path, { formData, token });
 }
 

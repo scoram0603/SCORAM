@@ -3,6 +3,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { updateQuestion } from "../api/adminQuestions";
 import { Card, Button, FormField, TextInput, TextArea, Select, Alert, friendlyError } from "./AdminUI";
 import EditImageField, { imgSrc } from "./EditImageField";
+import { MathText, RichQuestionBody } from "../../components/questions/MathText";
 
 const DIFFICULTIES = ["Easy", "Medium", "Hard"];
 
@@ -21,7 +22,7 @@ export function QuestionCard({ question: q, canEdit, canDelete, isDeleting, onEd
             <span>· {q.topic}</span>
             <span>· {q.difficultyLevel}</span>
           </div>
-          <p className="mt-2 text-sm font-medium text-ink-900">{q.questionText}</p>
+          <p className="mt-2 text-sm font-medium text-ink-900"><RichQuestionBody contentBlocks={q.contentBlocks} fallbackText={q.questionText} /></p>
           {imgSrc(q.questionImageUrl) && <img src={imgSrc(q.questionImageUrl)} alt="" className="mt-2 max-h-40 rounded-lg border border-primary-100" />}
 
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -34,7 +35,7 @@ export function QuestionCard({ question: q, canEdit, canDelete, isDeleting, onEd
               >
                 <span className="font-bold">{letter}.</span>
                 <span className="flex-1">
-                  {q[`option${letter}`]}
+                  <MathText text={q[`option${letter}`]} />
                   {imgSrc(q[`option${letter}ImageUrl`]) && (
                     <img src={imgSrc(q[`option${letter}ImageUrl`])} alt="" className="mt-1 max-h-20 rounded border border-primary-100" />
                   )}
@@ -43,7 +44,7 @@ export function QuestionCard({ question: q, canEdit, canDelete, isDeleting, onEd
             ))}
           </div>
 
-          {q.explanation && <p className="mt-3 text-xs text-ink-600"><span className="font-semibold">Explanation:</span> {q.explanation}</p>}
+          {q.explanation && <p className="mt-3 text-xs text-ink-600"><span className="font-semibold">Explanation:</span> <MathText text={q.explanation} /></p>}
           {imgSrc(q.explanationImageUrl) && <img src={imgSrc(q.explanationImageUrl)} alt="" className="mt-2 max-h-32 rounded-lg border border-primary-100" />}
         </div>
 
@@ -66,7 +67,73 @@ export function QuestionCard({ question: q, canEdit, canDelete, isDeleting, onEd
   );
 }
 
-// Editable form for one paper question -- PATCH /api/questions/{id} (server-side gated to a
+// Optional advanced field: a raw JSON textarea for a question's ContentBlocks sequence (see
+// backend DTOs/ContentBlockDto.cs -- an ordered list of { type: "text"|"math"|"image"|"table",
+// content }), with a live rendered preview underneath via RichQuestionBody. This is deliberately a
+// raw-JSON editor rather than a drag-and-drop block builder -- the spec allows either ("introduce a
+// simple math editor with preview"), and for SCORAM's actual questions (mostly a QuestionText plus
+// maybe one image, per spec section 5's own "don't force every question to use ContentBlocks"
+// guidance) a plain textarea covers the rare case that genuinely needs an ordered mixed sequence
+// without building a full block editor most questions will never touch.
+function ContentBlocksEditor({ value, onChange }) {
+  const [open, setOpen] = useState(Boolean(value));
+  const [parsed, setParsed] = useState(null);
+  const [parseError, setParseError] = useState(null);
+
+  function handleChange(text) {
+    onChange(text);
+    if (!text.trim()) {
+      setParsed(null);
+      setParseError(null);
+      return;
+    }
+    try {
+      const blocks = JSON.parse(text);
+      setParsed(Array.isArray(blocks) ? blocks : null);
+      setParseError(Array.isArray(blocks) ? null : "Expected a JSON array of { type, content } objects.");
+    } catch {
+      setParsed(null);
+      setParseError("That isn't valid JSON yet.");
+    }
+  }
+
+  return (
+    <div className="rounded-xl2 border border-dashed border-primary-100 p-3">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="text-xs font-semibold text-secondary-500 hover:underline"
+      >
+        {open ? "Hide" : "Show"} advanced: Content blocks (optional -- mixed text/math/image/table sequence)
+      </button>
+      {open && (
+        <div className="mt-2 flex flex-col gap-2">
+          <p className="text-xs text-ink-400">
+            Only needed for a question whose body genuinely interleaves text, math, and images in
+            order -- most questions don't need this, plain Question text (with $math$) above already
+            covers a single block of text plus one image.
+          </p>
+          <TextArea
+            rows={4}
+            className="font-mono text-xs"
+            placeholder={'[\n  { "type": "text", "content": "Given:" },\n  { "type": "math", "content": "\\\\frac{x}{y}=\\\\frac{3}{5}" }\n]'}
+            value={value}
+            onChange={(e) => handleChange(e.target.value)}
+          />
+          {parseError && <p className="text-xs text-red-600">{parseError}</p>}
+          {parsed && (
+            <div className="rounded-lg bg-primary-50/50 p-3">
+              <p className="mb-1 text-xs font-bold text-primary-600">Preview</p>
+              <RichQuestionBody contentBlocks={parsed} className="text-sm text-ink-700" />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // Draft-or-PendingReview paper; see QuestionsController.Update). Same field set as the one-by-one
 // upload form, including per-option/explanation images.
 export function QuestionEditForm({ question: q, token, onSaved, onCancel }) {
@@ -83,6 +150,7 @@ export function QuestionEditForm({ question: q, token, onSaved, onCancel }) {
     correctOption: q.correctOption,
     explanation: q.explanation || "",
     sourceReference: q.sourceReference || "",
+    contentBlocksJson: q.contentBlocks?.length ? JSON.stringify(q.contentBlocks, null, 2) : "",
   });
   const [images, setImages] = useState({});
   const [removeImages, setRemoveImages] = useState({});
@@ -124,6 +192,11 @@ export function QuestionEditForm({ question: q, token, onSaved, onCancel }) {
         <FormField label="Question text">
           <TextArea required rows={3} value={fields.questionText} onChange={(e) => updateField("questionText", e.target.value)} />
         </FormField>
+        {/* Live render so the admin sees what the student will see (spec section 39) -- wrap math in
+            $...$ or $$...$$ right in the text above and it renders here as the field is typed. */}
+        {fields.questionText?.includes("$") && (
+          <p className="-mt-2 rounded-lg bg-primary-50/50 px-3 py-2 text-sm text-ink-700"><MathText text={fields.questionText} /></p>
+        )}
         <EditImageField label="Question image" currentUrl={q.questionImageUrl} onReplace={(f) => setImages((i) => ({ ...i, questionImage: f }))} onRemove={(v) => setRemoveImages((r) => ({ ...r, questionImage: v }))} />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -154,6 +227,8 @@ export function QuestionEditForm({ question: q, token, onSaved, onCancel }) {
         <FormField label="Source reference">
           <TextInput value={fields.sourceReference} onChange={(e) => updateField("sourceReference", e.target.value)} />
         </FormField>
+
+        <ContentBlocksEditor value={fields.contentBlocksJson} onChange={(v) => updateField("contentBlocksJson", v)} />
 
         {error && <Alert>{error}</Alert>}
 
