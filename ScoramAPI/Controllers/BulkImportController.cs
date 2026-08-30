@@ -198,6 +198,87 @@ namespace ScoramAPI.Controllers
             return Ok(row);
         }
 
+        // POST /api/admin/bulk-import/{jobId}/rows/{rowNumber}/images -- admin adds, replaces, or
+        // removes one or more of this row's images during preview, before commit. Closes the gap
+        // where only a ZIP upload's own images/ folder could ever populate a row's images: this
+        // works for a row from ANY format (CSV/Excel/JSON/ZIP) -- a CSV-sourced row that had no
+        // images at all can get its first one added right here, same as a ZIP row can have its
+        // staged image replaced or removed. Images land in the same "bulk-import-staging/{jobId}"
+        // folder a ZIP upload's own images use, so Commit()'s existing copy-then-cleanup logic
+        // handles these identically either way -- nothing else needed to wire this in.
+        [HttpPost("bulk-import/{jobId:guid}/rows/{rowNumber:int}/images")]
+        [RequestSizeLimit(30 * 1024 * 1024)] // a handful of images for one row, not a whole file
+        public async Task<ActionResult<ImportedQuestionRow>> UpdateRowImages(Guid jobId, int rowNumber, [FromForm] BulkImportRowImagesDto dto)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.UploadPaper))
+                return Forbid();
+
+            var job = await _db.ImportJobs.Include(j => j.Paper).FirstOrDefaultAsync(j => j.Id == jobId);
+            if (job == null) return NotFound(new { message = "Import job not found." });
+            if (job.Status != ImportJobStatus.PendingReview)
+                return BadRequest(new { message = $"This import is already {job.Status} and its rows can't be edited anymore." });
+            if (job.Paper == null || job.Paper.Status != PaperStatus.Draft)
+                return BadRequest(new { message = "The paper is no longer in Draft." });
+
+            if (!_cache.TryGetValue(CachePrefix + jobId, out List<ImportedQuestionRow>? rows) || rows == null)
+                return BadRequest(new { message = "This preview has expired (previews last 30 minutes). Please re-upload the file." });
+
+            var row = rows.FirstOrDefault(r => r.RowNumber == rowNumber);
+            if (row == null) return NotFound(new { message = "Row not found in this import." });
+
+            var stagingSubfolder = $"bulk-import-staging/{jobId}";
+            try
+            {
+                row.QuestionImageUrl = await ApplyStagedImageUpdate(dto.QuestionImage, dto.RemoveQuestionImage, row.QuestionImageUrl, stagingSubfolder);
+                row.OptionAImageUrl = await ApplyStagedImageUpdate(dto.OptionAImage, dto.RemoveOptionAImage, row.OptionAImageUrl, stagingSubfolder);
+                row.OptionBImageUrl = await ApplyStagedImageUpdate(dto.OptionBImage, dto.RemoveOptionBImage, row.OptionBImageUrl, stagingSubfolder);
+                row.OptionCImageUrl = await ApplyStagedImageUpdate(dto.OptionCImage, dto.RemoveOptionCImage, row.OptionCImageUrl, stagingSubfolder);
+                row.OptionDImageUrl = await ApplyStagedImageUpdate(dto.OptionDImage, dto.RemoveOptionDImage, row.OptionDImageUrl, stagingSubfolder);
+                row.ExplanationImageUrl = await ApplyStagedImageUpdate(dto.ExplanationImage, dto.RemoveExplanationImage, row.ExplanationImageUrl, stagingSubfolder);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
+            // This is a direct, confirmed admin action -- not a re-run of ZIP staging -- so it takes
+            // priority over whatever ImageErrors this row may have carried from its original upload
+            // (e.g. "image not found in ZIP" for a filename the admin has now fixed by hand here).
+            // Cleared wholesale rather than field-by-field since ImageErrors are free-text messages,
+            // not structured per-field state.
+            row.ImageErrors.Clear();
+
+            var existingQuestions = await _db.Questions.Where(q => q.PaperId == job.PaperId).ToListAsync();
+            _importService.Validate(rows, existingQuestions);
+
+            job.ValidRows = rows.Count(r => r.IsValid);
+            job.InvalidRows = rows.Count(r => !r.IsValid);
+            _cache.Set(CachePrefix + jobId, rows, CacheLifetime);
+            await _db.SaveChangesAsync();
+
+            return Ok(row);
+        }
+
+        // Same "upload new before deleting old" ordering as QuestionsController.ApplyImageUpdate
+        // (spec section 41: never delete an old image before the new one is safely stored) -- the
+        // only difference is a caller-supplied subfolder, since this saves into a job's staging
+        // folder rather than always "question-images".
+        private async Task<string?> ApplyStagedImageUpdate(IFormFile? newFile, bool remove, string? currentUrl, string stagingSubfolder)
+        {
+            if (newFile != null)
+            {
+                var newUrl = await _fileStorage.SaveImageAsync(newFile, stagingSubfolder);
+                await _fileStorage.DeleteImageAsync(currentUrl);
+                return newUrl;
+            }
+            if (remove)
+            {
+                await _fileStorage.DeleteImageAsync(currentUrl);
+                return null;
+            }
+            return currentUrl;
+        }
+
         // GET /api/admin/bulk-import/{jobId}/questions -- the actual Question rows a *committed*
         // import created (via Question.ImportJobId), for the "Recent imports" history view: an admin
         // can open a past batch and fix a question in it without hunting through the paper's full

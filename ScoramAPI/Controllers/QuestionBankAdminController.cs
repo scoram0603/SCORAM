@@ -372,6 +372,26 @@ namespace ScoramAPI.Controllers
             return currentUrl;
         }
 
+        // Same contract as ApplyImageUpdate just above, but for a caller-supplied subfolder instead
+        // of always "question-images" -- used by UpdateRowImages to save into a bulk-import job's
+        // staging folder. Same "upload new before deleting old" ordering (spec section 41: never
+        // delete an old image before the new one is safely stored).
+        private async Task<string?> ApplyStagedImageUpdate(IFormFile? newFile, bool remove, string? currentUrl, string stagingSubfolder)
+        {
+            if (newFile != null)
+            {
+                var newUrl = await _fileStorage.SaveImageAsync(newFile, stagingSubfolder);
+                await _fileStorage.DeleteImageAsync(currentUrl);
+                return newUrl;
+            }
+            if (remove)
+            {
+                await _fileStorage.DeleteImageAsync(currentUrl);
+                return null;
+            }
+            return currentUrl;
+        }
+
         // DELETE /api/admin/question-bank/{id} -- soft delete (IsActive = false), consistent with how
         // every read path already filters on IsActive. Keeps the row (and its Reports/Solutions/exam
         // mappings, which cascade-delete only on a HARD delete) around for audit history instead of
@@ -682,7 +702,61 @@ namespace ScoramAPI.Controllers
             return Ok(row);
         }
 
-        // POST /api/admin/question-bank/bulk/{jobId}/commit
+        // POST /api/admin/question-bank/bulk/{jobId}/rows/{rowNumber}/images -- admin adds,
+        // replaces, or removes one or more of this row's images during preview, before commit.
+        // Exact mirror of BulkImportController.UpdateRowImages (PYP's own equivalent) -- see that
+        // method's own comment for the full reasoning. Works for a row from ANY format
+        // (CSV/Excel/JSON/ZIP), not just one that already came with a ZIP-staged image; images land
+        // in the same "bulk-import-staging/{jobId}" folder a ZIP upload's own images use, so
+        // Commit()'s existing copy-then-cleanup logic (Phase 3) handles these identically either way.
+        [HttpPost("bulk/{jobId:guid}/rows/{rowNumber:int}/images")]
+        [RequestSizeLimit(30 * 1024 * 1024)] // a handful of images for one row, not a whole file
+        public async Task<ActionResult<QuestionBankImportRow>> UpdateRowImages(Guid jobId, int rowNumber, [FromForm] QuestionBankRowImagesDto dto)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageQuestionBank))
+                return Forbid();
+
+            var job = await _db.QuestionBankImportJobs.FindAsync(jobId);
+            if (job == null) return NotFound(new { message = "Import job not found." });
+            if (job.Status != ImportJobStatus.PendingReview)
+                return BadRequest(new { message = $"This import is already {job.Status} and its rows can't be edited anymore." });
+
+            if (!_cache.TryGetValue(CachePrefix + jobId, out List<QuestionBankImportRow>? rows) || rows == null)
+                return BadRequest(new { message = "This preview has expired (previews last 30 minutes). Please re-upload the file." });
+
+            var row = rows.FirstOrDefault(r => r.RowNumber == rowNumber);
+            if (row == null) return NotFound(new { message = "Row not found in this import." });
+
+            var stagingSubfolder = $"bulk-import-staging/{jobId}";
+            try
+            {
+                row.QuestionImageUrl = await ApplyStagedImageUpdate(dto.QuestionImage, dto.RemoveQuestionImage, row.QuestionImageUrl, stagingSubfolder);
+                row.OptionAImageUrl = await ApplyStagedImageUpdate(dto.OptionAImage, dto.RemoveOptionAImage, row.OptionAImageUrl, stagingSubfolder);
+                row.OptionBImageUrl = await ApplyStagedImageUpdate(dto.OptionBImage, dto.RemoveOptionBImage, row.OptionBImageUrl, stagingSubfolder);
+                row.OptionCImageUrl = await ApplyStagedImageUpdate(dto.OptionCImage, dto.RemoveOptionCImage, row.OptionCImageUrl, stagingSubfolder);
+                row.OptionDImageUrl = await ApplyStagedImageUpdate(dto.OptionDImage, dto.RemoveOptionDImage, row.OptionDImageUrl, stagingSubfolder);
+                row.ExplanationImageUrl = await ApplyStagedImageUpdate(dto.ExplanationImage, dto.RemoveExplanationImage, row.ExplanationImageUrl, stagingSubfolder);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
+            // A direct, confirmed admin action supersedes whatever staging-time image error (if any)
+            // this row carried from its original ZIP upload -- same reasoning as
+            // BulkImportController.UpdateRowImages.
+            row.ImageErrors.Clear();
+
+            await _importService.ValidateAsync(rows, _db);
+
+            job.ValidRows = rows.Count(r => r.IsValid);
+            job.InvalidRows = rows.Count(r => !r.IsValid);
+            job.DuplicateRows = rows.Count(r => r.IsDuplicate);
+            _cache.Set(CachePrefix + jobId, rows, CacheLifetime);
+            await _db.SaveChangesAsync();
+
+            return Ok(row);
+        }
         // Valid + non-duplicate rows create a new QuestionBankQuestion. Valid + duplicate rows don't
         // create a second question -- their exam/year pairs are merged onto the existing question's
         // mapping set instead (section 13: "add the new exam/year mapping instead of creating

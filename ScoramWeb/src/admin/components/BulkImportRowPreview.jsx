@@ -1,10 +1,10 @@
 import { Sigma, Image as ImageIcon } from "lucide-react";
-import { imgSrc } from "./EditImageField";
-import { RichQuestionBody } from "../../components/questions/MathText";
 
 // Shared between BulkImportPanel.jsx (PYP) and QuestionBankUploadWizard.jsx (PYQ) -- both bulk
-// import preview tables show the same three things for a row that came from a ZIP upload: compact
-// summary-row badges, a staged-image thumbnail, and a read-only rich-content preview.
+// import preview tables use the same compact summary-row indicators and the same safe-JSON-parse
+// guard for a row's ContentBlocks. Images themselves are editable directly in each wizard's own
+// row editor (via EditImageField, same component the rest of the admin panel uses) rather than
+// shown through a shared read-only component -- see each wizard's own row-editor for that.
 
 // Compact indicators shown under a row's truncated question-text preview in the summary table --
 // full KaTeX rendering doesn't truncate gracefully inside a line-clamped cell, so the summary row
@@ -35,15 +35,6 @@ export function RowBadges({ row }) {
   );
 }
 
-export function StagedImage({ label, url }) {
-  return (
-    <span className="flex flex-col items-center gap-1">
-      <img src={imgSrc(url)} alt={label} className="h-16 w-16 rounded border border-primary-100 object-cover" />
-      <span className="text-[10px] text-ink-400">{label}</span>
-    </span>
-  );
-}
-
 // A row's contentBlocksJson is a raw JSON string from the backend -- guard against it somehow being
 // malformed by the time it reaches here (it's already validated server-side, but a render crash
 // over one bad row shouldn't take down the whole preview table).
@@ -54,34 +45,4 @@ export function safeParseBlocks(json) {
   } catch {
     return [];
   }
-}
-
-// The read-only "From ZIP" block shown inside an expanded preview row -- every staged image field
-// plus any ContentBlocks, none of it editable here (only the plain text fields below are, via
-// PATCH .../rows/{rowNumber} -- see each wizard's own row-editor comment for why). Renders nothing
-// if the row has none of this (a CSV/Excel/JSON-sourced row never does).
-export function StagedContentPreview({ row }) {
-  const hasAnyImage = row.questionImageUrl || row.optionAImageUrl || row.optionBImageUrl || row.optionCImageUrl || row.optionDImageUrl || row.explanationImageUrl;
-  if (!hasAnyImage && !row.contentBlocksJson) return null;
-
-  return (
-    <div className="rounded-lg bg-primary-50/40 p-2">
-      <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-primary-500">From ZIP (read-only here)</p>
-      {hasAnyImage && (
-        <div className="flex flex-wrap gap-2">
-          {row.questionImageUrl && <StagedImage label="Question" url={row.questionImageUrl} />}
-          {row.optionAImageUrl && <StagedImage label="Option A" url={row.optionAImageUrl} />}
-          {row.optionBImageUrl && <StagedImage label="Option B" url={row.optionBImageUrl} />}
-          {row.optionCImageUrl && <StagedImage label="Option C" url={row.optionCImageUrl} />}
-          {row.optionDImageUrl && <StagedImage label="Option D" url={row.optionDImageUrl} />}
-          {row.explanationImageUrl && <StagedImage label="Explanation" url={row.explanationImageUrl} />}
-        </div>
-      )}
-      {row.contentBlocksJson && (
-        <div className={hasAnyImage ? "mt-2 rounded bg-white p-2" : "rounded bg-white p-2"}>
-          <RichQuestionBody contentBlocks={safeParseBlocks(row.contentBlocksJson)} className="text-xs text-ink-700" />
-        </div>
-      )}
-    </div>
-  );
 }

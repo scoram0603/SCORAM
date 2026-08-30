@@ -17,6 +17,15 @@ namespace ScoramAPI.DTOs
         public string OptionB { get; set; } = string.Empty;
         public string OptionC { get; set; } = string.Empty;
         public string OptionD { get; set; } = string.Empty;
+        // All frozen at attempt-start alongside the text fields above -- see
+        // StudentAnswer.QuestionImageUrlSnapshot's own comment. Null for a question with no image,
+        // same as every existing consumer of Question/QuestionBankQuestion's own image fields.
+        public string? QuestionImageUrl { get; set; }
+        public string? OptionAImageUrl { get; set; }
+        public string? OptionBImageUrl { get; set; }
+        public string? OptionCImageUrl { get; set; }
+        public string? OptionDImageUrl { get; set; }
+        public List<ContentBlockDto> ContentBlocks { get; set; } = new();
         public string? SelectedOption { get; set; }
         public bool IsMarkedForReview { get; set; }
     }
@@ -77,6 +86,15 @@ namespace ScoramAPI.DTOs
         public string OptionC { get; set; } = string.Empty;
         public string OptionD { get; set; } = string.Empty;
         public string CorrectOption { get; set; } = string.Empty;
+        // Same frozen-at-attempt-start contract as TestAttemptQuestionDto's own image/ContentBlocks
+        // fields -- see StudentAnswer.QuestionImageUrlSnapshot.
+        public string? QuestionImageUrl { get; set; }
+        public string? OptionAImageUrl { get; set; }
+        public string? OptionBImageUrl { get; set; }
+        public string? OptionCImageUrl { get; set; }
+        public string? OptionDImageUrl { get; set; }
+        public string? ExplanationImageUrl { get; set; }
+        public List<ContentBlockDto> ContentBlocks { get; set; } = new();
         public string? SelectedOption { get; set; }
         public bool IsCorrect { get; set; }
         public bool WasSkipped { get; set; }

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+
 namespace ScoramAPI.DTOs
 {
     // One parsed row, before or after validation. RowNumber is 1-based and refers to the row's
@@ -86,5 +88,28 @@ namespace ScoramAPI.DTOs
         public DateTime CreatedAt { get; set; }
         public DateTime? CommittedAt { get; set; }
         public DateTime? RolledBackAt { get; set; }
+    }
+
+    // POST .../bulk-import/{jobId}/rows/{rowNumber}/images -- multipart form for adding, replacing,
+    // or removing one or more of a preview row's images before commit. Mirrors QuestionUpdateDto's
+    // image fields exactly (same "file provided -> replace, flag set -> remove, neither -> leave
+    // alone" contract) -- the only difference is these land in the bulk-import staging folder
+    // instead of permanent storage, since the row isn't a real Question yet. Works for a row from
+    // ANY format (CSV/Excel/JSON/ZIP), not just one that already came with a ZIP-staged image --
+    // this is how a CSV/Excel/JSON row gets its first image at all, before commit.
+    public class BulkImportRowImagesDto
+    {
+        public IFormFile? QuestionImage { get; set; }
+        public bool RemoveQuestionImage { get; set; }
+        public IFormFile? OptionAImage { get; set; }
+        public bool RemoveOptionAImage { get; set; }
+        public IFormFile? OptionBImage { get; set; }
+        public bool RemoveOptionBImage { get; set; }
+        public IFormFile? OptionCImage { get; set; }
+        public bool RemoveOptionCImage { get; set; }
+        public IFormFile? OptionDImage { get; set; }
+        public bool RemoveOptionDImage { get; set; }
+        public IFormFile? ExplanationImage { get; set; }
+        public bool RemoveExplanationImage { get; set; }
     }
 }

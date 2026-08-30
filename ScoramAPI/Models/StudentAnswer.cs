@@ -45,6 +45,19 @@ namespace ScoramAPI.Models
         public string? SubjectSnapshot { get; set; }
         public string? TopicSnapshot { get; set; }
 
+        // Added alongside the rich PYP/PYQ upload feature -- same "frozen at attempt-start" contract
+        // as every other *Snapshot field above (a later admin edit to the live question's image or
+        // ContentBlocks can't retroactively change what a past attempt showed). Null for every
+        // attempt started before this existed, and for any question that has no image/rich content
+        // to begin with -- both render exactly as before (plain text, no image).
+        public string? QuestionImageUrlSnapshot { get; set; }
+        public string? OptionAImageUrlSnapshot { get; set; }
+        public string? OptionBImageUrlSnapshot { get; set; }
+        public string? OptionCImageUrlSnapshot { get; set; }
+        public string? OptionDImageUrlSnapshot { get; set; }
+        public string? ExplanationImageUrlSnapshot { get; set; }
+        public string? ContentBlocksJsonSnapshot { get; set; }
+
         // Null means the student hasn't answered (yet, if InProgress) or skipped it (if submitted).
         public OptionLetter? SelectedOption { get; set; }
 

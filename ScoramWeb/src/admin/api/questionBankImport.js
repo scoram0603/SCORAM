@@ -69,6 +69,30 @@ export function getQuestionBankImportStatus(token, jobId) {
   return apiFetch(`/api/admin/question-bank/bulk/${jobId}`, { token });
 }
 
+// POST /api/admin/question-bank/bulk/{jobId}/rows/{rowNumber}/images -- adds, replaces, or removes
+// one or more of this row's images during preview, before commit. Works for a row from any format,
+// not just one that already came from a ZIP -- this is how a CSV/Excel/JSON row gets its first
+// image. `images` is { questionImage, optionAImage, optionBImage, optionCImage, optionDImage,
+// explanationImage } (File objects, only the ones being added/replaced); `removeImages` is the
+// same keys as booleans, for clearing an image without replacing it. Mirrors bulkImport.js's own
+// updateRowImages exactly (PYP's equivalent).
+export function updateRowImages(token, jobId, rowNumber, images = {}, removeImages = {}) {
+  const formData = new FormData();
+  if (images.questionImage) formData.append("QuestionImage", images.questionImage);
+  if (images.optionAImage) formData.append("OptionAImage", images.optionAImage);
+  if (images.optionBImage) formData.append("OptionBImage", images.optionBImage);
+  if (images.optionCImage) formData.append("OptionCImage", images.optionCImage);
+  if (images.optionDImage) formData.append("OptionDImage", images.optionDImage);
+  if (images.explanationImage) formData.append("ExplanationImage", images.explanationImage);
+  formData.append("RemoveQuestionImage", removeImages.questionImage ? "true" : "false");
+  formData.append("RemoveOptionAImage", removeImages.optionAImage ? "true" : "false");
+  formData.append("RemoveOptionBImage", removeImages.optionBImage ? "true" : "false");
+  formData.append("RemoveOptionCImage", removeImages.optionCImage ? "true" : "false");
+  formData.append("RemoveOptionDImage", removeImages.optionDImage ? "true" : "false");
+  formData.append("RemoveExplanationImage", removeImages.explanationImage ? "true" : "false");
+  return apiFetchForm(`/api/admin/question-bank/bulk/${jobId}/rows/${rowNumber}/images`, { formData, token });
+}
+
 // GET /api/admin/question-bank/bulk/history?page=&pageSize=
 export function getQuestionBankImportHistory(token, { page, pageSize } = {}) {
   return apiFetch(`/api/admin/question-bank/bulk/history${toQueryString({ page, pageSize })}`, { token });

@@ -318,4 +318,28 @@ namespace ScoramAPI.DTOs
         public int PendingReports { get; set; }
         public int PendingAlternativeSolutions { get; set; }
     }
+
+    // POST .../question-bank/bulk/{jobId}/rows/{rowNumber}/images -- multipart form for adding,
+    // replacing, or removing one or more of a Question Bank preview row's images before commit.
+    // Identical shape and contract to BulkImportRowImagesDto (PYP's own equivalent) -- kept as its
+    // own copy rather than shared, matching this codebase's existing preference for small
+    // controller-local DTOs over a speculative shared type (see
+    // QuestionBankAdminController.ApplyImageUpdate's own comment making the same call for its
+    // method). Works for a row from ANY format (CSV/Excel/JSON/ZIP), not just one that already came
+    // with a ZIP-staged image.
+    public class QuestionBankRowImagesDto
+    {
+        public IFormFile? QuestionImage { get; set; }
+        public bool RemoveQuestionImage { get; set; }
+        public IFormFile? OptionAImage { get; set; }
+        public bool RemoveOptionAImage { get; set; }
+        public IFormFile? OptionBImage { get; set; }
+        public bool RemoveOptionBImage { get; set; }
+        public IFormFile? OptionCImage { get; set; }
+        public bool RemoveOptionCImage { get; set; }
+        public IFormFile? OptionDImage { get; set; }
+        public bool RemoveOptionDImage { get; set; }
+        public IFormFile? ExplanationImage { get; set; }
+        public bool RemoveExplanationImage { get; set; }
+    }
 }

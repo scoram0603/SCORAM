@@ -5,6 +5,7 @@ import {
   Swords, Search, Check, X as XIcon,
 } from "lucide-react";
 import { getAttempt } from "../api/testAttempts";
+import { API_BASE_URL } from "../api/client";
 import { createQuizChallenge, getChallengesByAttempt } from "../api/quizChallenges";
 import { searchUsers } from "../api/directMessages";
 import { listChatRooms } from "../api/chat";
@@ -12,6 +13,12 @@ import SolutionsPanel from "../components/questions/SolutionsPanel";
 import CommentThread from "../components/questions/CommentThread";
 import LikeButton from "../components/questions/LikeButton";
 import ReportQuestionModal from "../components/questions/ReportQuestionModal";
+import { MathText, RichQuestionBody } from "../components/questions/MathText";
+
+function imgSrc(url) {
+  if (!url) return null;
+  return url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
+}
 
 const OPTION_LETTERS = ["A", "B", "C", "D"];
 
@@ -145,6 +152,13 @@ function QuestionReviewCard({ question: q, index, expanded, onToggle }) {
 
       {expanded && (
         <div className="border-t border-primary-100 px-4 pb-4 pt-3">
+          <p className="mb-3 text-sm font-medium text-ink-900">
+            <RichQuestionBody contentBlocks={q.contentBlocks} fallbackText={q.questionText} />
+          </p>
+          {imgSrc(q.questionImageUrl) && (
+            <img src={imgSrc(q.questionImageUrl)} alt="" className="mb-3 max-h-56 rounded-lg border border-primary-100" />
+          )}
+
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {OPTION_LETTERS.map((letter) => {
               const isCorrectOption = q.correctOption === letter;
@@ -161,7 +175,12 @@ function QuestionReviewCard({ question: q, index, expanded, onToggle }) {
                   }`}
                 >
                   <span className="font-bold">{letter}.</span>
-                  <span className="min-w-0 flex-1">{q[`option${letter}`]}</span>
+                  <span className="min-w-0 flex-1">
+                    <MathText text={q[`option${letter}`]} />
+                    {imgSrc(q[`option${letter}ImageUrl`]) && (
+                      <img src={imgSrc(q[`option${letter}ImageUrl`])} alt="" className="mt-1.5 max-h-28 rounded border border-primary-100" />
+                    )}
+                  </span>
                   {isCorrectOption && <CheckCircle2 className="h-4 w-4 shrink-0 text-mint-500" strokeWidth={2.25} />}
                   {isSelected && !isCorrectOption && <XCircle className="h-4 w-4 shrink-0 text-red-500" strokeWidth={2.25} />}
                 </div>
@@ -172,7 +191,10 @@ function QuestionReviewCard({ question: q, index, expanded, onToggle }) {
           {q.explanation && (
             <div className="mt-3 rounded-lg bg-primary-50/60 p-3 text-sm leading-snug text-ink-600">
               <p className="mb-1 text-xs font-bold text-primary-600">Explanation</p>
-              {q.explanation}
+              <MathText text={q.explanation} />
+              {imgSrc(q.explanationImageUrl) && (
+                <img src={imgSrc(q.explanationImageUrl)} alt="" className="mt-2 max-h-56 rounded-lg border border-primary-100" />
+              )}
             </div>
           )}
 

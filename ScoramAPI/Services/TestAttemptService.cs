@@ -85,7 +85,14 @@ namespace ScoramAPI.Services
                         CorrectOptionSnapshot = q.CorrectOption,
                         ExplanationSnapshot = q.Explanation,
                         SubjectSnapshot = q.Subject,
-                        TopicSnapshot = q.Topic
+                        TopicSnapshot = q.Topic,
+                        QuestionImageUrlSnapshot = q.QuestionImageUrl,
+                        OptionAImageUrlSnapshot = q.OptionAImageUrl,
+                        OptionBImageUrlSnapshot = q.OptionBImageUrl,
+                        OptionCImageUrlSnapshot = q.OptionCImageUrl,
+                        OptionDImageUrlSnapshot = q.OptionDImageUrl,
+                        ExplanationImageUrlSnapshot = q.ExplanationImageUrl,
+                        ContentBlocksJsonSnapshot = q.ContentBlocksJson
                     });
                 }
                 else if (r.QuestionBankQuestionId.HasValue && qbQuestions.TryGetValue(r.QuestionBankQuestionId.Value, out var qb))
@@ -102,7 +109,14 @@ namespace ScoramAPI.Services
                         CorrectOptionSnapshot = qb.CorrectOption,
                         ExplanationSnapshot = qb.Explanation,
                         SubjectSnapshot = qb.Subject?.Name,
-                        TopicSnapshot = qb.Topic?.Name
+                        TopicSnapshot = qb.Topic?.Name,
+                        QuestionImageUrlSnapshot = qb.QuestionImageUrl,
+                        OptionAImageUrlSnapshot = qb.OptionAImageUrl,
+                        OptionBImageUrlSnapshot = qb.OptionBImageUrl,
+                        OptionCImageUrlSnapshot = qb.OptionCImageUrl,
+                        OptionDImageUrlSnapshot = qb.OptionDImageUrl,
+                        ExplanationImageUrlSnapshot = qb.ExplanationImageUrl,
+                        ContentBlocksJsonSnapshot = qb.ContentBlocksJson
                     });
                 }
                 // else: the referenced question no longer exists -- skipped rather than throwing, so

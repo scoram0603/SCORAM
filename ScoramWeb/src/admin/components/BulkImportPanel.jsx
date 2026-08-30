@@ -4,11 +4,12 @@ import {
   UploadCloud, CheckCircle2, XCircle, Loader2, AlertTriangle, History, Undo2, Download, SquarePen,
   ChevronDown, ChevronRight,
 } from "lucide-react";
-import { previewBulkImport, commitBulkImport, getImportHistory, rollbackImport, updatePreviewRow, getImportJobQuestions } from "../api/bulkImport";
+import { previewBulkImport, commitBulkImport, getImportHistory, rollbackImport, updatePreviewRow, updateRowImages, getImportJobQuestions } from "../api/bulkImport";
 import { Card, Button, FormField, TextInput, TextArea, Select, Alert, friendlyError } from "./AdminUI";
 import { QuestionCard, QuestionEditForm } from "./QuestionEditor";
-import { MathText } from "../../components/questions/MathText";
-import { RowBadges, StagedContentPreview } from "./BulkImportRowPreview";
+import { MathText, RichQuestionBody } from "../../components/questions/MathText";
+import { RowBadges, safeParseBlocks } from "./BulkImportRowPreview";
+import EditImageField from "./EditImageField";
 
 const ACCEPTED = ".csv,.xlsx,.json,.zip";
 const DIFFICULTIES = ["Easy", "Medium", "Hard"];
@@ -433,6 +434,8 @@ function PreviewRowEditor({ row, jobId, token, onSaved }) {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [images, setImages] = useState({});
+  const [removeImages, setRemoveImages] = useState({});
 
   function updateField(key, value) {
     setFields((f) => ({ ...f, [key]: value }));
@@ -443,7 +446,13 @@ function PreviewRowEditor({ row, jobId, token, onSaved }) {
     setSaving(true);
     setError(null);
     try {
-      const updated = await updatePreviewRow(token, jobId, row.rowNumber, fields);
+      let updated = await updatePreviewRow(token, jobId, row.rowNumber, fields);
+      const hasImageChanges = Object.values(images).some(Boolean) || Object.values(removeImages).some(Boolean);
+      if (hasImageChanges) {
+        updated = await updateRowImages(token, jobId, row.rowNumber, images, removeImages);
+        setImages({});
+        setRemoveImages({});
+      }
       onSaved(updated);
     } catch (err) {
       setError(friendlyError(err));
@@ -465,11 +474,23 @@ function PreviewRowEditor({ row, jobId, token, onSaved }) {
         </ul>
       )}
 
-      {/* Staged images and any ContentBlocks came from the ZIP's images/ folder and questions.json
-          at parse time (see BulkUploadZipService / ParseZipAsync on the backend) -- shown here
-          read-only since the preview-row edit API only covers the plain text fields below; to
-          change an image, fix the ZIP and re-upload. */}
-      <StagedContentPreview row={row} />
+      {/* Images can be added, replaced, or removed right here during preview -- for a row from ANY
+          format, not just one that already came with a ZIP-staged image (see
+          BulkImportController.UpdateRowImages). Saved separately from the text fields below, via
+          the same "Save changes" button. */}
+      <EditImageField label="Question image" currentUrl={row.questionImageUrl} onReplace={(f) => setImages((i) => ({ ...i, questionImage: f }))} onRemove={(v) => setRemoveImages((r) => ({ ...r, questionImage: v }))} />
+
+      {/* ContentBlocks (if this row has any) are still read-only here -- only the plain per-field
+          images above can be edited during preview; a rich mixed text/math/image/table sequence
+          can only come from the original ZIP's questions.json. */}
+      {row.contentBlocksJson && (
+        <div className="rounded-lg bg-mint-50/40 p-2">
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-mint-600">Rich content (from ZIP, read-only here)</p>
+          <div className="rounded bg-white p-2">
+            <RichQuestionBody contentBlocks={safeParseBlocks(row.contentBlocksJson)} className="text-xs text-ink-700" />
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Question No."><TextInput required type="number" value={fields.questionNumber} onChange={(e) => updateField("questionNumber", e.target.value)} /></FormField>
@@ -503,6 +524,13 @@ function PreviewRowEditor({ row, jobId, token, onSaved }) {
               />
               <TextInput required value={fields[`option${letter}`]} onChange={(e) => updateField(`option${letter}`, e.target.value)} />
             </div>
+            <EditImageField
+              compact
+              label={`Option ${letter} image`}
+              currentUrl={row[`option${letter}ImageUrl`]}
+              onReplace={(f) => setImages((i) => ({ ...i, [`option${letter}Image`]: f }))}
+              onRemove={(v) => setRemoveImages((r) => ({ ...r, [`option${letter}Image`]: v }))}
+            />
           </FormField>
         ))}
       </div>
@@ -514,6 +542,7 @@ function PreviewRowEditor({ row, jobId, token, onSaved }) {
       {fields.explanation?.includes("$") && (
         <p className="-mt-2 rounded-lg bg-primary-50/50 px-3 py-2 text-sm text-ink-700"><MathText text={fields.explanation} /></p>
       )}
+      <EditImageField label="Explanation image" currentUrl={row.explanationImageUrl} onReplace={(f) => setImages((i) => ({ ...i, explanationImage: f }))} onRemove={(v) => setRemoveImages((r) => ({ ...r, explanationImage: v }))} />
       <FormField label="Source reference (optional)">
         <TextInput value={fields.sourceReference} onChange={(e) => updateField("sourceReference", e.target.value)} />
       </FormField>

@@ -2,6 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Loader2, Clock, Flag, ChevronLeft, ChevronRight, Menu, X, AlertTriangle } from "lucide-react";
 import { getAttempt, saveAnswer, submitTestAttempt } from "../../api/testAttempts";
+import { API_BASE_URL } from "../../api/client";
+import { MathText, RichQuestionBody } from "../questions/MathText";
+
+function imgSrc(url) {
+  if (!url) return null;
+  return url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
+}
 
 const OPTION_LETTERS = ["A", "B", "C", "D"];
 const SAVE_DEBOUNCE_MS = 500;
@@ -203,7 +210,12 @@ export default function TestRunner() {
           {current && (
             <>
               <div className="rounded-xl2 border border-primary-100 bg-white p-4 shadow-card sm:p-5">
-                <p className="text-[15px] font-semibold leading-snug text-ink-900">{current.questionText}</p>
+                <p className="text-[15px] font-semibold leading-snug text-ink-900">
+                  <RichQuestionBody contentBlocks={current.contentBlocks} fallbackText={current.questionText} />
+                </p>
+                {imgSrc(current.questionImageUrl) && (
+                  <img src={imgSrc(current.questionImageUrl)} alt="" className="mt-3 max-h-64 rounded-lg border border-primary-100" />
+                )}
 
                 <div className="mt-4 flex flex-col gap-2">
                   {OPTION_LETTERS.map((letter) => (
@@ -218,7 +230,12 @@ export default function TestRunner() {
                       }`}
                     >
                       <span className="font-bold">{letter}.</span>
-                      <span className="min-w-0 flex-1">{current[`option${letter}`]}</span>
+                      <span className="min-w-0 flex-1">
+                        <MathText text={current[`option${letter}`]} />
+                        {imgSrc(current[`option${letter}ImageUrl`]) && (
+                          <img src={imgSrc(current[`option${letter}ImageUrl`])} alt="" className="mt-1.5 max-h-32 rounded border border-primary-100" />
+                        )}
+                      </span>
                     </button>
                   ))}
                 </div>
