@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScoramAPI.Data;
 
@@ -11,9 +12,11 @@ using ScoramAPI.Data;
 namespace ScoramAPI.Migrations
 {
     [DbContext(typeof(ScoramDbContext))]
-    partial class ScoramDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260831023805_AddExamIdToMockTest")]
+    partial class AddExamIdToMockTest
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

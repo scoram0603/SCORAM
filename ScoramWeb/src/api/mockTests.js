@@ -3,13 +3,21 @@ import { apiFetch } from "./client";
 function toQueryString(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") query.set(key, value);
+    if (value === undefined || value === null || value === "") return;
+    // Arrays (multi-select filters, e.g. examIds for "My Exams") become repeated keys -- see
+    // api/questionBank.js's toQueryString, which this now matches.
+    if (Array.isArray(value)) {
+      if (value.length === 0) return;
+      value.forEach((v) => query.append(key, v));
+    } else {
+      query.set(key, value);
+    }
   });
   const qs = query.toString();
   return qs ? `?${qs}` : "";
 }
 
-// GET /api/mocktests?examName=&testType=&page=&pageSize=
+// GET /api/mocktests?examName=&examIds=&testType=&page=&pageSize=
 export function listMockTests(params = {}, opts = {}) {
   return apiFetch(`/api/mocktests${toQueryString(params)}`, opts);
 }

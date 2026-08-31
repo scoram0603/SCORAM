@@ -1,8 +1,22 @@
 import { apiFetch } from "./client";
 
 function qs(params) {
-  const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== "" && v != null));
-  const s = new URLSearchParams(clean).toString();
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    // Arrays (multi-select filters, e.g. examIds for "My Exams") become repeated keys --
+    // ?examIds=a&examIds=b -- which ASP.NET Core model-binds straight into a List<T> parameter.
+    // A plain .set()/URLSearchParams(object) call would instead coerce an array to a single
+    // comma-joined string, which ASP.NET Core's default binder does NOT parse back into a list --
+    // see api/questionBank.js's toQueryString, which this now matches.
+    if (Array.isArray(value)) {
+      if (value.length === 0) return;
+      value.forEach((v) => query.append(key, v));
+    } else {
+      query.set(key, value);
+    }
+  });
+  const s = query.toString();
   return s ? `?${s}` : "";
 }
 

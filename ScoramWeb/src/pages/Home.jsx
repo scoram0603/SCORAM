@@ -5,6 +5,7 @@ import SearchBar from "../components/home/SearchBar";
 import HeroBanner from "../components/home/HeroBanner";
 import QuickAccess from "../components/home/QuickAccess";
 import StreakXPCard from "../components/home/StreakXPCard";
+import PreparingFor from "../components/home/PreparingFor";
 import PopularExams from "../components/home/PopularExams";
 import TodaysChallenge from "../components/home/TodaysChallenge";
 import TopDiscussions from "../components/home/TopDiscussions";
@@ -37,6 +38,7 @@ export default function Home() {
         <HeroBanner />
         <QuickAccess />
         <StreakXPCard />
+        <PreparingFor />
 
         {/* Main content grid: 60/40 split from lg up */}
         <div className="lg:grid lg:grid-cols-5 lg:gap-6 lg:px-8">

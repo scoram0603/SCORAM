@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, Clock, Play, RotateCcw, Users } from "lucide-react";
 import { listMockTests } from "../api/mockTests";
+import { listExams } from "../api/exams";
 import BookmarkButton from "../components/questions/BookmarkButton";
 import SearchableSelect from "../components/ui/SearchableSelect";
+import { useMyExams } from "../context/MyExamsContext";
+import { useDefaultToMyExams } from "../hooks/useDefaultToMyExams";
 
 const AVAILABILITY_STYLES = {
   Upcoming: "bg-secondary-50 text-secondary-500",
@@ -21,16 +24,35 @@ export default function MockTests() {
   const [tests, setTests] = useState(null);
   const [status, setStatus] = useState("loading");
   const [language, setLanguage] = useState([]); // SearchableSelect works with arrays; single value here
+  const [exams, setExams] = useState([]);
+  const [examIds, setExamIds] = useState([]);
+
+  // "MY EXAMS" -- this section had no exam filter at all before; it now defaults to the student's
+  // saved exams the first time the page loads (see useDefaultToMyExams's own comment for why this
+  // only ever applies once per visit, and MockTest.ExamId's own comment in
+  // Models/MockTestModels.cs for why this is matched by exam ID rather than the ExamName string
+  // every test already carries).
+  const { examIds: myExamIds, hasLoaded: myExamsLoaded } = useMyExams();
+  useDefaultToMyExams({
+    hasExplicitFilter: false,
+    myExamIds,
+    hasLoaded: myExamsLoaded,
+    applyDefault: setExamIds,
+  });
+
+  useEffect(() => {
+    listExams().then(setExams).catch(() => setExams([]));
+  }, []);
 
   useEffect(() => {
     setStatus("loading");
-    listMockTests({ page: 1, pageSize: 50, language: language[0] })
+    listMockTests({ page: 1, pageSize: 50, language: language[0], examIds })
       .then((res) => {
         setTests(res.items);
         setStatus("success");
       })
       .catch(() => setStatus("error"));
-  }, [language]);
+  }, [language, examIds]);
 
   function handleStart(id) {
     navigate(`/tests/instructions/mock/${id}`);
@@ -52,15 +74,27 @@ export default function MockTests() {
           <h1 className="text-xl font-extrabold text-ink-900 sm:text-2xl">Mock Tests</h1>
           <p className="mt-1 text-sm text-ink-400">Experience the real exam pattern with timed mock tests.</p>
         </div>
-        <div className="w-40">
-          <SearchableSelect
-            label="Medium"
-            placeholder="Any language"
-            options={LANGUAGE_OPTIONS}
-            selected={language}
-            onChange={setLanguage}
-            multi={false}
-          />
+        <div className="flex flex-wrap gap-3">
+          <div className="w-48">
+            <SearchableSelect
+              label="Exam"
+              placeholder="All exams"
+              options={exams.map((e) => ({ value: e.id, label: e.name }))}
+              selected={examIds}
+              onChange={setExamIds}
+              multi
+            />
+          </div>
+          <div className="w-40">
+            <SearchableSelect
+              label="Medium"
+              placeholder="Any language"
+              options={LANGUAGE_OPTIONS}
+              selected={language}
+              onChange={setLanguage}
+              multi={false}
+            />
+          </div>
         </div>
       </div>
 

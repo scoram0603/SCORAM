@@ -31,7 +31,11 @@ import ProgressPage from "./pages/Progress";
 import Referrals from "./pages/Referrals";
 import Bookmarks from "./pages/Bookmarks";
 import Settings from "./pages/Settings";
+// "MY EXAMS" -- see context/MyExamsContext.jsx
+import SelectExams from "./pages/SelectExams";
+import MyExams from "./pages/MyExams";
 import { AuthProvider } from "./context/AuthContext";
+import { MyExamsProvider } from "./context/MyExamsContext";
 import { ChatConnectionProvider } from "./context/ChatConnectionContext";
 
 function AppRoutes() {
@@ -75,6 +79,11 @@ function AppRoutes() {
           <Route path="profile" element={<Profile />} />
           <Route path="bookmarks" element={<Bookmarks />} />
           <Route path="settings" element={<Settings />} />
+          {/* "MY EXAMS" -- select-exams is the first-run onboarding screen (AppLayout redirects
+              here automatically for an authenticated student with zero exams configured);
+              my-exams is the ongoing management screen, linked from Profile. */}
+          <Route path="select-exams" element={<SelectExams />} />
+          <Route path="my-exams" element={<MyExams />} />
 
           {/* GAMIFICATION -- all per-student, so behind the same auth gate as the rest of this
               block (GamificationController/ReferralsController on the backend both require
@@ -102,9 +111,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <ChatConnectionProvider>
-        <AppRoutes />
-      </ChatConnectionProvider>
+      <MyExamsProvider>
+        <ChatConnectionProvider>
+          <AppRoutes />
+        </ChatConnectionProvider>
+      </MyExamsProvider>
     </AuthProvider>
   );
 }

@@ -9,6 +9,8 @@ import QuestionBankFeedCard from "../components/questions/QuestionBankFeedCard";
 import QuestionBankFeedCardSkeleton from "../components/questions/QuestionBankFeedCardSkeleton";
 import QuestionBankSidebar from "../components/questions/QuestionBankSidebar";
 import SearchableSelect from "../components/ui/SearchableSelect";
+import { useMyExams } from "../context/MyExamsContext";
+import { useDefaultToMyExams } from "../hooks/useDefaultToMyExams";
 
 const PAGE_SIZE = 10;
 const RECENT_SEARCHES_KEY = "scoram:qb:recent-searches";
@@ -69,6 +71,17 @@ export default function QuestionBankSearch() {
   const years = useMemo(() => readListParam(searchParams, "years"), [searchParams]);
   const languages = useMemo(() => readListParam(searchParams, "languages"), [searchParams]);
   const browseMode = searchParams.get("mode") === "slide" ? "slide" : "scroll";
+
+  // "MY EXAMS" -- defaults the Exam filter to the student's saved exams the first time this page
+  // is opened with none already specified (e.g. from the sidebar, not a deep link) -- see
+  // useDefaultToMyExams's own comment for why this only ever applies once per visit.
+  const { examIds: myExamIds, hasLoaded: myExamsLoaded } = useMyExams();
+  useDefaultToMyExams({
+    hasExplicitFilter: searchParams.has("examIds"),
+    myExamIds,
+    hasLoaded: myExamsLoaded,
+    applyDefault: (ids) => updateListParam("examIds", ids),
+  });
 
   const [subjects, setSubjects] = useState([]);
   const [topics, setTopics] = useState([]);

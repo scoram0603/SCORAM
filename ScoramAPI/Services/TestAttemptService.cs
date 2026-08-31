@@ -44,7 +44,15 @@ namespace ScoramAPI.Services
         /// the student -- it's the 2-3 weakest subjects from GetWeakSubjectsAsync. Falls back to a
         /// general mixed pool (every active Question Bank question) when there's no weak-subject
         /// signal yet, so a brand-new student still gets a quiz instead of an error.</summary>
-        Task<List<QuestionRef>> SelectWeakTopicQuestionsAsync(ScoramDbContext db, Guid userId, int count);
+        /// <summary>"MY EXAMS" -- examIds optionally narrows the eligible pool to the student's
+        /// selected exams (Question Bank ExamMappings) before the weak-subject filtering below,
+        /// same OR-match as QuestionBankController.Search's own examIds. Deliberately quiet/no
+        /// visible filter on the Quizzes page -- Quizzes have no exam concept of their own (see
+        /// Models/QuizModels.cs), this only shapes which questions the daily-habit Weak Topics Quiz
+        /// draws from. Null/empty (the default) means "no exam narrowing", exactly today's
+        /// behavior -- so any other caller of this method is unaffected.</summary>
+        Task<List<QuestionRef>> SelectWeakTopicQuestionsAsync(
+            ScoramDbContext db, Guid userId, int count, IReadOnlyCollection<Guid>? examIds = null);
     }
 
     public class TestAttemptService : ITestAttemptService
@@ -202,12 +210,16 @@ namespace ScoramAPI.Services
                 .ToList();
         }
 
-        public async Task<List<QuestionRef>> SelectWeakTopicQuestionsAsync(ScoramDbContext db, Guid userId, int count)
+        public async Task<List<QuestionRef>> SelectWeakTopicQuestionsAsync(
+            ScoramDbContext db, Guid userId, int count, IReadOnlyCollection<Guid>? examIds = null)
         {
             var weakSubjects = await GetWeakSubjectsAsync(db, userId);
             var targetSubjects = weakSubjects.Take(WeakSubjectsPerQuiz).Select(s => s.Subject).ToHashSet();
+            var hasExamScope = examIds is { Count: > 0 };
 
             var pool = db.QuestionBankQuestions.Where(q => q.IsActive).Include(q => q.Subject).AsQueryable();
+            if (hasExamScope)
+                pool = pool.Where(q => q.ExamMappings.Any(m => examIds!.Contains(m.ExamId)));
             if (targetSubjects.Count > 0)
                 pool = pool.Where(q => q.Subject != null && targetSubjects.Contains(q.Subject.Name));
 
@@ -215,8 +227,20 @@ namespace ScoramAPI.Services
 
             // No weak-subject signal yet (brand-new student, or the subject names above genuinely
             // matched nothing) -- fall back to a general mixed pool instead of a dead end, same idea
-            // as an ad-hoc Practice Test generated with no filters at all.
+            // as an ad-hoc Practice Test generated with no filters at all. Still respects exam
+            // scoping here -- "MY EXAMS" should narrow which questions come up, not silently stop
+            // applying the moment the weak-subject signal runs out.
             if (eligibleIds.Count == 0)
+            {
+                var fallbackPool = db.QuestionBankQuestions.Where(q => q.IsActive).AsQueryable();
+                if (hasExamScope)
+                    fallbackPool = fallbackPool.Where(q => q.ExamMappings.Any(m => examIds!.Contains(m.ExamId)));
+                eligibleIds = await fallbackPool.Select(q => q.Id).ToListAsync();
+            }
+            // Exam scoping alone produced nothing (e.g. a newly added exam with no Question Bank
+            // content yet) -- fall back further to the fully unscoped pool rather than leave the
+            // student with no quiz at all. Quiet scoping should never make the feature stop working.
+            if (eligibleIds.Count == 0 && hasExamScope)
                 eligibleIds = await db.QuestionBankQuestions.Where(q => q.IsActive).Select(q => q.Id).ToListAsync();
             if (eligibleIds.Count == 0) return new List<QuestionRef>();
 

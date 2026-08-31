@@ -7,7 +7,10 @@ import {
 import { listExams } from "../api/exams";
 import { browsePapers, getPaperFilterOptions, getPaperYears, getMyPaperAttempts } from "../api/papers";
 import BookmarkButton from "../components/questions/BookmarkButton";
+import SearchableSelect from "../components/ui/SearchableSelect";
 import { useAuth } from "../context/AuthContext";
+import { useMyExams } from "../context/MyExamsContext";
+import { useDefaultToMyExams } from "../hooks/useDefaultToMyExams";
 import { timeAgo, formatCount } from "../utils/format";
 
 // MASTER PROMPT -- Previous Year Paper Practice: replaces the old "PYQ Bank" nav destination.
@@ -34,7 +37,12 @@ export default function PreviousYearPapers() {
   const presetExamId = searchParams.get("examId") || "";
 
   const [exams, setExams] = useState([]);
-  const [examId, setExamId] = useState(presetExamId);
+  // "MY EXAMS" -- upgraded from a single examId to a multi-select examIds array (spec section 37:
+  // this section should default to ALL of a student's selected exams at once, not just one) -- see
+  // StudentPapersController.Browse/GetFilterOptions, which now accept examIds alongside the
+  // original single examId. A deep link with ?examId=X (e.g. from PopularExams) still seeds this
+  // as a one-exam explicit selection.
+  const [examIds, setExamIds] = useState(presetExamId ? [presetExamId] : []);
   const [year, setYear] = useState("");
   const [tier, setTier] = useState("");
   const [examDate, setExamDate] = useState("");
@@ -59,23 +67,38 @@ export default function PreviousYearPapers() {
   const [startingId, setStartingId] = useState(null);
   const [startError, setStartError] = useState("");
 
-  const hasActiveFilters = examId || year || tier || examDate || shift || paperLabel || language || search;
+  const hasActiveFilters = examIds.length > 0 || year || tier || examDate || shift || paperLabel || language || search;
+
+  // "MY EXAMS" -- defaults the Exam filter to the student's saved exams the first time this page is
+  // opened with no explicit exam already selected (i.e. no ?examId= deep link) -- see
+  // useDefaultToMyExams's own comment for why this only ever applies once per visit.
+  const { examIds: myExamIds, hasLoaded: myExamsLoaded } = useMyExams();
+  useDefaultToMyExams({
+    hasExplicitFilter: Boolean(presetExamId),
+    myExamIds,
+    hasLoaded: myExamsLoaded,
+    applyDefault: setExamIds,
+  });
 
   // ---------- Reference data ----------
   useEffect(() => {
     listExams().then(setExams).catch(() => setExams([]));
   }, []);
 
+  // GetYears is still single-exam only (see StudentPapersController -- it's part of the older
+  // step-by-step Exam -> Year -> Language -> Set drill-down, left as-is). With more than one exam
+  // selected there's no single "years" list to show, so the Year refinement filter simply clears
+  // and disables itself rather than showing years for only one of several selected exams.
   useEffect(() => {
-    if (!examId) { setYears([]); return; }
-    getPaperYears(examId).then(setYears).catch(() => setYears([]));
-  }, [examId]);
+    if (examIds.length !== 1) { setYears([]); setYear(""); return; }
+    getPaperYears(examIds[0]).then(setYears).catch(() => setYears([]));
+  }, [examIds]);
 
   useEffect(() => {
-    getPaperFilterOptions({ examId: examId || undefined, year: year || undefined })
+    getPaperFilterOptions({ examIds, year: year || undefined })
       .then(setFilterOptions)
       .catch(() => setFilterOptions({ tiers: [], examDates: [], shifts: [], paperLabels: [], languages: [] }));
-  }, [examId, year]);
+  }, [examIds, year]);
 
   // Debounce the free-text search box -- everything else re-fetches immediately on change.
   useEffect(() => {
@@ -87,7 +110,7 @@ export default function PreviousYearPapers() {
   const fetchPapers = useCallback((pageToLoad, append) => {
     if (append) setLoadingMore(true); else setPapersStatus("loading");
     browsePapers({
-      examId: examId || undefined, year: year || undefined, tier: tier || undefined,
+      examIds, year: year || undefined, tier: tier || undefined,
       examDate: examDate || undefined, shift: shift || undefined, paperLabel: paperLabel || undefined,
       language: language || undefined, search: search || undefined, sort, page: pageToLoad, pageSize: PAGE_SIZE,
     })
@@ -100,14 +123,14 @@ export default function PreviousYearPapers() {
       .catch(() => setPapersStatus("error"))
       .finally(() => setLoadingMore(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [examId, year, tier, examDate, shift, paperLabel, language, search, sort]);
+  }, [examIds, year, tier, examDate, shift, paperLabel, language, search, sort]);
 
   useEffect(() => {
     fetchPapers(1, false);
   }, [fetchPapers]);
 
   function handleClearFilters() {
-    setExamId(""); setYear(""); setTier(""); setExamDate(""); setShift(""); setPaperLabel(""); setLanguage("");
+    setExamIds([]); setYear(""); setTier(""); setExamDate(""); setShift(""); setPaperLabel(""); setLanguage("");
     setSearchInput(""); setSearch("");
   }
 
@@ -144,10 +167,21 @@ export default function PreviousYearPapers() {
       {/* ---------- Filters ---------- */}
       <div className="mt-5 rounded-xl2 border border-primary-100 bg-white p-4 shadow-card">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          <Dropdown label="Exam" value={examId} onChange={(v) => { setExamId(v); setYear(""); }} placeholder="All exams">
-            {exams.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </Dropdown>
-          <Dropdown label="Year" value={year} onChange={setYear} placeholder="All years" disabled={!examId}>
+          <SearchableSelect
+            label="Exam"
+            placeholder="All exams"
+            options={exams.map((e) => ({ value: e.id, label: e.name }))}
+            selected={examIds}
+            onChange={(v) => { setExamIds(v); setYear(""); }}
+            multi
+          />
+          <Dropdown
+            label="Year"
+            value={year}
+            onChange={setYear}
+            placeholder="All years"
+            disabled={examIds.length !== 1}
+          >
             {years.map((y) => <option key={y} value={y}>{y}</option>)}
           </Dropdown>
           {filterOptions.tiers.length > 1 && (

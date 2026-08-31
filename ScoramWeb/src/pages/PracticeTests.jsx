@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, ChevronDown, Sparkles, Play } from "lucide-react";
 import { getQuestionBankSubjects, getQuestionBankTopics, getQuestionBankExams } from "../api/questionBank";
 import { listPracticeTestTemplates, DIFFICULTY_OPTIONS, LANGUAGE_OPTIONS } from "../api/practiceTests";
+import { useMyExams } from "../context/MyExamsContext";
+import { useDefaultToMyExams } from "../hooks/useDefaultToMyExams";
 
 const QUESTION_COUNT_OPTIONS = [10, 20, 30, 50];
 const DURATION_OPTIONS = [10, 20, 30, 45, 60];
@@ -24,13 +26,28 @@ export default function PracticeTests() {
   const [error, setError] = useState(null);
 
   const [templates, setTemplates] = useState(null);
+  const [templateExamIds, setTemplateExamIds] = useState([]); // "My Exams" default for Curated Practice Tests below (PracticeTestsController.ListTemplates) -- separate from examId above, which scopes one ad-hoc generated test to a single exam by design and is left untouched
   const [startingTemplateId, setStartingTemplateId] = useState(null);
+
+  // "MY EXAMS" -- see templateExamIds' own comment just above.
+  const { examIds: myExamIds, hasLoaded: myExamsLoaded } = useMyExams();
+  useDefaultToMyExams({
+    hasExplicitFilter: false,
+    myExamIds,
+    hasLoaded: myExamsLoaded,
+    applyDefault: setTemplateExamIds,
+  });
 
   useEffect(() => {
     getQuestionBankSubjects().then(setSubjects).catch(() => {});
     getQuestionBankExams().then(setExams).catch(() => {});
-    listPracticeTestTemplates({ page: 1, pageSize: 10 }).then((res) => setTemplates(res.items)).catch(() => setTemplates([]));
   }, []);
+
+  useEffect(() => {
+    listPracticeTestTemplates({ examIds: templateExamIds, page: 1, pageSize: 10 })
+      .then((res) => setTemplates(res.items))
+      .catch(() => setTemplates([]));
+  }, [templateExamIds]);
 
   useEffect(() => {
     if (!subjectId) {

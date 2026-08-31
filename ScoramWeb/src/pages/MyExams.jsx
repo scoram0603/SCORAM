@@ -1,0 +1,196 @@
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { ArrowLeft, Loader2, Plus, Search, Star, Trash2, AlertCircle, X } from "lucide-react";
+import { listExams } from "../api/exams";
+import { useMyExams } from "../context/MyExamsContext";
+
+// "MY EXAMS" management screen (spec section 13), reached from Profile. Unlike the onboarding
+// screen's single batched "Continue" save, every action here (add / remove / set primary) calls
+// its own granular endpoint immediately -- see MyExamsContext -- so the list on screen is always
+// exactly what's saved server-side, with no separate "unsaved changes" state to track or lose.
+export default function MyExams() {
+  const navigate = useNavigate();
+  const { exams, hasLoaded, addExam, removeExam, setPrimary } = useMyExams();
+
+  const [allExams, setAllExams] = useState([]);
+  const [pendingId, setPendingId] = useState(null); // examId currently mid-action, for inline spinners
+  const [error, setError] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [addQuery, setAddQuery] = useState("");
+
+  useEffect(() => {
+    listExams().then(setAllExams).catch(() => setAllExams([]));
+  }, []);
+
+  const selectedIds = useMemo(() => new Set(exams.map((e) => e.examId)), [exams]);
+  const addableExams = useMemo(() => {
+    const term = addQuery.trim().toLowerCase();
+    return allExams
+      .filter((exam) => !selectedIds.has(exam.id))
+      .filter((exam) => !term || exam.name.toLowerCase().includes(term));
+  }, [allExams, selectedIds, addQuery]);
+
+  async function handleRemove(examId) {
+    setPendingId(examId);
+    setError(null);
+    try {
+      await removeExam(examId);
+    } catch (err) {
+      setError(err.message || "Couldn't remove that exam.");
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function handleSetPrimary(examId) {
+    setPendingId(examId);
+    setError(null);
+    try {
+      await setPrimary(examId);
+    } catch (err) {
+      setError(err.message || "Couldn't update your primary exam.");
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function handleAdd(examId) {
+    setPendingId(examId);
+    setError(null);
+    try {
+      await addExam(examId);
+      setAddQuery("");
+    } catch (err) {
+      setError(err.message || "Couldn't add that exam.");
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-lg px-6 py-8 sm:py-12">
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        className="flex items-center gap-1.5 text-sm font-semibold text-ink-500 hover:text-ink-700"
+      >
+        <ArrowLeft className="h-4 w-4" strokeWidth={2.5} />
+        Back
+      </button>
+
+      <h1 className="mt-4 text-xl font-extrabold text-ink-900">My Exams</h1>
+      <p className="mt-1 text-sm text-ink-500">
+        These are the exams PYP, Question Bank, Mock Tests, and Practice Tests default to. You can
+        still explore any other exam any time — this just sets what shows up first.
+      </p>
+
+      {!hasLoaded && (
+        <div className="mt-10 flex justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-primary-400" />
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl2 border border-accent-100 bg-accent-50 p-3 text-sm text-accent-600">
+          <AlertCircle className="h-4 w-4 shrink-0" strokeWidth={2.25} />
+          {error}
+        </div>
+      )}
+
+      {hasLoaded && (
+        <div className="mt-6 space-y-2.5">
+          {exams.map((exam) => {
+            const isPending = pendingId === exam.examId;
+            return (
+              <div
+                key={exam.examId}
+                className="flex items-center gap-3 rounded-xl2 border border-primary-100 bg-white p-3.5 shadow-card"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink-900">{exam.examName}</span>
+
+                <button
+                  type="button"
+                  onClick={() => handleSetPrimary(exam.examId)}
+                  disabled={isPending || exam.isPrimary}
+                  title={exam.isPrimary ? "Primary exam" : "Set as primary"}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
+                    exam.isPrimary ? "bg-amber-100 text-amber-500" : "bg-ink-50 text-ink-300 hover:text-amber-500"
+                  }`}
+                >
+                  <Star className="h-4 w-4" strokeWidth={2.25} fill={exam.isPrimary ? "currentColor" : "none"} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleRemove(exam.examId)}
+                  disabled={isPending || exams.length === 1}
+                  title={exams.length === 1 ? "Select another exam before removing your last one" : "Remove"}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink-50 text-ink-300 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" strokeWidth={2.25} />}
+                </button>
+              </div>
+            );
+          })}
+
+          {!adding && (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl2 border border-dashed border-primary-200 py-3 text-sm font-semibold text-primary-600 hover:border-primary-400 hover:bg-primary-50"
+            >
+              <Plus className="h-4 w-4" strokeWidth={2.5} />
+              Add Exam
+            </button>
+          )}
+
+          {adding && (
+            <div className="rounded-xl2 border border-primary-100 bg-white p-3.5 shadow-card">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-1 items-center gap-2 rounded-xl border border-primary-100 px-3 py-2">
+                  <Search className="h-4 w-4 shrink-0 text-ink-300" strokeWidth={2.25} />
+                  <input
+                    autoFocus
+                    value={addQuery}
+                    onChange={(e) => setAddQuery(e.target.value)}
+                    placeholder="Search exams..."
+                    className="w-full bg-transparent text-sm text-ink-900 outline-none placeholder:text-ink-300"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setAdding(false); setAddQuery(""); }}
+                  className="ml-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-300 hover:bg-ink-50"
+                >
+                  <X className="h-4 w-4" strokeWidth={2.25} />
+                </button>
+              </div>
+
+              <div className="mt-3 max-h-64 space-y-1 overflow-y-auto">
+                {addableExams.length === 0 && (
+                  <p className="px-1 py-2 text-sm text-ink-400">No matching exams.</p>
+                )}
+                {addableExams.map((exam) => (
+                  <button
+                    key={exam.id}
+                    type="button"
+                    onClick={() => handleAdd(exam.id)}
+                    disabled={pendingId === exam.id}
+                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold text-ink-900 hover:bg-primary-50"
+                  >
+                    {exam.name}
+                    {pendingId === exam.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary-400" />
+                    ) : (
+                      <Plus className="h-4 w-4 text-primary-400" strokeWidth={2.5} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

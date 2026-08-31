@@ -30,13 +30,23 @@ namespace ScoramAPI.Controllers
         // see the migration instructions.
         [HttpGet]
         public async Task<ActionResult<PagedResult<MockTestSummaryDto>>> List(
-            string? examName, string? testType, string? language, int page = 1, int pageSize = 20)
+            string? examName, [FromQuery] List<Guid>? examIds, string? testType, string? language, int page = 1, int pageSize = 20)
         {
             page = Math.Max(page, 1);
             pageSize = Math.Clamp(pageSize, 1, 100);
 
             var query = _db.MockTests.Where(t => t.Status == TestPublishStatus.Published).AsQueryable();
-            if (!string.IsNullOrWhiteSpace(examName)) query = query.Where(t => t.ExamName == examName);
+            // Filter precedence (spec section 37): an explicit single examName -- what every
+            // existing caller already sends -- always wins. examIds (plural) is the new "My Exams"
+            // default, OR-matched by the real ExamId FK rather than the ExamName string (see
+            // MockTest.ExamId's own comment) so a later exam rename can't silently break it. Rows
+            // that predate the FK and were never backfilled to a real ExamId (see the
+            // AddExamIdToMockTest migration) simply don't match an examIds filter -- same as any
+            // other Mock Test whose Exam isn't the one being filtered for.
+            if (!string.IsNullOrWhiteSpace(examName))
+                query = query.Where(t => t.ExamName == examName);
+            else if (examIds is { Count: > 0 })
+                query = query.Where(t => t.ExamId != null && examIds.Contains(t.ExamId.Value));
             if (!string.IsNullOrWhiteSpace(testType)) query = query.Where(t => t.TestType.ToString() == testType);
             if (!string.IsNullOrWhiteSpace(language) && Enum.TryParse<PaperLanguage>(language, ignoreCase: true, out var languageFilter))
                 query = query.Where(t => t.Language == languageFilter);
@@ -90,6 +100,7 @@ namespace ScoramAPI.Controllers
                 Id = t.Id,
                 Title = t.Title,
                 ExamName = t.ExamName,
+                ExamId = t.ExamId,
                 TestType = t.TestType.ToString(),
                 DurationMinutes = t.DurationMinutes,
                 NegativeMarkingRatio = t.NegativeMarkingRatio,
@@ -148,6 +159,7 @@ namespace ScoramAPI.Controllers
                 Id = test.Id,
                 Title = test.Title,
                 ExamName = test.ExamName,
+                ExamId = test.ExamId,
                 TestType = test.TestType.ToString(),
                 DurationMinutes = test.DurationMinutes,
                 NegativeMarkingRatio = test.NegativeMarkingRatio,
@@ -195,6 +207,7 @@ namespace ScoramAPI.Controllers
                 Id = test.Id,
                 Title = test.Title,
                 ExamName = test.ExamName,
+                ExamId = test.ExamId,
                 TestType = test.TestType.ToString(),
                 DurationMinutes = test.DurationMinutes,
                 NegativeMarkingRatio = test.NegativeMarkingRatio,
@@ -482,10 +495,24 @@ namespace ScoramAPI.Controllers
             if (!Enum.TryParse<TestPublishStatus>(dto.Status, true, out var status))
                 status = TestPublishStatus.Draft;
 
+            // "MY EXAMS" -- when the admin picked a real Exam (dto.ExamId), ExamName is derived from
+            // it server-side so the two never drift apart, same as an Exam rename staying in sync
+            // with its ChatRoom.Name in ExamsController.Update. A legacy caller that only sends
+            // ExamName (no ExamId) keeps working exactly as before -- ExamId just stays null.
+            var examName = dto.ExamName;
+            Guid? examId = dto.ExamId;
+            if (examId.HasValue)
+            {
+                var exam = await _db.Exams.FirstOrDefaultAsync(e => e.Id == examId.Value);
+                if (exam == null) return BadRequest(new { message = "Selected exam could not be found." });
+                examName = exam.Name;
+            }
+
             var test = new MockTest
             {
                 Title = dto.Title,
-                ExamName = dto.ExamName,
+                ExamName = examName,
+                ExamId = examId,
                 TestType = dto.TestType,
                 DurationMinutes = dto.DurationMinutes,
                 NegativeMarkingRatio = dto.NegativeMarkingRatio,
@@ -519,6 +546,7 @@ namespace ScoramAPI.Controllers
                 Id = test.Id,
                 Title = test.Title,
                 ExamName = test.ExamName,
+                ExamId = test.ExamId,
                 TestType = test.TestType.ToString(),
                 DurationMinutes = test.DurationMinutes,
                 NegativeMarkingRatio = test.NegativeMarkingRatio,

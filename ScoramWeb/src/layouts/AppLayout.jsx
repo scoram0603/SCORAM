@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/layout/Header";
 import Sidebar from "../components/layout/Sidebar";
 import BottomNav from "../components/layout/BottomNav";
@@ -8,10 +8,12 @@ import ChatNotificationBridge from "../components/layout/ChatNotificationBridge"
 import Footer from "../components/layout/Footer";
 import Landing from "../pages/Landing";
 import { useAuth } from "../context/AuthContext";
+import { useMyExams } from "../context/MyExamsContext";
 import { sidebarNavItems, bottomNavItems } from "../data/mockData";
 
 export default function AppLayout() {
   const { isAuthenticated, user, logout } = useAuth();
+  const { hasLoaded, hasConfigured } = useMyExams();
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -29,6 +31,33 @@ export default function AppLayout() {
   // App.jsx, and every other page in this layout are untouched.
   if (!isAuthenticated && location.pathname === "/") {
     return <Landing />;
+  }
+
+  // "MY EXAMS" onboarding (spec section 4) -- once MyExamsContext has actually finished checking
+  // (hasLoaded), an authenticated student with zero exams configured is sent to "What are you
+  // preparing for?" before anything else, from any route they land on (a fresh login, a deep
+  // link, reopening the app). Checked before the fullscreen-attempt branch below since a test
+  // attempt link itself would never be reachable without exams configured in the first place.
+  // Excludes /select-exams itself (avoid a redirect loop) and /my-exams (a student already deep
+  // in the management screen removing their way down isn't blocked mid-edit by this check --
+  // though the backend's own last-exam guard means they can never actually reach zero that way).
+  if (
+    isAuthenticated && hasLoaded && !hasConfigured &&
+    location.pathname !== "/select-exams" && location.pathname !== "/my-exams"
+  ) {
+    const target = location.pathname + location.search;
+    return <Navigate to={target === "/" ? "/select-exams" : `/select-exams?redirect=${encodeURIComponent(target)}`} replace />;
+  }
+
+  // FULLSCREEN ONBOARDING -- same reasoning as the fullscreen test-attempt route below: the
+  // sidebar/header/footer/bottom-nav would just be a distraction from a focused, one-time setup
+  // screen. SelectExams has its own back-less, minimal header.
+  if (location.pathname === "/select-exams") {
+    return (
+      <div className="min-h-screen bg-surface">
+        <Outlet />
+      </div>
+    );
   }
 
   // FULLSCREEN TEST ATTEMPT -- Practice, Mock, PYP, and Quiz attempts all converge on this one

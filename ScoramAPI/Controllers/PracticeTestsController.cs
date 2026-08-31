@@ -33,7 +33,8 @@ namespace ScoramAPI.Controllers
         // public (matches Question Bank search's own "browse without logging in" behavior).
         [HttpGet("templates")]
         public async Task<ActionResult<PagedResult<PracticeTestTemplateDto>>> ListTemplates(
-            [FromQuery] Guid? subjectId, [FromQuery] Guid? examId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+            [FromQuery] Guid? subjectId, [FromQuery] Guid? examId, [FromQuery] List<Guid>? examIds,
+            [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 100);
@@ -44,7 +45,10 @@ namespace ScoramAPI.Controllers
                 .AsQueryable();
 
             if (subjectId.HasValue) query = query.Where(t => t.SubjectId == subjectId);
+            // Filter precedence (spec section 37): explicit single examId wins over examIds
+            // (plural), the "My Exams" default -- same pattern as StudentPapersController.Browse.
             if (examId.HasValue) query = query.Where(t => t.ExamId == examId);
+            else if (examIds is { Count: > 0 }) query = query.Where(t => t.ExamId != null && examIds.Contains(t.ExamId.Value));
 
             query = query.OrderByDescending(t => t.CreatedAt);
 

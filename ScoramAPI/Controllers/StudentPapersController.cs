@@ -42,7 +42,7 @@ namespace ScoramAPI.Controllers
         // useful for an initial "browse everything" view) -- every other filter narrows further.
         [HttpGet]
         public async Task<ActionResult<PagedResult<PaperResponseDto>>> Browse(
-            [FromQuery] Guid? examId, [FromQuery] int? year, [FromQuery] string? tier,
+            [FromQuery] Guid? examId, [FromQuery] List<Guid>? examIds, [FromQuery] int? year, [FromQuery] string? tier,
             [FromQuery] DateOnly? examDate, [FromQuery] string? shift, [FromQuery] string? paperLabel,
             [FromQuery] PaperLanguage? language, [FromQuery] string? search,
             [FromQuery] string sort = "newest", [FromQuery] int page = 1, [FromQuery] int pageSize = 12)
@@ -54,7 +54,10 @@ namespace ScoramAPI.Controllers
                 .Where(p => p.Status == PaperStatus.Published)
                 .AsQueryable();
 
+            // Filter precedence (spec section 37): a single explicit examId -- what every existing
+            // caller already sends -- always wins over examIds (plural), the new "My Exams" default.
             if (examId.HasValue) query = query.Where(p => p.ExamId == examId.Value);
+            else if (examIds is { Count: > 0 }) query = query.Where(p => examIds.Contains(p.ExamId));
             if (year.HasValue) query = query.Where(p => p.Year == year.Value);
             if (!string.IsNullOrWhiteSpace(tier)) query = query.Where(p => p.Tier == tier);
             if (examDate.HasValue) query = query.Where(p => p.ExamDate == examDate.Value);
@@ -121,10 +124,11 @@ namespace ScoramAPI.Controllers
         // Published, for the page's very first load before an exam is chosen.
         [HttpGet("filter-options")]
         public async Task<ActionResult<PaperFilterOptionsDto>> GetFilterOptions(
-            [FromQuery] Guid? examId, [FromQuery] int? year)
+            [FromQuery] Guid? examId, [FromQuery] List<Guid>? examIds, [FromQuery] int? year)
         {
             var query = _db.Papers.Where(p => p.Status == PaperStatus.Published).AsQueryable();
             if (examId.HasValue) query = query.Where(p => p.ExamId == examId.Value);
+            else if (examIds is { Count: > 0 }) query = query.Where(p => examIds.Contains(p.ExamId));
             if (year.HasValue) query = query.Where(p => p.Year == year.Value);
 
             var rows = await query

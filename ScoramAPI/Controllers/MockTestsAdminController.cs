@@ -136,8 +136,19 @@ namespace ScoramAPI.Controllers
             var test = await _db.MockTests.FindAsync(id);
             if (test == null) return NotFound();
 
+            // "MY EXAMS" -- same ExamId->ExamName sync as MockTestsController.Create; a legacy
+            // caller that only sends ExamName (no ExamId) keeps updating exactly as before.
+            var examName = dto.ExamName;
+            if (dto.ExamId.HasValue)
+            {
+                var exam = await _db.Exams.FindAsync(dto.ExamId.Value);
+                if (exam == null) return BadRequest(new { message = "Selected exam could not be found." });
+                examName = exam.Name;
+            }
+
             test.Title = dto.Title;
-            test.ExamName = dto.ExamName;
+            test.ExamName = examName;
+            test.ExamId = dto.ExamId;
             test.TestType = dto.TestType;
             test.DurationMinutes = dto.DurationMinutes;
             test.NegativeMarkingRatio = dto.NegativeMarkingRatio;

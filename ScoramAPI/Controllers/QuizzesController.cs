@@ -60,7 +60,17 @@ namespace ScoramAPI.Controllers
         public async Task<ActionResult<TestAttemptStartResponseDto>> GenerateWeakTopicsQuiz(QuizGenerateDto dto)
         {
             var userId = User.GetUserId();
-            var refs = await _attemptService.SelectWeakTopicQuestionsAsync(_db, userId, dto.QuestionCount);
+
+            // "MY EXAMS" -- quietly narrows the question pool to the student's selected exams when
+            // they have any configured (see TestAttemptService.SelectWeakTopicQuestionsAsync for the
+            // fallback behavior when that narrowing would leave nothing to draw from). No visible
+            // filter on this endpoint/the Quizzes page -- Quizzes have no exam concept of their own.
+            var myExamIds = await _db.UserExamPreferences
+                .Where(p => p.UserId == userId)
+                .Select(p => p.ExamId)
+                .ToListAsync();
+
+            var refs = await _attemptService.SelectWeakTopicQuestionsAsync(_db, userId, dto.QuestionCount, myExamIds);
             if (refs.Count == 0)
                 return BadRequest(new { message = "The Question Bank doesn't have any active questions yet -- check back once some are added." });
 

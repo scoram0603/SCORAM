@@ -34,6 +34,8 @@ namespace ScoramAPI.Data
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
         public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
         public DbSet<Exam> Exams => Set<Exam>();
+        // "MY EXAMS" -- see Models/UserExamPreference.cs.
+        public DbSet<UserExamPreference> UserExamPreferences => Set<UserExamPreference>();
         public DbSet<Question> Questions => Set<Question>();
         public DbSet<QuestionSolution> QuestionSolutions => Set<QuestionSolution>();
         public DbSet<QuestionReport> QuestionReports => Set<QuestionReport>();
@@ -177,6 +179,14 @@ namespace ScoramAPI.Data
             modelBuilder.Entity<QuestionReport>().Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<MockTest>().Property(m => m.TestType).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<MockTest>().Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
+            // "MY EXAMS" -- nullable FK alongside the pre-existing free-text ExamName (see
+            // MockTest.ExamId's own comment in Models/MockTestModels.cs). Restrict, same reasoning
+            // as every other student-facing Exam FK in this file.
+            modelBuilder.Entity<MockTest>()
+                .HasOne(m => m.Exam)
+                .WithMany()
+                .HasForeignKey(m => m.ExamId)
+                .OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<Quiz>().Property(q => q.Status).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<QuizChallenge>().Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<StudentAnswer>().Property(a => a.CorrectOptionSnapshot).HasConversion<string>().HasMaxLength(5);
@@ -1123,6 +1133,42 @@ namespace ScoramAPI.Data
                 .HasIndex(b => new { b.UserId, b.MockTestId })
                 .IsUnique()
                 .HasFilter("[MockTestId] IS NOT NULL");
+
+            // ==========================================================================
+            // "My Exams" -- UserExamPreference (see Models/UserExamPreference.cs)
+            // ==========================================================================
+
+            modelBuilder.Entity<UserExamPreference>()
+                .HasOne(p => p.User)
+                .WithMany()
+                .HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Restrict (not Cascade), same reasoning as every other student-facing Exam FK in this
+            // file (PracticeTestTemplate.Exam, etc.): an Exam with real content attached already
+            // can't be hard-deleted at all (see ExamsController.Delete's own content check), so this
+            // only ever matters for the Exam-genuinely-has-nothing-else-attached case -- and even
+            // then, a student's own saved preference shouldn't silently vanish as a side effect of
+            // an unrelated admin action elsewhere.
+            modelBuilder.Entity<UserExamPreference>()
+                .HasOne(p => p.Exam)
+                .WithMany()
+                .HasForeignKey(p => p.ExamId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // A student can't select the same exam twice (spec section 35).
+            modelBuilder.Entity<UserExamPreference>()
+                .HasIndex(p => new { p.UserId, p.ExamId })
+                .IsUnique();
+
+            // At most one Primary Exam per student (spec section 5) -- a single-column filtered
+            // unique index rather than app-code-only enforcement, same pattern as Bookmark's
+            // filtered indexes above: SQL Server allows any number of rows where IsPrimary = 0
+            // through this filter, but only ever one per UserId where IsPrimary = 1.
+            modelBuilder.Entity<UserExamPreference>()
+                .HasIndex(p => p.UserId)
+                .IsUnique()
+                .HasFilter("[IsPrimary] = 1");
         }
     }
 

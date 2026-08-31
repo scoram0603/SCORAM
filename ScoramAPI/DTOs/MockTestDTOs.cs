@@ -21,6 +21,11 @@ namespace ScoramAPI.DTOs
     {
         public string Title { get; set; } = string.Empty;
         public string ExamName { get; set; } = string.Empty;
+        // "MY EXAMS" -- optional. When provided, ExamName above is overwritten with that Exam's
+        // current name server-side (kept in sync, same idea as ExamsController.Update syncing a
+        // renamed exam's ChatRoom.Name) so the two never drift apart. A caller that only knows the
+        // legacy ExamName-only shape can keep omitting this -- see MockTestsController.Create.
+        public Guid? ExamId { get; set; }
         public MockTestType TestType { get; set; } = MockTestType.FullMockTest;
         public int DurationMinutes { get; set; }
         public decimal NegativeMarkingRatio { get; set; } = 0.25m;
@@ -51,6 +56,7 @@ namespace ScoramAPI.DTOs
         public Guid Id { get; set; }
         public string Title { get; set; } = string.Empty;
         public string ExamName { get; set; } = string.Empty;
+        public Guid? ExamId { get; set; }
         public string TestType { get; set; } = string.Empty;
         public int DurationMinutes { get; set; }
         public decimal NegativeMarkingRatio { get; set; }
@@ -101,6 +107,7 @@ namespace ScoramAPI.DTOs
         public Guid Id { get; set; }
         public string Title { get; set; } = string.Empty;
         public string ExamName { get; set; } = string.Empty;
+        public Guid? ExamId { get; set; }
         public string TestType { get; set; } = string.Empty;
         public int DurationMinutes { get; set; }
         public decimal NegativeMarkingRatio { get; set; }

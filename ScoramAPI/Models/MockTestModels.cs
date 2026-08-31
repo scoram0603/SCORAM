@@ -13,6 +13,19 @@ namespace ScoramAPI.Models
         [Required, MaxLength(100)]
         public string ExamName { get; set; } = string.Empty;
 
+        // "MY EXAMS" -- added alongside the original free-text ExamName rather than replacing it
+        // (spec section 28, API backward compatibility): existing admin callers that only ever send
+        // ExamName keep working unchanged, and ExamName keeps rendering exactly as before everywhere
+        // it already does. ExamId is what lets a Mock Test participate in a student's My Exams
+        // filter reliably (an ID match instead of a string match that silently breaks if an exam is
+        // ever renamed -- see ExamsController.Update syncing ChatRoom.Name on rename, which
+        // ExamName here was never wired up to). Nullable: existing rows are backfilled by matching
+        // ExamName to Exam.Name where an unambiguous match exists (see the AddExamIdToMockTest
+        // migration) and stay null where it doesn't -- those rows simply don't participate in
+        // ID-based exam filtering until an admin edits them to point at a real Exam.
+        public Guid? ExamId { get; set; }
+        public Exam? Exam { get; set; }
+
         public MockTestType TestType { get; set; } = MockTestType.FullMockTest;
 
         public int DurationMinutes { get; set; }
