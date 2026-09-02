@@ -42,12 +42,13 @@ namespace ScoramAPI.Controllers
         private readonly IAuditLogService _audit;
         private readonly ILogger<BulkImportController> _logger;
         private readonly IQuestionBankMirrorService _mirror;
+        private readonly IInstantSearchService _instantSearch;
 
         public BulkImportController(
             ScoramDbContext db, IAdminPermissionService permissions, IBulkImportService importService,
             IBulkUploadZipService zipService, IFileStorageService fileStorage,
             IMemoryCache cache, IAuditLogService audit, ILogger<BulkImportController> logger,
-            IQuestionBankMirrorService mirror)
+            IQuestionBankMirrorService mirror, IInstantSearchService instantSearch)
         {
             _db = db;
             _permissions = permissions;
@@ -58,6 +59,7 @@ namespace ScoramAPI.Controllers
             _audit = audit;
             _logger = logger;
             _mirror = mirror;
+            _instantSearch = instantSearch;
         }
 
         // POST /api/admin/papers/{paperId}/bulk-import/preview  (multipart/form-data, field name "file")
@@ -435,12 +437,22 @@ namespace ScoramAPI.Controllers
         }
 
         // POST /api/admin/bulk-import/{jobId}/rollback -- deletes exactly the questions this import
-        // created (tagged via Question.ImportJobId), leaving anything entered by hand untouched. Only
-        // allowed while the paper is still Draft, same reasoning as PapersController.Delete: once a
-        // paper's been sent for review or published, removing questions out from under it needs the
-        // normal edit/delete flow, not a bulk undo.
+        // created (tagged via Question.ImportJobId), leaving anything entered by hand -- or by a
+        // different import job -- untouched. Works regardless of the paper's status (Draft,
+        // PendingReview, or Published): the old Draft-only restriction meant a bad import that had
+        // already been published couldn't be undone at all, which was the exact pain this whole
+        // feature exists to fix. The one real blocker is students: StudentAnswer.QuestionId is a
+        // Restrict FK, so a Question a student has already attempted physically cannot be deleted --
+        // checked up front so that shows up as a clear message instead of an unhandled SQL error.
+        //
+        // If this empties the paper completely (every question came from this one job), the paper is
+        // sent back to Draft rather than left Published-but-empty or deleted outright -- deleting is a
+        // separate, deliberate admin action via PapersController.Delete once they're sure they don't
+        // want to reuse it. If the paper's exam was itself created solely for this paper (see
+        // Paper.ExamCreatedForThisPaper), the response flags it as an ExamCleanupCandidateId so the
+        // frontend can offer a confirm dialog before calling ExamsController.CleanupIfEmpty.
         [HttpPost("bulk-import/{jobId:guid}/rollback")]
-        public async Task<IActionResult> Rollback(Guid jobId)
+        public async Task<ActionResult<BulkImportRollbackResultDto>> Rollback(Guid jobId)
         {
             if (!await _permissions.HasPermissionAsync(User, AdminPermission.DeletePaper))
                 return Forbid();
@@ -449,10 +461,17 @@ namespace ScoramAPI.Controllers
             if (job == null) return NotFound();
             if (job.Status != ImportJobStatus.Committed)
                 return BadRequest(new { message = "Only a committed import can be rolled back." });
-            if (job.Paper == null || job.Paper.Status != PaperStatus.Draft)
-                return BadRequest(new { message = "The paper is no longer Draft -- roll back individual questions by hand instead." });
+            if (job.Paper == null)
+                return BadRequest(new { message = "This import's paper no longer exists." });
+
+            var hasAttempts = await _db.StudentTestResults.AnyAsync(r => r.PaperId == job.PaperId);
+            if (hasAttempts)
+                return Conflict(new { message = "Students have already attempted this paper -- these questions can't be safely removed anymore. Unpublish the paper and fix the affected questions by hand instead." });
+
+            var wasPublished = job.Paper.Status == PaperStatus.Published;
 
             var imported = await _db.Questions.Where(q => q.ImportJobId == jobId).ToListAsync();
+            var importedIds = imported.Select(q => q.Id).ToList();
 
             // Now that a ZIP-based bulk import can give a question images, a rollback needs to clean
             // those up too -- same imageUrls-array-then-delete-after-remove pattern as
@@ -466,16 +485,44 @@ namespace ScoramAPI.Controllers
                 })
                 .ToList();
 
+            // Computed BEFORE the removal below (from what's still in the DB) so this doesn't need a
+            // second round trip after SaveChangesAsync -- QuestionBankLinks are never touched by a
+            // rollback, so only the PYQ Questions side can shrink.
+            var otherQuestionsCount = await _db.Questions.CountAsync(q => q.PaperId == job.PaperId && q.ImportJobId != jobId);
+            var qbLinksCount = await _db.PaperQuestionBankLinks.CountAsync(l => l.PaperId == job.PaperId);
+            var paperNowEmpty = otherQuestionsCount == 0 && qbLinksCount == 0;
+
             _db.Questions.RemoveRange(imported);
 
             job.Status = ImportJobStatus.RolledBack;
             job.RolledBackAt = DateTime.UtcNow;
 
+            if (paperNowEmpty)
+            {
+                job.Paper.Status = PaperStatus.Draft;
+                job.Paper.PublishedAt = null;
+            }
+
             await _db.SaveChangesAsync();
             foreach (var url in imageUrls) await _fileStorage.DeleteImageAsync(url);
+
+            if (wasPublished)
+            {
+                try { await _instantSearch.RemoveQuestionsAsync(importedIds); }
+                catch (Exception ex) { _logger.LogError(ex, "Failed to remove {Count} rolled-back question(s) from the search index", importedIds.Count); }
+            }
+
             await _audit.LogAsync(User.GetAdminId(), "BulkImport.Rollback", "Paper", job.PaperId, $"{imported.Count} question(s) removed from {job.FileName}");
 
-            return NoContent();
+            Guid? examCleanupCandidateId = (paperNowEmpty && job.Paper.ExamCreatedForThisPaper) ? job.Paper.ExamId : null;
+
+            return Ok(new BulkImportRollbackResultDto
+            {
+                JobId = job.Id,
+                QuestionsRemoved = imported.Count,
+                PaperStatus = job.Paper.Status.ToString(),
+                ExamCleanupCandidateId = examCleanupCandidateId
+            });
         }
 
         private static ImportFileFormat? DetectFormat(string fileName)

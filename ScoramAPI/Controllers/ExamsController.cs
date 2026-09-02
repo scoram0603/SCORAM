@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ScoramAPI.Data;
 using ScoramAPI.DTOs;
+using ScoramAPI.Enums;
 using ScoramAPI.Extensions;
 using ScoramAPI.Models;
 using ScoramAPI.Services;
@@ -22,11 +23,17 @@ namespace ScoramAPI.Controllers
 
         private readonly ScoramDbContext _db;
         private readonly IFileStorageService _fileStorage;
+        private readonly IAdminPermissionService _permissions;
+        private readonly IAuditLogService _audit;
 
-        public ExamsController(ScoramDbContext db, IFileStorageService fileStorage)
+        public ExamsController(
+            ScoramDbContext db, IFileStorageService fileStorage,
+            IAdminPermissionService permissions, IAuditLogService audit)
         {
             _db = db;
             _fileStorage = fileStorage;
+            _permissions = permissions;
+            _audit = audit;
         }
 
         // GET /api/exams -- the picker list (also usable as a public "browse by exam" list). Excludes
@@ -267,28 +274,71 @@ namespace ScoramAPI.Controllers
             var exam = await _db.Exams.FirstOrDefaultAsync(e => e.Id == id);
             if (exam == null) return NotFound();
 
-            var hasContent = await _db.Questions.AnyAsync(q => q.ExamId == id)
-                || await _db.Papers.AnyAsync(p => p.ExamId == id)
-                || await _db.QuestionBankExamMappings.AnyAsync(m => m.ExamId == id)
-                || await _db.PracticeTestTemplates.AnyAsync(t => t.ExamId == id)
-                || await _db.MockTests.AnyAsync(m => m.ExamName == exam.Name);
-
-            var room = await _db.ChatRooms.FirstOrDefaultAsync(r => r.ExamId == id);
-            if (room != null)
-            {
-                hasContent = hasContent
-                    || await _db.ChatMessages.AnyAsync(m => m.ChatRoomId == room.Id)
-                    || await _db.ChatRoomMemberships.AnyAsync(m => m.ChatRoomId == room.Id);
-            }
-
-            if (hasContent)
+            if (await ExamHasContentAsync(_db, id, exam.Name))
                 return Conflict(new { message = "This exam has questions, tests, or chat activity attached -- Block it instead of deleting." });
 
+            var room = await _db.ChatRooms.FirstOrDefaultAsync(r => r.ExamId == id);
             if (room != null) _db.ChatRooms.Remove(room);
             _db.Exams.Remove(exam);
             await _db.SaveChangesAsync();
 
             return NoContent();
+        }
+
+        // DELETE /api/admin/exams/{id}/empty-cleanup  (DeletePaper permission -- Admin or SuperAdmin,
+        // NOT restricted to SuperAdmin like Delete above) -- a narrower sibling reached only from the
+        // bulk-import Undo flow (see BulkImportController.Rollback's ExamCleanupCandidateId), after
+        // the admin confirms a "this exam has nothing else on it -- delete it too?" prompt. Runs the
+        // EXACT same emptiness check as Delete, so it can never remove an exam that has real content --
+        // the only difference from Delete is who's allowed to call it. Delete stays SuperAdmin-only
+        // for "delete any exam, however old, however it became empty"; this one is scoped to the
+        // narrow, low-risk case a bulk-upload undo just created, so a regular Admin trusted with
+        // DeletePaper doesn't need to escalate to a Super Admin just to clear out their own mistake.
+        [HttpDelete("/api/admin/exams/{id:guid}/empty-cleanup")]
+        [Authorize(Roles = "Admin,SuperAdmin")]
+        public async Task<IActionResult> CleanupIfEmpty(Guid id)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.DeletePaper))
+                return Forbid();
+
+            var exam = await _db.Exams.FirstOrDefaultAsync(e => e.Id == id);
+            if (exam == null) return NotFound();
+
+            if (await ExamHasContentAsync(_db, id, exam.Name))
+                return Conflict(new { message = "This exam is no longer empty -- it can't be cleaned up automatically anymore." });
+
+            var room = await _db.ChatRooms.FirstOrDefaultAsync(r => r.ExamId == id);
+            if (room != null) _db.ChatRooms.Remove(room);
+            _db.Exams.Remove(exam);
+            await _db.SaveChangesAsync();
+            await _audit.LogAsync(User.GetAdminId(), "Exam.CleanupEmpty", "Exam", id, $"\"{exam.Name}\" removed as part of a bulk-import undo");
+
+            return NoContent();
+        }
+
+        // Shared by Delete, CleanupIfEmpty above, and PapersController.Create (which stamps
+        // Paper.ExamCreatedForThisPaper using this exact same check, at the moment a new Paper is
+        // created under an Exam) -- one single definition of "genuinely empty" used everywhere, so
+        // the call sites can never quietly drift out of sync with each other.
+        internal static async Task<bool> ExamHasContentAsync(ScoramDbContext db, Guid examId, string examName)
+        {
+            var hasContent = await db.Questions.AnyAsync(q => q.ExamId == examId)
+                || await db.Papers.AnyAsync(p => p.ExamId == examId)
+                || await db.QuestionBankExamMappings.AnyAsync(m => m.ExamId == examId)
+                || await db.PracticeTestTemplates.AnyAsync(t => t.ExamId == examId)
+                || await db.MockTests.AnyAsync(m => m.ExamName == examName);
+
+            if (!hasContent)
+            {
+                var room = await db.ChatRooms.FirstOrDefaultAsync(r => r.ExamId == examId);
+                if (room != null)
+                {
+                    hasContent = await db.ChatMessages.AnyAsync(m => m.ChatRoomId == room.Id)
+                        || await db.ChatRoomMemberships.AnyAsync(m => m.ChatRoomId == room.Id);
+                }
+            }
+
+            return hasContent;
         }
 
         private string? ValidateLogo(IFormFile logo)

@@ -59,6 +59,14 @@ namespace ScoramAPI.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? PublishedAt { get; set; }
 
+        // True when the Exam this paper belongs to had NO other content (no other Papers/Questions/
+        // Question Bank mappings/Tests/chat activity) at the exact moment this paper was created --
+        // stamped once in PapersController.Create via ExamsController.ExamHasContentAsync, never
+        // changed afterward. Lets BulkImportController.Rollback safely offer "this exam has nothing
+        // else on it -- delete it too?" after undoing a bad bulk upload, without any fragile
+        // timestamp-based guessing about whether the exam was "just created for this".
+        public bool ExamCreatedForThisPaper { get; set; } = false;
+
         // ---------- Previous Year Paper Practice ----------
         // Added so a Paper can be ATTEMPTED as a real timed paper (previously a Paper only powered
         // "browse its questions" -- there was no attempt/timer/scoring concept at all). All nullable

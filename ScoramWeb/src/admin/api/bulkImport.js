@@ -85,7 +85,12 @@ export function getImportJobQuestions(token, jobId) {
   return apiFetch(`/api/admin/bulk-import/${jobId}/questions`, { token });
 }
 
-// POST /api/admin/bulk-import/{jobId}/rollback -- only works while the paper is still Draft
+// POST /api/admin/bulk-import/{jobId}/rollback -- works regardless of the paper's status now
+// (Draft/PendingReview/Published), unless students have already attempted the paper (409). Returns
+// { jobId, questionsRemoved, paperStatus, examCleanupCandidateId }. examCleanupCandidateId is set
+// only when the paper's exam was created solely for this paper AND this rollback left it with zero
+// questions -- BulkImportPanel shows a confirm dialog and calls cleanupEmptyExam() before deleting it,
+// this endpoint never deletes anything by itself.
 export function rollbackImport(token, jobId) {
   return apiFetch(`/api/admin/bulk-import/${jobId}/rollback`, { method: "POST", token });
 }

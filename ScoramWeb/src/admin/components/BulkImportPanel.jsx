@@ -5,6 +5,8 @@ import {
   ChevronDown, ChevronRight,
 } from "lucide-react";
 import { previewBulkImport, commitBulkImport, getImportHistory, rollbackImport, updatePreviewRow, updateRowImages, getImportJobQuestions } from "../api/bulkImport";
+import { cleanupEmptyExam } from "../api/exams";
+import { useAdminAuth } from "../context/AdminAuthContext";
 import { Card, Button, FormField, TextInput, TextArea, Select, Alert, friendlyError } from "./AdminUI";
 import { QuestionCard, QuestionEditForm } from "./QuestionEditor";
 import { MathText, RichQuestionBody } from "../../components/questions/MathText";
@@ -14,8 +16,9 @@ import EditImageField from "./EditImageField";
 const ACCEPTED = ".csv,.xlsx,.json,.zip";
 const DIFFICULTIES = ["Easy", "Medium", "Hard"];
 
-export default function BulkImportPanel({ paperId, token, onImported }) {
+export default function BulkImportPanel({ paperId, token, paperStatus = "Draft", onImported, onPaperChanged }) {
   const navigate = useNavigate();
+  const { hasPermission } = useAdminAuth();
   const fileInputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewing, setPreviewing] = useState(false);
@@ -155,8 +158,25 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
     if (!window.confirm("Remove every question this import added? This can't be undone.")) return;
     setRollingBackId(jobId);
     try {
-      await rollbackImport(token, jobId);
+      const result = await rollbackImport(token, jobId);
       refreshHistory();
+      // The paper may have just been emptied and reverted to Draft -- let the parent (Paper Detail
+      // View or the wizard) refetch so its status badge, action buttons, and question list stay in
+      // sync instead of showing stale Published/PendingReview state.
+      onPaperChanged?.(result);
+
+      if (result?.examCleanupCandidateId) {
+        const wantsCleanup = window.confirm(
+          "This exam now has no other papers, questions, or activity on it -- it was created just for this paper. Delete it too?"
+        );
+        if (wantsCleanup) {
+          try {
+            await cleanupEmptyExam(token, result.examCleanupCandidateId);
+          } catch (err) {
+            window.alert(friendlyError(err));
+          }
+        }
+      }
     } catch (err) {
       window.alert(friendlyError(err));
     } finally {
@@ -164,8 +184,18 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
     }
   }
 
+  if (paperStatus !== "Draft" && !(history?.length > 0)) return null;
+
   return (
     <div className="flex flex-col gap-4">
+      {paperStatus !== "Draft" && (
+        <p className="rounded-xl2 bg-primary-50/50 p-3 text-xs font-medium text-ink-600">
+          This paper is {paperStatus} -- unpublish it first to bulk-upload more questions. You can
+          still roll back a previous import below.
+        </p>
+      )}
+
+      {paperStatus === "Draft" && (
       <Card>
         <p className="text-xs text-ink-400">
           Bulk-add questions from a spreadsheet, or a ZIP package for questions with images and math.
@@ -323,6 +353,7 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
           </div>
         )}
       </Card>
+      )}
 
       {history?.length > 0 && (
         <Card>
@@ -352,7 +383,7 @@ export default function BulkImportPanel({ paperId, token, onImported }) {
                         {job.importedCount}/{job.totalRows} imported · by {job.createdByAdminName}
                       </span>
                     </span>
-                    {job.status === "Committed" && (
+                    {job.status === "Committed" && hasPermission("DeletePaper") && (
                       <Button
                         variant="secondary"
                         isLoading={rollingBackId === job.id}

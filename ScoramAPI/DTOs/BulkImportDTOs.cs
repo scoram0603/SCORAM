@@ -71,6 +71,19 @@ namespace ScoramAPI.DTOs
         public int SkippedCount { get; set; }
     }
 
+    // Result of POST .../bulk-import/{jobId}/rollback -- see BulkImportController.Rollback for the
+    // full reasoning. ExamCleanupCandidateId is set only when the paper's exam was created solely for
+    // this paper AND the rollback left the paper with zero questions: the frontend should show a
+    // confirm dialog ("this exam has nothing else on it -- delete it too?") before calling
+    // DELETE /api/admin/exams/{id}/empty-cleanup with this id. It is never auto-deleted here.
+    public class BulkImportRollbackResultDto
+    {
+        public Guid JobId { get; set; }
+        public int QuestionsRemoved { get; set; }
+        public string PaperStatus { get; set; } = string.Empty;
+        public Guid? ExamCleanupCandidateId { get; set; }
+    }
+
     public class ImportJobResponseDto
     {
         public Guid Id { get; set; }

@@ -50,3 +50,11 @@ export function setExamBlocked(token, examId, isBlocked) {
 export function deleteExam(token, examId) {
   return apiFetch(`/api/admin/exams/${examId}`, { method: "DELETE", token });
 }
+
+// DELETE /api/admin/exams/{id}/empty-cleanup  (DeletePaper permission -- Admin or SuperAdmin) --
+// narrower sibling of deleteExam above, reached only from BulkImportPanel's rollback flow after the
+// admin confirms "this exam has nothing else on it -- delete it too?". Runs the exact same
+// emptiness check server-side; only who's allowed to call it differs from deleteExam.
+export function cleanupEmptyExam(token, examId) {
+  return apiFetch(`/api/admin/exams/${examId}/empty-cleanup`, { method: "DELETE", token });
+}

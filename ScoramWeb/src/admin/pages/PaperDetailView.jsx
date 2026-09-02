@@ -8,6 +8,7 @@ import {
 } from "../api/papers";
 import { deleteQuestion } from "../api/adminQuestions";
 import { PageHeader, Card, Button, FormField, TextArea, Alert, StatusBadge, friendlyError } from "../components/AdminUI";
+import BulkImportPanel from "../components/BulkImportPanel";
 import TestQuestionPicker from "../components/TestQuestionPicker";
 import PaperQuestionBulkPicker from "../components/PaperQuestionBulkPicker";
 import { PracticeSettingsCard, ValidationSummary } from "../components/PaperConfigAndValidation";
@@ -237,6 +238,13 @@ export default function PaperDetailView() {
             </div>
           </Card>
         )}
+
+        {/* PYQ bulk-import history + rollback. The upload/preview/commit card only shows while
+            paper.status is Draft (matches the wizard); "Recent imports"/Roll back stays available
+            regardless of status -- see BulkImportPanel's own comments for why. */}
+        <div className="mb-6">
+          <BulkImportPanel paperId={paper.id} token={token} paperStatus={paper.status} onPaperChanged={refresh} />
+        </div>
 
         {/* MASTER PROMPT -- Previous Year Paper Practice: config + Question Bank mapping. Only
             editable while the paper is Draft/PendingReview (same rule as everything else here --

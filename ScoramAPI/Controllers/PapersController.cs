@@ -48,8 +48,13 @@ namespace ScoramAPI.Controllers
             if (!await _permissions.HasPermissionAsync(User, AdminPermission.UploadPaper))
                 return Forbid();
 
-            var examExists = await _db.Exams.AnyAsync(e => e.Id == dto.ExamId);
-            if (!examExists) return BadRequest(new { message = "That exam doesn't exist." });
+            var exam = await _db.Exams.FirstOrDefaultAsync(e => e.Id == dto.ExamId);
+            if (exam == null) return BadRequest(new { message = "That exam doesn't exist." });
+
+            // Checked BEFORE this paper is added below, so "does the exam have any other content"
+            // genuinely means OTHER content -- see Paper.ExamCreatedForThisPaper's own comment for
+            // what this flag is used for later (the bulk-import Undo flow's exam-cleanup offer).
+            var examWasEmpty = !await ExamsController.ExamHasContentAsync(_db, dto.ExamId, exam.Name);
 
             // Free-text fields are trimmed and empty-after-trim is normalized to null *before* the
             // duplicate check -- otherwise "Set A" and "Set A " (an invisible trailing space) would be
@@ -86,6 +91,7 @@ namespace ScoramAPI.Controllers
                 Shift = normalizedShift,
                 PaperLabel = normalizedPaperLabel,
                 Status = PaperStatus.Draft,
+                ExamCreatedForThisPaper = examWasEmpty,
                 CreatedByAdminId = User.GetAdminId(),
                 CreatedAt = DateTime.UtcNow
             };
@@ -465,8 +471,9 @@ namespace ScoramAPI.Controllers
             });
         }
 
-        // PATCH /api/admin/papers/{id}/submit -- "Done" in the wizard. Publishes directly if the
-        // submitting admin has Publish permission, otherwise queues it for review.
+        // PATCH /api/admin/papers/{id}/submit -- "Done" in the wizard. Always queues the paper for
+        // review (PendingReview) -- even an admin with Publish permission still needs a separate,
+        // explicit Publish click; see the comment further down for why.
         [HttpPatch("{id:guid}/submit")]
         public async Task<ActionResult<PaperResponseDto>> Submit(Guid id)
         {
@@ -487,14 +494,16 @@ namespace ScoramAPI.Controllers
             if (paper.RequiredQuestionCount.HasValue && questionCount < paper.RequiredQuestionCount.Value)
                 return BadRequest(new { message = $"This paper needs {paper.RequiredQuestionCount.Value} questions but only has {questionCount}. Add the missing questions before submitting." });
 
-            var canPublish = await _permissions.HasPermissionAsync(User, AdminPermission.PublishPaper);
-            paper.Status = canPublish ? PaperStatus.Published : PaperStatus.PendingReview;
+            // Submit never auto-publishes anymore, even for an admin (including a Super Admin, who
+            // holds every permission by default -- see AdminPermissionService) who holds PublishPaper.
+            // Every paper now goes through PendingReview and needs a separate, explicit Publish click
+            // -- this closes the exact gap that let a bad bulk import go straight live in one action
+            // with nobody taking a second look at it.
+            paper.Status = PaperStatus.PendingReview;
             paper.RejectionReason = null;
-            if (canPublish) paper.PublishedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
-            if (canPublish) await IndexPaperQuestionsAsync(paper.Id);
-            await _audit.LogAsync(User.GetAdminId(), canPublish ? "Paper.SubmitAndPublish" : "Paper.SubmitForReview", "Paper", paper.Id);
+            await _audit.LogAsync(User.GetAdminId(), "Paper.SubmitForReview", "Paper", paper.Id);
             return Ok(await ToDto(paper.Id));
         }
 

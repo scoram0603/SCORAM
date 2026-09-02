@@ -898,7 +898,13 @@ function QuestionStep({
           bulk-imported row (4 options + explanation) needs real room, not a narrow form column. */}
       {mode === "bulk" && (
         <div className="mt-4">
-          <BulkImportPanel paperId={paper.id} token={token} onImported={async () => { await onBulkImported(); refreshMapped(); }} />
+          <BulkImportPanel
+            paperId={paper.id}
+            token={token}
+            paperStatus="Draft"
+            onImported={async () => { await onBulkImported(); refreshMapped(); }}
+            onPaperChanged={onBulkImported}
+          />
         </div>
       )}
 
