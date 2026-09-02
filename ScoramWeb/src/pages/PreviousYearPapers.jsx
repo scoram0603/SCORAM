@@ -4,10 +4,9 @@ import {
   ChevronDown, Clock, FileQuestion, Grid2x2, Info, List as ListIcon, Loader2,
   MinusCircle, Play, RotateCcw, Search, Sparkles, X, Eye, Users,
 } from "lucide-react";
-import { listExams } from "../api/exams";
 import { browsePapers, getPaperFilterOptions, getPaperYears, getMyPaperAttempts } from "../api/papers";
 import BookmarkButton from "../components/questions/BookmarkButton";
-import SearchableSelect from "../components/ui/SearchableSelect";
+import OrganizationExamFilterDropdown from "../components/exams/OrganizationExamFilterDropdown";
 import { useAuth } from "../context/AuthContext";
 import { useMyExams } from "../context/MyExamsContext";
 import { useDefaultToMyExams } from "../hooks/useDefaultToMyExams";
@@ -36,7 +35,6 @@ export default function PreviousYearPapers() {
   const [searchParams] = useSearchParams();
   const presetExamId = searchParams.get("examId") || "";
 
-  const [exams, setExams] = useState([]);
   // "MY EXAMS" -- upgraded from a single examId to a multi-select examIds array (spec section 37:
   // this section should default to ALL of a student's selected exams at once, not just one) -- see
   // StudentPapersController.Browse/GetFilterOptions, which now accept examIds alongside the
@@ -81,10 +79,6 @@ export default function PreviousYearPapers() {
   });
 
   // ---------- Reference data ----------
-  useEffect(() => {
-    listExams().then(setExams).catch(() => setExams([]));
-  }, []);
-
   // GetYears is still single-exam only (see StudentPapersController -- it's part of the older
   // step-by-step Exam -> Year -> Language -> Set drill-down, left as-is). With more than one exam
   // selected there's no single "years" list to show, so the Year refinement filter simply clears
@@ -167,13 +161,11 @@ export default function PreviousYearPapers() {
       {/* ---------- Filters ---------- */}
       <div className="mt-5 rounded-xl2 border border-primary-100 bg-white p-4 shadow-card">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          <SearchableSelect
+          <OrganizationExamFilterDropdown
             label="Exam"
             placeholder="All exams"
-            options={exams.map((e) => ({ value: e.id, label: e.name }))}
             selected={examIds}
             onChange={(v) => { setExamIds(v); setYear(""); }}
-            multi
           />
           <Dropdown
             label="Year"

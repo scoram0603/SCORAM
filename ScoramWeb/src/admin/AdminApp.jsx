@@ -11,6 +11,7 @@ import PaperDetailView from "./pages/PaperDetailView";
 import ReviewQueue from "./pages/ReviewQueue";
 import ChatModeration from "./pages/ChatModeration";
 import ExamManagement from "./pages/ExamManagement";
+import OrganizationManagement from "./pages/OrganizationManagement";
 import TaskManagement from "./pages/TaskManagement";
 import ManageAdmins from "./pages/ManageAdmins";
 import AuditLog from "./pages/AuditLog";
@@ -38,6 +39,7 @@ function AdminRoutes() {
           <Route path="papers/:paperId" element={<PaperDetailView />} />
           <Route path="chat" element={<ChatModeration />} />
           <Route path="exams" element={<ExamManagement />} />
+          <Route path="organizations" element={<OrganizationManagement />} />
           <Route path="tasks" element={<TaskManagement />} />
 
           <Route element={<RequireAdminPermission permission="PublishPaper" />}>

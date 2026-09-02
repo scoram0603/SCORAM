@@ -9,6 +9,7 @@ import QuestionBankFeedCard from "../components/questions/QuestionBankFeedCard";
 import QuestionBankFeedCardSkeleton from "../components/questions/QuestionBankFeedCardSkeleton";
 import QuestionBankSidebar from "../components/questions/QuestionBankSidebar";
 import SearchableSelect from "../components/ui/SearchableSelect";
+import OrganizationExamFilterDropdown from "../components/exams/OrganizationExamFilterDropdown";
 import { useMyExams } from "../context/MyExamsContext";
 import { useDefaultToMyExams } from "../hooks/useDefaultToMyExams";
 
@@ -448,10 +449,9 @@ export default function QuestionBankSearch() {
           onChange={(v) => updateListParam("topicIds", v)}
           disabled={subjectIds.length === 0}
         />
-        <SearchableSelect
+        <OrganizationExamFilterDropdown
           label="Exam"
           placeholder="Any exam"
-          options={exams.map((e) => ({ value: e.id, label: e.name }))}
           selected={examIds}
           onChange={(v) => updateListParam("examIds", v)}
         />

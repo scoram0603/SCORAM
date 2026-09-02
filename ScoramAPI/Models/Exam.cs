@@ -13,6 +13,16 @@ namespace ScoramAPI.Models
         [Required, MaxLength(100)]
         public string Name { get; set; } = string.Empty; // "SSC CGL", "SSC CHSL", "Railway NTPC"
 
+        // ORGANIZATION HIERARCHY -- which body runs this exam (SSC, RRB, UPSC, ...), so pickers can
+        // group "pick an Organization, then pick from its exams" instead of showing every exam ever
+        // created in one flat list. Nullable, and deliberately so: existing exams created before this
+        // feature stay perfectly valid with no Organization assigned -- there's no forced backfill or
+        // migration step (same reasoning MockTest.ExamId's own nullable FK had) -- an admin just
+        // assigns one later via ExamsController.Update. One Organization per exam, not many-to-many:
+        // "SSC CGL" only ever makes sense under "SSC".
+        public Guid? OrganizationId { get; set; }
+        public Organization? Organization { get; set; }
+
         // Relative URL under wwwroot, e.g. "/uploads/exam-logos/8f14e45f....png". Null if no logo
         // was uploaded yet -- a logo isn't required to create the exam and start uploading questions.
         public string? LogoUrl { get; set; }

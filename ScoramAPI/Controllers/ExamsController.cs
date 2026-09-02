@@ -33,10 +33,17 @@ namespace ScoramAPI.Controllers
         // blocked exams -- see IsBlocked -- for non-admin callers; GET /api/admin/exams below is the
         // unfiltered version admins manage from.
         [HttpGet]
-        public async Task<ActionResult<List<ExamResponseDto>>> List()
+        public async Task<ActionResult<List<ExamResponseDto>>> List([FromQuery] Guid? organizationId)
         {
-            var exams = await _db.Exams
-                .Where(e => !e.IsBlocked)
+            // ORGANIZATION HIERARCHY -- a blocked Organization hides every exam under it from this
+            // public list too, without touching each exam's own IsBlocked flag (see
+            // Organization.IsBlocked's own comment). organizationId powers the two-step "pick an
+            // Organization, then pick from its exams" picker everywhere one exists.
+            var query = _db.Exams
+                .Where(e => !e.IsBlocked && (e.Organization == null || !e.Organization.IsBlocked));
+            if (organizationId.HasValue) query = query.Where(e => e.OrganizationId == organizationId.Value);
+
+            var exams = await query
                 .OrderBy(e => e.Name)
                 .Select(e => new ExamResponseDto
                 {
@@ -45,20 +52,25 @@ namespace ScoramAPI.Controllers
                     LogoUrl = e.LogoUrl,
                     IsBlocked = e.IsBlocked,
                     QuestionCount = e.Questions.Count + e.Papers.SelectMany(p => p.Questions).Count(),
-                    CreatedAt = e.CreatedAt
+                    CreatedAt = e.CreatedAt,
+                    OrganizationId = e.OrganizationId,
+                    OrganizationName = e.Organization != null ? e.Organization.Name : null
                 })
                 .ToListAsync();
 
             return Ok(exams);
         }
 
-        // GET /api/admin/exams  (Admin only) -- same shape as above but includes blocked exams too,
-        // for the admin "Manage Exams" screen.
+        // GET /api/admin/exams  (Admin only) -- same shape as above but includes blocked exams (and
+        // exams under a blocked Organization) too, for the admin "Manage Exams" screen.
         [HttpGet("/api/admin/exams")]
         [Authorize(Roles = "Admin,SuperAdmin")]
-        public async Task<ActionResult<List<ExamResponseDto>>> AdminList()
+        public async Task<ActionResult<List<ExamResponseDto>>> AdminList([FromQuery] Guid? organizationId)
         {
-            var exams = await _db.Exams
+            var query = _db.Exams.AsQueryable();
+            if (organizationId.HasValue) query = query.Where(e => e.OrganizationId == organizationId.Value);
+
+            var exams = await query
                 .OrderBy(e => e.Name)
                 .Select(e => new ExamResponseDto
                 {
@@ -67,7 +79,9 @@ namespace ScoramAPI.Controllers
                     LogoUrl = e.LogoUrl,
                     IsBlocked = e.IsBlocked,
                     QuestionCount = e.Questions.Count + e.Papers.SelectMany(p => p.Questions).Count(),
-                    CreatedAt = e.CreatedAt
+                    CreatedAt = e.CreatedAt,
+                    OrganizationId = e.OrganizationId,
+                    OrganizationName = e.Organization != null ? e.Organization.Name : null
                 })
                 .ToListAsync();
 
@@ -84,6 +98,15 @@ namespace ScoramAPI.Controllers
             if (await _db.Exams.AnyAsync(e => e.Name.ToLower() == name.ToLower()))
                 return Conflict(new { message = $"An exam named \"{name}\" already exists -- pick it from the list instead of creating a duplicate." });
 
+            // ORGANIZATION HIERARCHY -- optional; validated up front so a typo'd/deleted
+            // OrganizationId fails loudly here rather than silently creating an orphaned FK.
+            Organization? organization = null;
+            if (dto.OrganizationId.HasValue)
+            {
+                organization = await _db.Organizations.FirstOrDefaultAsync(o => o.Id == dto.OrganizationId.Value);
+                if (organization == null) return BadRequest(new { message = "Selected organization could not be found." });
+            }
+
             string? logoUrl = null;
             if (dto.Logo != null)
             {
@@ -97,6 +120,7 @@ namespace ScoramAPI.Controllers
             {
                 Name = name,
                 LogoUrl = logoUrl,
+                OrganizationId = organization?.Id,
                 CreatedByAdminId = User.GetAdminId(),
                 CreatedAt = DateTime.UtcNow
             };
@@ -126,7 +150,9 @@ namespace ScoramAPI.Controllers
                 LogoUrl = exam.LogoUrl,
                 IsBlocked = false,
                 QuestionCount = 0,
-                CreatedAt = exam.CreatedAt
+                CreatedAt = exam.CreatedAt,
+                OrganizationId = organization?.Id,
+                OrganizationName = organization?.Name
             });
         }
 
@@ -164,7 +190,24 @@ namespace ScoramAPI.Controllers
                 await _fileStorage.DeleteImageAsync(oldLogoUrl);
             }
 
+            // ORGANIZATION HIERARCHY -- see ExamUpdateDto.ClearOrganization's own comment on why
+            // clearing needs its own explicit flag rather than just sending a null OrganizationId.
+            if (dto.ClearOrganization)
+            {
+                exam.OrganizationId = null;
+            }
+            else if (dto.OrganizationId.HasValue)
+            {
+                var organizationExists = await _db.Organizations.AnyAsync(o => o.Id == dto.OrganizationId.Value);
+                if (!organizationExists) return BadRequest(new { message = "Selected organization could not be found." });
+                exam.OrganizationId = dto.OrganizationId.Value;
+            }
+
             await _db.SaveChangesAsync();
+
+            var updatedOrgName = exam.OrganizationId.HasValue
+                ? await _db.Organizations.Where(o => o.Id == exam.OrganizationId).Select(o => o.Name).FirstOrDefaultAsync()
+                : null;
 
             return Ok(new ExamResponseDto
             {
@@ -173,7 +216,9 @@ namespace ScoramAPI.Controllers
                 LogoUrl = exam.LogoUrl,
                 IsBlocked = exam.IsBlocked,
                 QuestionCount = await _db.Questions.CountAsync(q => q.ExamId == id) + await _db.Papers.Where(p => p.ExamId == id).SelectMany(p => p.Questions).CountAsync(),
-                CreatedAt = exam.CreatedAt
+                CreatedAt = exam.CreatedAt,
+                OrganizationId = exam.OrganizationId,
+                OrganizationName = updatedOrgName
             });
         }
 
@@ -193,6 +238,10 @@ namespace ScoramAPI.Controllers
 
             await _db.SaveChangesAsync();
 
+            var orgName = exam.OrganizationId.HasValue
+                ? await _db.Organizations.Where(o => o.Id == exam.OrganizationId).Select(o => o.Name).FirstOrDefaultAsync()
+                : null;
+
             return Ok(new ExamResponseDto
             {
                 Id = exam.Id,
@@ -200,7 +249,9 @@ namespace ScoramAPI.Controllers
                 LogoUrl = exam.LogoUrl,
                 IsBlocked = exam.IsBlocked,
                 QuestionCount = await _db.Questions.CountAsync(q => q.ExamId == id) + await _db.Papers.Where(p => p.ExamId == id).SelectMany(p => p.Questions).CountAsync(),
-                CreatedAt = exam.CreatedAt
+                CreatedAt = exam.CreatedAt,
+                OrganizationId = exam.OrganizationId,
+                OrganizationName = orgName
             });
         }
 

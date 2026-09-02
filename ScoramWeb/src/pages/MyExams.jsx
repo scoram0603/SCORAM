@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, Plus, Search, Star, Trash2, AlertCircle, X } from "lucide-react";
-import { listExams } from "../api/exams";
+import { ArrowLeft, Loader2, Plus, Star, Trash2, AlertCircle, X } from "lucide-react";
+import OrganizationExamPicker from "../components/exams/OrganizationExamPicker";
 import { useMyExams } from "../context/MyExamsContext";
 
 // "MY EXAMS" management screen (spec section 13), reached from Profile. Unlike the onboarding
@@ -12,23 +12,11 @@ export default function MyExams() {
   const navigate = useNavigate();
   const { exams, hasLoaded, addExam, removeExam, setPrimary } = useMyExams();
 
-  const [allExams, setAllExams] = useState([]);
   const [pendingId, setPendingId] = useState(null); // examId currently mid-action, for inline spinners
   const [error, setError] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [addQuery, setAddQuery] = useState("");
 
-  useEffect(() => {
-    listExams().then(setAllExams).catch(() => setAllExams([]));
-  }, []);
-
-  const selectedIds = useMemo(() => new Set(exams.map((e) => e.examId)), [exams]);
-  const addableExams = useMemo(() => {
-    const term = addQuery.trim().toLowerCase();
-    return allExams
-      .filter((exam) => !selectedIds.has(exam.id))
-      .filter((exam) => !term || exam.name.toLowerCase().includes(term));
-  }, [allExams, selectedIds, addQuery]);
+  const alreadyAddedIds = useMemo(() => new Set(exams.map((e) => e.examId)), [exams]);
 
   async function handleRemove(examId) {
     setPendingId(examId);
@@ -59,7 +47,6 @@ export default function MyExams() {
     setError(null);
     try {
       await addExam(examId);
-      setAddQuery("");
     } catch (err) {
       setError(err.message || "Couldn't add that exam.");
     } finally {
@@ -146,47 +133,22 @@ export default function MyExams() {
 
           {adding && (
             <div className="rounded-xl2 border border-primary-100 bg-white p-3.5 shadow-card">
-              <div className="flex items-center justify-between">
-                <div className="flex flex-1 items-center gap-2 rounded-xl border border-primary-100 px-3 py-2">
-                  <Search className="h-4 w-4 shrink-0 text-ink-300" strokeWidth={2.25} />
-                  <input
-                    autoFocus
-                    value={addQuery}
-                    onChange={(e) => setAddQuery(e.target.value)}
-                    placeholder="Search exams..."
-                    className="w-full bg-transparent text-sm text-ink-900 outline-none placeholder:text-ink-300"
-                  />
-                </div>
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="text-sm font-bold text-ink-900">Add Exam</h2>
                 <button
                   type="button"
-                  onClick={() => { setAdding(false); setAddQuery(""); }}
-                  className="ml-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-300 hover:bg-ink-50"
+                  onClick={() => setAdding(false)}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-300 hover:bg-ink-50"
                 >
                   <X className="h-4 w-4" strokeWidth={2.25} />
                 </button>
               </div>
-
-              <div className="mt-3 max-h-64 space-y-1 overflow-y-auto">
-                {addableExams.length === 0 && (
-                  <p className="px-1 py-2 text-sm text-ink-400">No matching exams.</p>
-                )}
-                {addableExams.map((exam) => (
-                  <button
-                    key={exam.id}
-                    type="button"
-                    onClick={() => handleAdd(exam.id)}
-                    disabled={pendingId === exam.id}
-                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-semibold text-ink-900 hover:bg-primary-50"
-                  >
-                    {exam.name}
-                    {pendingId === exam.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-primary-400" />
-                    ) : (
-                      <Plus className="h-4 w-4 text-primary-400" strokeWidth={2.5} />
-                    )}
-                  </button>
-                ))}
-              </div>
+              <OrganizationExamPicker
+                selectedIds={[]}
+                excludeIds={alreadyAddedIds}
+                pendingId={pendingId}
+                onToggle={(examId) => handleAdd(examId)}
+              />
             </div>
           )}
         </div>

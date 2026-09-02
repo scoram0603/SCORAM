@@ -34,6 +34,7 @@ namespace ScoramAPI.Data
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
         public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
         public DbSet<Exam> Exams => Set<Exam>();
+        public DbSet<Organization> Organizations => Set<Organization>();
         // "MY EXAMS" -- see Models/UserExamPreference.cs.
         public DbSet<UserExamPreference> UserExamPreferences => Set<UserExamPreference>();
         public DbSet<Question> Questions => Set<Question>();
@@ -168,6 +169,18 @@ namespace ScoramAPI.Data
             modelBuilder.Entity<Question>().Property(q => q.CorrectOption).HasConversion<string>().HasMaxLength(5);
 
             modelBuilder.Entity<Exam>().HasIndex(e => e.Name).IsUnique();
+
+            // ORGANIZATION HIERARCHY -- see Exam.OrganizationId's own comment. Restrict (not
+            // Cascade/SetNull): OrganizationsController's own delete guard already refuses to
+            // hard-delete an Organization that still has exams attached (same "Block, not Delete"
+            // pattern ExamsController.Delete uses), so this only ever matters as a safety net.
+            modelBuilder.Entity<Exam>()
+                .HasOne(e => e.Organization)
+                .WithMany(o => o.Exams)
+                .HasForeignKey(e => e.OrganizationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Organization>().HasIndex(o => o.Name).IsUnique();
 
             modelBuilder.Entity<Question>()
                 .HasOne(q => q.Exam)

@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, Clock, Play, RotateCcw, Users } from "lucide-react";
 import { listMockTests } from "../api/mockTests";
-import { listExams } from "../api/exams";
 import BookmarkButton from "../components/questions/BookmarkButton";
 import SearchableSelect from "../components/ui/SearchableSelect";
+import OrganizationExamFilterDropdown from "../components/exams/OrganizationExamFilterDropdown";
 import { useMyExams } from "../context/MyExamsContext";
 import { useDefaultToMyExams } from "../hooks/useDefaultToMyExams";
 
@@ -24,7 +24,6 @@ export default function MockTests() {
   const [tests, setTests] = useState(null);
   const [status, setStatus] = useState("loading");
   const [language, setLanguage] = useState([]); // SearchableSelect works with arrays; single value here
-  const [exams, setExams] = useState([]);
   const [examIds, setExamIds] = useState([]);
 
   // "MY EXAMS" -- this section had no exam filter at all before; it now defaults to the student's
@@ -39,10 +38,6 @@ export default function MockTests() {
     hasLoaded: myExamsLoaded,
     applyDefault: setExamIds,
   });
-
-  useEffect(() => {
-    listExams().then(setExams).catch(() => setExams([]));
-  }, []);
 
   useEffect(() => {
     setStatus("loading");
@@ -76,13 +71,11 @@ export default function MockTests() {
         </div>
         <div className="flex flex-wrap gap-3">
           <div className="w-48">
-            <SearchableSelect
+            <OrganizationExamFilterDropdown
               label="Exam"
               placeholder="All exams"
-              options={exams.map((e) => ({ value: e.id, label: e.name }))}
               selected={examIds}
               onChange={setExamIds}
-              multi
             />
           </div>
           <div className="w-40">

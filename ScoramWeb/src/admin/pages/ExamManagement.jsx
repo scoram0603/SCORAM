@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Pencil, Ban, CheckCircle2, Trash2, X } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { listAdminExams, createExam, updateExam, setExamBlocked, deleteExam } from "../api/exams";
-import { PageHeader, Card, Button, FormField, TextInput, Alert, friendlyError } from "../components/AdminUI";
+import { listAdminOrganizations } from "../api/organizations";
+import { PageHeader, Card, Button, FormField, TextInput, Select, Alert, friendlyError } from "../components/AdminUI";
 import { API_BASE_URL } from "../../api/client";
 
 function logoSrc(url) {
@@ -14,15 +15,24 @@ function logoSrc(url) {
 // and delete (SuperAdmin only, and only when the server confirms the exam is genuinely empty --
 // see ExamsController.Delete). This is the one place all three actions live; exam *creation* still
 // also happens inline from the PYQ/Question Bank upload wizards for convenience.
+//
+// ORGANIZATION HIERARCHY -- which Organization (SSC, RRB, UPSC, ...) an exam belongs to is set
+// here too, in the create/edit forms below. A flat list with an Organization badge + filter dropdown
+// on each exam, not a collapsed-by-default accordion (the student-facing picker's own pattern,
+// see OrganizationExamPicker.jsx) -- admin management wants everything scannable/visible by
+// default, students want the smaller list.
 export default function ExamManagement() {
   const { token, isSuperAdmin } = useAdminAuth();
   const [exams, setExams] = useState([]);
+  const [organizations, setOrganizations] = useState([]);
   const [status, setStatus] = useState("loading");
+  const [orgFilter, setOrgFilter] = useState(""); // "" = all, "__unassigned" = no Organization
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingExam, setEditingExam] = useState(null);
 
   useEffect(() => {
     refresh();
+    listAdminOrganizations(token).then(setOrganizations).catch(() => setOrganizations([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -35,6 +45,17 @@ export default function ExamManagement() {
       })
       .catch(() => setStatus("error"));
   }
+
+  const organizationNameById = useMemo(
+    () => Object.fromEntries(organizations.map((o) => [o.id, o.name])),
+    [organizations]
+  );
+
+  const visibleExams = useMemo(() => {
+    if (!orgFilter) return exams;
+    if (orgFilter === "__unassigned") return exams.filter((e) => !e.organizationId);
+    return exams.filter((e) => e.organizationId === orgFilter);
+  }, [exams, orgFilter]);
 
   async function handleToggleBlock(exam) {
     setExams((prev) => prev.map((e) => (e.id === exam.id ? { ...e, isBlocked: !e.isBlocked } : e)));
@@ -59,7 +80,7 @@ export default function ExamManagement() {
     <div>
       <PageHeader
         title="Manage Exams"
-        subtitle="Rename, re-logo, block, or delete exams. Blocking hides an exam from students without deleting anything."
+        subtitle="Rename, re-logo, block, delete, or map an exam to its Organization. Blocking hides an exam from students without deleting anything."
         action={
           <Button variant="secondary" onClick={() => setShowCreateForm((s) => !s)}>
             <Plus className="h-4 w-4" strokeWidth={2.5} />
@@ -73,6 +94,7 @@ export default function ExamManagement() {
           <div className="mb-4">
             <CreateExamForm
               token={token}
+              organizations={organizations}
               onDone={() => {
                 setShowCreateForm(false);
                 refresh();
@@ -87,6 +109,7 @@ export default function ExamManagement() {
             <EditExamForm
               token={token}
               exam={editingExam}
+              organizations={organizations}
               onDone={(updated) => {
                 setExams((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
                 setEditingExam(null);
@@ -96,12 +119,26 @@ export default function ExamManagement() {
           </div>
         )}
 
+        {organizations.length > 0 && (
+          <div className="mb-4 max-w-xs">
+            <FormField label="Filter by Organization">
+              <Select value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
+                <option value="">All exams</option>
+                <option value="__unassigned">No Organization</option>
+                {organizations.map((org) => (
+                  <option key={org.id} value={org.id}>{org.name}</option>
+                ))}
+              </Select>
+            </FormField>
+          </div>
+        )}
+
         {status === "loading" && <p className="text-sm text-ink-400">Loading exams…</p>}
         {status === "error" && <Alert>Couldn't load exams right now.</Alert>}
 
         {status === "ready" && (
           <div className="flex flex-col gap-3">
-            {exams.map((exam) => (
+            {visibleExams.map((exam) => (
               <Card key={exam.id} className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   {logoSrc(exam.logoUrl) ? (
@@ -118,7 +155,17 @@ export default function ExamManagement() {
                         <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600">Blocked</span>
                       )}
                     </div>
-                    <p className="text-xs text-ink-400">{exam.questionCount} questions</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs text-ink-400">{exam.questionCount} questions</p>
+                      <span className="text-ink-200">·</span>
+                      <span
+                        className={`text-xs ${
+                          exam.organizationId ? "font-medium text-secondary-500" : "text-accent-600"
+                        }`}
+                      >
+                        {exam.organizationName || organizationNameById[exam.organizationId] || "No Organization"}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -145,9 +192,10 @@ export default function ExamManagement() {
   );
 }
 
-function CreateExamForm({ token, onDone, onCancel }) {
+function CreateExamForm({ token, organizations, onDone, onCancel }) {
   const [name, setName] = useState("");
   const [logoFile, setLogoFile] = useState(null);
+  const [organizationId, setOrganizationId] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
 
@@ -156,7 +204,7 @@ function CreateExamForm({ token, onDone, onCancel }) {
     setSending(true);
     setError(null);
     try {
-      await createExam(token, { name: name.trim(), logoFile });
+      await createExam(token, { name: name.trim(), logoFile, organizationId: organizationId || undefined });
       onDone();
     } catch (err) {
       setError(friendlyError(err));
@@ -177,6 +225,14 @@ function CreateExamForm({ token, onDone, onCancel }) {
         <FormField label="Exam name">
           <TextInput required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. SSC CGL" autoFocus />
         </FormField>
+        <FormField label="Organization (optional)" hint="Which body runs this exam -- can be set later too.">
+          <Select value={organizationId} onChange={(e) => setOrganizationId(e.target.value)}>
+            <option value="">No Organization</option>
+            {organizations.map((org) => (
+              <option key={org.id} value={org.id}>{org.name}</option>
+            ))}
+          </Select>
+        </FormField>
         <FormField label="Logo (optional)">
           <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} className="text-sm" />
         </FormField>
@@ -190,9 +246,10 @@ function CreateExamForm({ token, onDone, onCancel }) {
   );
 }
 
-function EditExamForm({ token, exam, onDone, onCancel }) {
+function EditExamForm({ token, exam, organizations, onDone, onCancel }) {
   const [name, setName] = useState(exam.name);
   const [logoFile, setLogoFile] = useState(null);
+  const [organizationId, setOrganizationId] = useState(exam.organizationId || "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
 
@@ -201,7 +258,12 @@ function EditExamForm({ token, exam, onDone, onCancel }) {
     setSending(true);
     setError(null);
     try {
-      const updated = await updateExam(token, exam.id, { name: name.trim(), logoFile });
+      const updated = await updateExam(token, exam.id, {
+        name: name.trim(),
+        logoFile,
+        organizationId: organizationId || undefined,
+        clearOrganization: !organizationId,
+      });
       onDone(updated);
     } catch (err) {
       setError(friendlyError(err));
@@ -221,6 +283,14 @@ function EditExamForm({ token, exam, onDone, onCancel }) {
         </div>
         <FormField label="Exam name">
           <TextInput required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        </FormField>
+        <FormField label="Organization">
+          <Select value={organizationId} onChange={(e) => setOrganizationId(e.target.value)}>
+            <option value="">No Organization</option>
+            {organizations.map((org) => (
+              <option key={org.id} value={org.id}>{org.name}</option>
+            ))}
+          </Select>
         </FormField>
         <FormField label="Replace logo (optional)" hint={exam.logoUrl ? "Leave empty to keep the current logo." : undefined}>
           <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} className="text-sm" />

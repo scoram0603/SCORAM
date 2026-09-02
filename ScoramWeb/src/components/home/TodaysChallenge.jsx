@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Flame, ChevronRight, Layers, ArrowRight, ChevronUp } from "lucide-react";
 import { Link } from "react-router-dom";
 import { getTodaysChallenge } from "../../api/questions";
-import QuestionCard from "../questions/QuestionCard";
+import InteractiveQuestionCard from "../questions/InteractiveQuestionCard";
 
 export default function TodaysChallenge() {
   const [question, setQuestion] = useState(null);
@@ -38,7 +38,7 @@ export default function TodaysChallenge() {
 
       {expanded ? (
         <div>
-          <QuestionCard question={question} />
+          <InteractiveQuestionCard question={question} />
           <button
             type="button"
             onClick={() => setExpanded(false)}

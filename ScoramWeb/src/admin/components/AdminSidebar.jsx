@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, UploadCloud, FileStack, ClipboardCheck, ListChecks, Users, MessageSquare, LogOut,
   ShieldCheck, ShieldAlert, Lightbulb, Flag, Library, ChevronsLeft, ChevronsRight, PenLine, Trophy,
-  GraduationCap, Zap,
+  GraduationCap, Zap, Building2,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import logoMark from "../../assets/scoram-logo-square.png";
@@ -34,6 +34,7 @@ const NAV_GROUPS = [
       { to: "/admin/upload", label: "Add Paper", icon: UploadCloud, indent: true },
       { to: "/admin/papers", label: "All Papers", icon: FileStack, indent: true },
       { to: "/admin/exams", label: "Manage Exams", icon: GraduationCap },
+      { to: "/admin/organizations", label: "Manage Organizations", icon: Building2 },
     ],
   },
   {
