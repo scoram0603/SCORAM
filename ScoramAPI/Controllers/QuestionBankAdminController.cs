@@ -803,7 +803,7 @@ namespace ScoramAPI.Controllers
 
                     foreach (var ey in row.ExamYears)
                     {
-                        var exam = await GetOrCreateExamCachedAsync(ey.ExamName!, adminId, examCache);
+                        var exam = await ExamsController.GetOrCreateExamCachedAsync(_db, ey.ExamName!, adminId, examCache);
                         if (exam == null) continue;
                         var alreadyMapped = existingMappings.Any(m => m.ExamId == exam.Id && m.Year == ey.Year);
                         if (alreadyMapped) continue;
@@ -865,7 +865,7 @@ namespace ScoramAPI.Controllers
 
                 foreach (var ey in row.ExamYears)
                 {
-                    var exam = await GetOrCreateExamCachedAsync(ey.ExamName!, adminId, examCache);
+                    var exam = await ExamsController.GetOrCreateExamCachedAsync(_db, ey.ExamName!, adminId, examCache);
                     if (exam == null) continue;
                     question.ExamMappings.Add(new QuestionBankExamMapping { Exam = exam, Year = ey.Year });
                 }
@@ -1095,30 +1095,6 @@ namespace ScoramAPI.Controllers
                 CreatedAt = DateTime.UtcNow
             });
 
-            return exam;
-        }
-
-        // Cached variants used inside the bulk-commit loop, to avoid one SELECT + one INSERT round
-        // trip per row when a book contributes hundreds of rows under the same handful of
-        // subjects/topics/exams.
-        private async Task<Exam> GetOrCreateExamCachedAsync(string examName, Guid adminId, Dictionary<string, Exam> cache)
-        {
-            var name = examName.Trim();
-            if (cache.TryGetValue(name, out var cached)) return cached;
-
-            var exam = new Exam { Name = name, CreatedByAdminId = adminId };
-            _db.Exams.Add(exam);
-            // BUG FIX -- same as GetOrCreateExamAsync above: give every newly-created exam a chat room.
-            _db.ChatRooms.Add(new ChatRoom
-            {
-                ExamId = exam.Id,
-                Name = exam.Name,
-                Description = $"Discussion room for {exam.Name} aspirants",
-                IsFeatured = false,
-                CreatedAt = DateTime.UtcNow
-            });
-            await _db.SaveChangesAsync();
-            cache[name] = exam;
             return exam;
         }
 

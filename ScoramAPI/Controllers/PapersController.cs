@@ -252,6 +252,60 @@ namespace ScoramAPI.Controllers
             return Ok(await ToDto(paper.Id));
         }
 
+        // PATCH /api/admin/papers/{id}/identity -- fixes Exam/Year/Medium/Tier/Date/Shift/Code/Label
+        // after creation. Added for the bulk paper-shell import flow (BulkPaperImportController): a
+        // row can resolve to the wrong exam (typo that still matched something) or carry a typo'd
+        // year/tier/etc, and until now the only fix was deleting the paper and starting over. Same
+        // Draft/PendingReview-only restriction and the same exact duplicate-check as Create.
+        [HttpPatch("{id:guid}/identity")]
+        public async Task<ActionResult<PaperResponseDto>> UpdateIdentity(Guid id, PaperIdentityUpdateDto dto)
+        {
+            var canEdit = await _permissions.HasPermissionAsync(User, AdminPermission.EditPaper)
+                || await _permissions.HasPermissionAsync(User, AdminPermission.UploadPaper);
+            if (!canEdit) return Forbid();
+
+            var paper = await _db.Papers.FindAsync(id);
+            if (paper == null) return NotFound(new { message = "Paper not found." });
+            if (paper.Status == PaperStatus.Published)
+                return BadRequest(new { message = "Unpublish this paper before changing its identity." });
+
+            var examExists = await _db.Exams.AnyAsync(e => e.Id == dto.ExamId);
+            if (!examExists) return BadRequest(new { message = "That exam doesn't exist." });
+
+            var normalizedPaperCode = string.IsNullOrWhiteSpace(dto.PaperCode) ? null : dto.PaperCode.Trim();
+            var normalizedTier = string.IsNullOrWhiteSpace(dto.Tier) ? null : dto.Tier.Trim();
+            var normalizedShift = string.IsNullOrWhiteSpace(dto.Shift) ? null : dto.Shift.Trim();
+            var normalizedPaperLabel = string.IsNullOrWhiteSpace(dto.PaperLabel) ? null : dto.PaperLabel.Trim();
+
+            // Same exact-match check as Create -- excluding this paper itself, since it's always its
+            // own identity match otherwise.
+            var collision = await _db.Papers.FirstOrDefaultAsync(p =>
+                p.Id != id &&
+                p.ExamId == dto.ExamId &&
+                p.Year == dto.Year &&
+                p.Language == dto.Language &&
+                p.PaperCode == normalizedPaperCode &&
+                p.Tier == normalizedTier &&
+                p.ExamDate == dto.ExamDate &&
+                p.Shift == normalizedShift &&
+                p.PaperLabel == normalizedPaperLabel);
+
+            if (collision != null)
+                return Conflict(await ToDto(collision.Id));
+
+            paper.ExamId = dto.ExamId;
+            paper.Year = dto.Year;
+            paper.Language = dto.Language;
+            paper.PaperCode = normalizedPaperCode;
+            paper.Tier = normalizedTier;
+            paper.ExamDate = dto.ExamDate;
+            paper.Shift = normalizedShift;
+            paper.PaperLabel = normalizedPaperLabel;
+            await _db.SaveChangesAsync();
+
+            return Ok(await ToDto(paper.Id));
+        }
+
         // POST /api/admin/papers/{id}/map-question -- map an EXISTING Question Bank question onto
         // this paper at a given question number (spec section 12: never create a duplicate question
         // just to add it to a paper).

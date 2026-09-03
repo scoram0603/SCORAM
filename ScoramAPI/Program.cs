@@ -46,6 +46,7 @@ builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPushNotificationService, PushNotificationService>();
 builder.Services.AddScoped<IBulkImportService, BulkImportService>();
+builder.Services.AddScoped<IBulkPaperImportService, BulkPaperImportService>();
 builder.Services.AddScoped<IQuestionBankImportService, QuestionBankImportService>(); // SCORAM_QUESTION_BANK
 builder.Services.AddScoped<IBulkUploadZipService, BulkUploadZipService>(); // rich PYP/PYQ bulk upload -- ZIP package extraction
 builder.Services.AddHostedService<BulkImportStagingCleanupService>(); // sweeps abandoned bulk-import staged images

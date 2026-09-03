@@ -6,6 +6,7 @@ import RequireAdminPermission from "./routes/RequireAdminPermission";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
 import PyqUploadWizard from "./pages/PyqUploadWizard";
+import BulkPaperUpload from "./pages/BulkPaperUpload";
 import UploadedPapers from "./pages/UploadedPapers";
 import PaperDetailView from "./pages/PaperDetailView";
 import ReviewQueue from "./pages/ReviewQueue";
@@ -35,6 +36,7 @@ function AdminRoutes() {
         <Route element={<AdminLayout />}>
           <Route index element={<AdminDashboard />} />
           <Route path="upload" element={<PyqUploadWizard />} />
+          <Route path="upload/bulk-papers" element={<BulkPaperUpload />} />
           <Route path="papers" element={<UploadedPapers />} />
           <Route path="papers/:paperId" element={<PaperDetailView />} />
           <Route path="chat" element={<ChatModeration />} />

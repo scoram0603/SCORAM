@@ -4,14 +4,14 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import {
   getPaper, publishPaper, rejectPaper, unpublishPaper,
-  getMappedQuestions, updatePaperConfig, mapQuestionToPaper, mapQuestionsBulkToPaper, unmapQuestionFromPaper, validatePaper,
+  getMappedQuestions, updatePaperConfig, updatePaperIdentity, mapQuestionToPaper, mapQuestionsBulkToPaper, unmapQuestionFromPaper, validatePaper,
 } from "../api/papers";
 import { deleteQuestion } from "../api/adminQuestions";
 import { PageHeader, Card, Button, FormField, TextArea, Alert, StatusBadge, friendlyError } from "../components/AdminUI";
 import BulkImportPanel from "../components/BulkImportPanel";
 import TestQuestionPicker from "../components/TestQuestionPicker";
 import PaperQuestionBulkPicker from "../components/PaperQuestionBulkPicker";
-import { PracticeSettingsCard, ValidationSummary } from "../components/PaperConfigAndValidation";
+import { PracticeSettingsCard, PaperIdentityCard, ValidationSummary } from "../components/PaperConfigAndValidation";
 import { QuestionCard, QuestionEditForm } from "../components/QuestionEditor";
 
 export default function PaperDetailView() {
@@ -75,6 +75,22 @@ export default function PaperDetailView() {
       refreshMappedQuestionsAndValidation();
     } catch (err) {
       setActionError(friendlyError(err));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleSaveIdentity(fields) {
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      const updated = await updatePaperIdentity(token, paperId, fields);
+      setPaper(updated);
+      refreshMappedQuestionsAndValidation();
+    } catch (err) {
+      setActionError(err.status === 409
+        ? "A paper with this exact identity (exam, year, medium, tier, shift, date, code, label) already exists."
+        : friendlyError(err));
     } finally {
       setActionLoading(false);
     }
@@ -245,6 +261,15 @@ export default function PaperDetailView() {
         <div className="mb-6">
           <BulkImportPanel paperId={paper.id} token={token} paperStatus={paper.status} onPaperChanged={refresh} />
         </div>
+
+        {/* Exam/Year/Medium/Tier/Shift/Date/Code/Label -- fixed everywhere else, correctable here.
+            Same isEditableStatus rule as everything below: Unpublish first to change a live paper. */}
+        <PaperIdentityCard
+          paper={paper}
+          canEdit={canEdit || canUpload}
+          isLoading={actionLoading}
+          onSave={handleSaveIdentity}
+        />
 
         {/* MASTER PROMPT -- Previous Year Paper Practice: config + Question Bank mapping. Only
             editable while the paper is Draft/PendingReview (same rule as everything else here --

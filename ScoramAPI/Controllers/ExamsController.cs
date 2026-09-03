@@ -316,6 +316,35 @@ namespace ScoramAPI.Controllers
             return NoContent();
         }
 
+        // Shared by QuestionBankAdminController's book-import commit and
+        // BulkPaperImportController's paper-shell commit -- a cached exam resolver used inside a
+        // bulk-commit loop, to avoid one SELECT (and possibly one INSERT) round trip per row when a
+        // batch contributes many rows under the same handful of exams. `cache` should be pre-seeded
+        // by the caller, once, from db.Exams.ToDictionaryAsync(e => e.Name, StringComparer.OrdinalIgnoreCase)
+        // before the loop starts, so an exam created by an earlier row in this same batch is found
+        // here instead of creating a second duplicate exam with the same name.
+        internal static async Task<Exam> GetOrCreateExamCachedAsync(ScoramDbContext db, string examName, Guid adminId, Dictionary<string, Exam> cache)
+        {
+            var name = examName.Trim();
+            if (cache.TryGetValue(name, out var cached)) return cached;
+
+            var exam = new Exam { Name = name, CreatedByAdminId = adminId };
+            db.Exams.Add(exam);
+            // Every newly-created exam needs a chat room -- see Create() above, which does this for
+            // exams created via Admin > Exams; this is the equivalent for one created mid-bulk-import.
+            db.ChatRooms.Add(new ChatRoom
+            {
+                ExamId = exam.Id,
+                Name = exam.Name,
+                Description = $"Discussion room for {exam.Name} aspirants",
+                IsFeatured = false,
+                CreatedAt = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+            cache[name] = exam;
+            return exam;
+        }
+
         // Shared by Delete, CleanupIfEmpty above, and PapersController.Create (which stamps
         // Paper.ExamCreatedForThisPaper using this exact same check, at the moment a new Paper is
         // created under an Exam) -- one single definition of "genuinely empty" used everywhere, so

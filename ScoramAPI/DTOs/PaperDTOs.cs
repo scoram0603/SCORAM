@@ -36,6 +36,38 @@ namespace ScoramAPI.DTOs
         public string? PaperLabel { get; set; }
     }
 
+    // PATCH /api/admin/papers/{id}/identity -- fixes a paper's Exam/Year/Medium/Tier/Date/Shift/
+    // Code/Label after creation (Draft/PendingReview only, same as editing anything else about a
+    // paper). Added alongside bulk paper-shell import (see BulkPaperImportController) so a row that
+    // resolved to the wrong exam, or had a typo'd year, can be corrected in place instead of having
+    // to delete and recreate the paper -- same shape and the same duplicate-check as PaperCreateDto/
+    // Create.
+    public class PaperIdentityUpdateDto
+    {
+        [Required]
+        public Guid ExamId { get; set; }
+
+        [Required]
+        public int Year { get; set; }
+
+        [Required]
+        public PaperLanguage Language { get; set; }
+
+        [MaxLength(50)]
+        public string? PaperCode { get; set; }
+
+        [MaxLength(50)]
+        public string? Tier { get; set; }
+
+        public DateOnly? ExamDate { get; set; }
+
+        [MaxLength(50)]
+        public string? Shift { get; set; }
+
+        [MaxLength(100)]
+        public string? PaperLabel { get; set; }
+    }
+
     public class PaperResponseDto
     {
         public Guid Id { get; set; }

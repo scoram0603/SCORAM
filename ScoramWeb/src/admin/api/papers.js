@@ -80,6 +80,25 @@ export function updatePaperConfig(token, id, { durationMinutes, negativeMarkingR
   });
 }
 
+// PATCH /api/admin/papers/{id}/identity -- fixes Exam/Year/Medium/Tier/Date/Shift/Code/Label after
+// creation (Draft/PendingReview only). Added for the bulk paper-shell upload flow, so a row that
+// resolved to the wrong exam or had a typo'd year/tier/etc can be corrected without deleting and
+// recreating the paper. Same 409-with-existing-paper behavior as createOrFindPaper on a collision.
+export function updatePaperIdentity(token, id, { examId, year, language, paperCode, tier, examDate, shift, paperLabel }) {
+  return apiFetch(`/api/admin/papers/${id}/identity`, {
+    method: "PATCH",
+    token,
+    body: {
+      examId, year, language,
+      paperCode: paperCode || null,
+      tier: tier || null,
+      examDate: examDate || null,
+      shift: shift || null,
+      paperLabel: paperLabel || null,
+    },
+  });
+}
+
 // POST /api/admin/papers/{id}/map-question -- map an EXISTING Question Bank question onto this
 // paper at a given question number.
 export function mapQuestionToPaper(token, id, { questionBankQuestionId, questionNumber }) {

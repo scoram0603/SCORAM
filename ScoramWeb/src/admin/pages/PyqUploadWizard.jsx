@@ -257,6 +257,7 @@ function Stepper({ step }) {
 
 // ---------- Step 1: choose or create exam ----------
 function ExamStep({ exams, isLoading, onSelect, onExamCreated, token }) {
+  const navigate = useNavigate();
   const [showNewExamForm, setShowNewExamForm] = useState(false);
   const [name, setName] = useState("");
   const [logoFile, setLogoFile] = useState(null);
@@ -308,6 +309,14 @@ function ExamStep({ exams, isLoading, onSelect, onExamCreated, token }) {
             <Card className="flex h-full flex-col items-center justify-center gap-2 border-2 border-dashed border-primary-100 text-center shadow-none hover:border-secondary-500">
               <Plus className="h-6 w-6 text-secondary-500" strokeWidth={2.25} />
               <span className="text-sm font-bold text-secondary-500">New Exam</span>
+            </Card>
+          </button>
+
+          <button type="button" onClick={() => navigate("/admin/upload/bulk-papers")} className="text-left">
+            <Card className="flex h-full flex-col items-center justify-center gap-2 border-2 border-dashed border-primary-100 text-center shadow-none hover:border-secondary-500">
+              <Layers className="h-6 w-6 text-secondary-500" strokeWidth={2.25} />
+              <span className="text-sm font-bold text-secondary-500">Bulk Upload PYPs</span>
+              <span className="text-xs text-ink-400">Create many paper shells at once from a CSV/Excel file</span>
             </Card>
           </button>
         </div>
