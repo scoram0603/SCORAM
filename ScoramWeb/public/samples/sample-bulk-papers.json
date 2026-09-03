@@ -1,0 +1,6 @@
+[
+  { "ExamName": "SSC CGL", "Year": 2023, "Tier": "Tier 1", "Shift": "Shift 1", "Date": "2023-08-14", "Medium": "Hindi" },
+  { "ExamName": "SSC CGL", "Year": 2024, "Tier": "Tier 1", "Shift": "Shift 2", "Date": "2024-09-20", "Medium": "Hindi" },
+  { "ExamName": "RRB NTPC", "Year": 2023, "Shift": "Shift 1", "Date": "2023-05-15", "Medium": "English" },
+  { "ExamName": "RRB ALP", "Year": 2024, "Date": "2024-01-10", "Medium": "English" }
+]

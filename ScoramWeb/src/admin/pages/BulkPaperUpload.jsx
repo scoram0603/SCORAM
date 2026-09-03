@@ -5,7 +5,7 @@ import { useAdminAuth } from "../context/AdminAuthContext";
 import { previewBulkPapers, commitBulkPapers } from "../api/bulkPapers";
 import { PageHeader, Card, Button, Alert, friendlyError } from "../components/AdminUI";
 
-const ACCEPTED = ".csv,.xlsx";
+const ACCEPTED = ".csv,.xlsx,.json";
 
 // Bulk-creates paper SHELLS (Exam+Year+Medium+Tier+Shift+Date+Code+Label, Draft, zero questions)
 // from a CSV/Excel file -- one row per paper, reached from the wizard's exam-picker screen ("Bulk
@@ -151,28 +151,39 @@ export default function BulkPaperUpload() {
                 Expected columns: ExamName, Year, Medium (required); Tier, Shift, Date, PaperCode,
                 PaperLabel (all optional). Date must be YYYY-MM-DD. Medium is Hindi or English. An
                 ExamName that doesn't already exist creates a new exam, exactly like "+ New Exam" in
-                the wizard.
+                the wizard. CSV, Excel (.xlsx), and JSON (an array of the same fields) are all
+                supported -- pick whichever's easiest to prepare.
               </p>
 
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <label className="flex cursor-pointer items-center gap-2.5 rounded-xl2 border border-dashed border-primary-100 bg-white px-3.5 py-2.5 text-sm text-ink-600 hover:border-secondary-500">
                   <UploadCloud className="h-4 w-4 text-ink-400" strokeWidth={2} />
-                  {selectedFile ? selectedFile.name : "Choose a CSV or Excel file"}
+                  {selectedFile ? selectedFile.name : "Choose a CSV, Excel, or JSON file"}
                   <input ref={fileInputRef} type="file" accept={ACCEPTED} className="hidden" onChange={handleFileChange} />
                 </label>
 
                 <Button onClick={handlePreview} disabled={!selectedFile} isLoading={previewing}>
                   Preview
                 </Button>
+              </div>
 
-                <a
-                  href="/samples/sample-bulk-papers.csv"
-                  download
-                  className="flex items-center gap-1.5 text-xs font-semibold text-secondary-600 hover:underline"
-                >
-                  <Download className="h-3.5 w-3.5" strokeWidth={2.25} />
-                  Download sample CSV
-                </a>
+              <div className="mt-3 flex flex-wrap items-center gap-4">
+                <span className="text-xs font-semibold text-ink-400">Sample templates:</span>
+                {[
+                  { href: "/samples/sample-bulk-papers.csv", label: "CSV" },
+                  { href: "/samples/sample-bulk-papers.xlsx", label: "Excel" },
+                  { href: "/samples/sample-bulk-papers.json", label: "JSON" },
+                ].map((f) => (
+                  <a
+                    key={f.label}
+                    href={f.href}
+                    download
+                    className="flex items-center gap-1.5 text-xs font-semibold text-secondary-600 hover:underline"
+                  >
+                    <Download className="h-3.5 w-3.5" strokeWidth={2.25} />
+                    {f.label}
+                  </a>
+                ))}
               </div>
             </Card>
 

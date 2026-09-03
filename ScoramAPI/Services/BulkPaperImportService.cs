@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using ClosedXML.Excel;
 using CsvHelper;
 using Microsoft.EntityFrameworkCore;
@@ -10,12 +11,12 @@ namespace ScoramAPI.Services
 {
     public interface IBulkPaperImportService
     {
-        /// <summary>Reads a CSV or Excel (.xlsx) file into a common row shape. Columns are matched
-        /// case-insensitively: ExamName, Year, Medium are required; Tier, Shift, Date, PaperCode,
-        /// PaperLabel are optional. Throws InvalidDataException with a human-readable message on
-        /// structural problems (missing required columns, unreadable file) -- anything that means
-        /// "this file itself is unusable," as opposed to a single bad row, which ValidateAsync
-        /// handles instead.</summary>
+        /// <summary>Reads a CSV, Excel (.xlsx), or JSON file into a common row shape. Columns/
+        /// properties are matched case-insensitively: ExamName, Year, Medium are required; Tier,
+        /// Shift, Date, PaperCode, PaperLabel are optional. Throws InvalidDataException with a
+        /// human-readable message on structural problems (missing required columns, unreadable
+        /// file/malformed JSON) -- anything that means "this file itself is unusable," as opposed to
+        /// a single bad row, which ValidateAsync handles instead.</summary>
         Task<List<ImportedPaperRow>> ParseAsync(Stream fileStream, ImportFileFormat format);
 
         /// <summary>Annotates each row's IsValid/Errors/ExamExists/PaperAlreadyExists in place. A row
@@ -37,7 +38,8 @@ namespace ScoramAPI.Services
             {
                 ImportFileFormat.Csv => await ParseCsvAsync(fileStream),
                 ImportFileFormat.Excel => ParseExcel(fileStream),
-                _ => throw new InvalidDataException("Unsupported file format -- expected .csv or .xlsx.")
+                ImportFileFormat.Json => await ParseJsonAsync(fileStream),
+                _ => throw new InvalidDataException("Unsupported file format -- expected .csv, .xlsx, or .json.")
             };
         }
 
@@ -96,6 +98,60 @@ namespace ScoramAPI.Services
             return rows;
         }
 
+        // Same JSON shape/case-insensitive-property pattern as BulkImportService.ParseJsonAsync
+        // (the question-bulk-import equivalent) -- a top-level array of objects, one per paper.
+        private async Task<List<ImportedPaperRow>> ParseJsonAsync(Stream fileStream)
+        {
+            List<JsonPaperRow>? parsed;
+            try
+            {
+                parsed = await JsonSerializer.DeserializeAsync<List<JsonPaperRow>>(fileStream,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidDataException($"That doesn't look like valid JSON: {ex.Message}");
+            }
+
+            if (parsed == null || parsed.Count == 0)
+                throw new InvalidDataException("The JSON file contains no papers (expected a top-level array).");
+
+            var rows = new List<ImportedPaperRow>();
+            for (var i = 0; i < parsed.Count; i++)
+            {
+                var j = parsed[i];
+                // Routed through the exact same MapRow used by ParseCsvAsync/ParseExcel below, via a
+                // header-name lookup function, so every format shares one place that decides how a
+                // raw field becomes an ImportedPaperRow (date parsing, blank-to-null, trimming, etc.)
+                // -- a JSON-only bug in that logic simply can't happen.
+                rows.Add(MapRow(i + 1, header => header switch
+                {
+                    "ExamName" => j.ExamName ?? "",
+                    "Year" => j.Year?.ToString() ?? "",
+                    "Tier" => j.Tier ?? "",
+                    "Shift" => j.Shift ?? "",
+                    "Date" => j.Date ?? "",
+                    "Medium" => j.Medium ?? "",
+                    "PaperCode" => j.PaperCode ?? "",
+                    "PaperLabel" => j.PaperLabel ?? "",
+                    _ => ""
+                }));
+            }
+            return rows;
+        }
+
+        private class JsonPaperRow
+        {
+            public string? ExamName { get; set; }
+            public int? Year { get; set; }
+            public string? Tier { get; set; }
+            public string? Shift { get; set; }
+            public string? Date { get; set; }
+            public string? Medium { get; set; }
+            public string? PaperCode { get; set; }
+            public string? PaperLabel { get; set; }
+        }
+
         private static void CheckHeaders(IEnumerable<string> actualHeaders)
         {
             var present = new HashSet<string>(actualHeaders, StringComparer.OrdinalIgnoreCase);
@@ -105,7 +161,7 @@ namespace ScoramAPI.Services
                     "Expected headers: ExamName, Year, Medium (Tier, Shift, Date, PaperCode, PaperLabel are optional).");
         }
 
-        // Shared row-building logic for both formats. Date is parsed strictly as YYYY-MM-DD -- the
+        // Shared row-building logic for all three formats. Date is parsed strictly as YYYY-MM-DD -- the
         // one unambiguous format regardless of the admin's locale -- rather than a locale-guessing
         // parse that could silently swap day and month.
         private static ImportedPaperRow MapRow(int rowNumber, Func<string, string> field)

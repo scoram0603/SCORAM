@@ -65,7 +65,7 @@ namespace ScoramAPI.Controllers
 
             var format = DetectFormat(file.FileName);
             if (format == null)
-                return BadRequest(new { message = "Unrecognized file type -- expected .csv or .xlsx." });
+                return BadRequest(new { message = "Unrecognized file type -- expected .csv, .xlsx, or .json." });
 
             List<ImportedPaperRow> rows;
             try
@@ -207,6 +207,7 @@ namespace ScoramAPI.Controllers
             {
                 ".csv" => ImportFileFormat.Csv,
                 ".xlsx" => ImportFileFormat.Excel,
+                ".json" => ImportFileFormat.Json,
                 _ => null
             };
         }

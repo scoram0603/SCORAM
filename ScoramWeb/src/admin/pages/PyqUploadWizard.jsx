@@ -316,7 +316,7 @@ function ExamStep({ exams, isLoading, onSelect, onExamCreated, token }) {
             <Card className="flex h-full flex-col items-center justify-center gap-2 border-2 border-dashed border-primary-100 text-center shadow-none hover:border-secondary-500">
               <Layers className="h-6 w-6 text-secondary-500" strokeWidth={2.25} />
               <span className="text-sm font-bold text-secondary-500">Bulk Upload PYPs</span>
-              <span className="text-xs text-ink-400">Create many paper shells at once from a CSV/Excel file</span>
+              <span className="text-xs text-ink-400">Create many paper shells at once from a CSV/Excel/JSON file</span>
             </Card>
           </button>
         </div>
