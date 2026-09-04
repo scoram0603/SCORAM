@@ -448,20 +448,45 @@ namespace ScoramAPI.Controllers
                 // Paper/Exam are guaranteed non-null here -- the query above only selects questions
                 // whose Paper is Published, and every Paper carries an ExamId.
                 var mirrorId = await _mirror.MirrorFromPyqAsync(_db, question, question.Paper!.ExamId, question.Paper!.Year, adminId);
-                if (mirrorId.HasValue)
-                {
-                    question.MirroredToQuestionBankQuestionId = mirrorId;
-                    mirroredCount++;
-                }
-                else
+                if (!mirrorId.HasValue)
                 {
                     // Still has no Subject/Topic set (see MirrorFromPyqAsync's own early-return), or the
                     // mirror attempt itself failed -- logged there already, nothing more to do here.
                     skippedCount++;
+                    continue;
+                }
+
+                question.MirroredToQuestionBankQuestionId = mirrorId;
+
+                // Save after EVERY question, not once at the end of the loop. MirrorFromPyqAsync's own
+                // "reuse an existing Subject/Topic/Question Bank entry" checks are plain SELECTs against
+                // the database (see its FirstOrDefaultAsync calls) -- they can't see anything this same
+                // loop has added but not yet saved. Two candidates that both need a brand-new "Reasoning"
+                // subject would otherwise each queue up their own insert, and QuestionBankSubject.Name has
+                // a unique index (see OnModelCreating) -- the second insert fails the whole SaveChanges
+                // for every question batched into it. Saving per-question keeps each subject/topic lookup
+                // accurate for the next candidate, at the cost of one extra round-trip per question --
+                // fine for what's meant to be an occasional, one-off catch-up job, not a hot path.
+                try
+                {
+                    await _db.SaveChangesAsync();
+                    mirroredCount++;
+                }
+                catch (DbUpdateException ex)
+                {
+                    // Genuinely unexpected at this point (per-question saves already avoid the
+                    // same-batch race above) -- but never let one bad row take down the whole backfill.
+                    // Clear() drops every entity this iteration queued (the mirror, its exam mapping, and
+                    // this question's now-unsaved MirroredToQuestionBankQuestionId change) so the next
+                    // iteration starts from a clean, fully-persisted state; this question's
+                    // MirroredToQuestionBankQuestionId stays null in the database, so a later run of this
+                    // same endpoint will pick it up again.
+                    _logger.LogWarning(ex, "Question Bank mirror save failed for PYQ question {QuestionId}, skipping.", question.Id);
+                    _db.ChangeTracker.Clear();
+                    skippedCount++;
                 }
             }
 
-            await _db.SaveChangesAsync();
             await _audit.LogAsync(adminId, "QuestionBank.BackfillMirrors", "Question", null,
                 $"{mirroredCount} question(s) newly mirrored into the Question Bank, {skippedCount} skipped (missing Subject/Topic, or mirror attempt failed)");
 

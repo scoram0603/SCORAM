@@ -312,8 +312,16 @@ namespace ScoramAPI.Controllers
                 .Select(l => new { Id = l.QuestionBankQuestionId, l.QuestionNumber, l.IsNumberExact, Subject = l.QuestionBankQuestion!.Subject!.Name })
                 .ToListAsync();
 
+            // A legacy PYQ Question's Subject is a free-text, optional field (unlike a Question Bank
+            // question's, which always has a real QuestionBankSubject) -- null/blank is valid data for
+            // an older row. Coalescing it here, rather than leaving it null, is what actually matters:
+            // the subject-grouping fallback below builds a Dictionary keyed by Subject, and a null key
+            // throws ArgumentNullException the moment ONE question on the paper has no subject set --
+            // which would fail this entire Start() call (500, no attempt created) for every student,
+            // for a paper that is otherwise completely fine to attempt.
             var merged = pyqRefs
-                .Select(q => (QuestionId: (Guid?)q.Id, QuestionBankId: (Guid?)null, q.QuestionNumber, q.Subject, IsNumberExact: true))
+                .Select(q => (QuestionId: (Guid?)q.Id, QuestionBankId: (Guid?)null, q.QuestionNumber,
+                    Subject: string.IsNullOrWhiteSpace(q.Subject) ? "Unspecified" : q.Subject, IsNumberExact: true))
                 .Concat(qbRefs.Select(q => (QuestionId: (Guid?)null, QuestionBankId: (Guid?)q.Id, q.QuestionNumber, q.Subject, q.IsNumberExact)))
                 .ToList();
 
