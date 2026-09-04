@@ -413,6 +413,69 @@ namespace ScoramAPI.Controllers
             return NoContent();
         }
 
+        // POST /api/questions/backfill-question-bank-mirrors  (Super Admin only) -- one-time catch-up
+        // for PYQ questions that never got an IQuestionBankMirrorService mirror: either they were
+        // created before that service existed (see Migrations/AddQuestionMirroredToQuestionBank --
+        // mirroring only ever runs at Create time, in this controller and in BulkImportController, so
+        // nothing before that migration was ever touched), or a mirror attempt silently failed at the
+        // time (missing Subject/Topic back then, a transient error -- see MirrorFromPyqAsync's own
+        // try/catch, which never blocks saving the PYQ question itself). Those questions are still
+        // fully visible and attemptable inside their own Previous Year Paper, but never show up in
+        // "PYQs" (Question Bank search/browse) the way a freshly-uploaded PYQ question now
+        // automatically does -- this closes that gap for everything already sitting in the database.
+        // Scoped to Published papers only, same as the search-index reindex above and every other
+        // student-facing surface -- a Draft/PendingReview paper's questions shouldn't leak into
+        // Question Bank search before the paper itself is public. Safe to re-run any time: it only
+        // ever touches rows still missing a mirror, so nothing already mirrored is duplicated or
+        // re-created.
+        [HttpPost("backfill-question-bank-mirrors")]
+        [Authorize(Roles = "SuperAdmin")]
+        public async Task<ActionResult<object>> BackfillQuestionBankMirrors()
+        {
+            var candidates = await _db.Questions
+                .Include(q => q.Paper).ThenInclude(p => p!.Exam)
+                .Where(q => q.MirroredToQuestionBankQuestionId == null
+                    && q.PaperId != null
+                    && q.Paper!.Status == PaperStatus.Published)
+                .ToListAsync();
+
+            var adminId = User.GetAdminId();
+            var mirroredCount = 0;
+            var skippedCount = 0;
+
+            foreach (var question in candidates)
+            {
+                // Paper/Exam are guaranteed non-null here -- the query above only selects questions
+                // whose Paper is Published, and every Paper carries an ExamId.
+                var mirrorId = await _mirror.MirrorFromPyqAsync(_db, question, question.Paper!.ExamId, question.Paper!.Year, adminId);
+                if (mirrorId.HasValue)
+                {
+                    question.MirroredToQuestionBankQuestionId = mirrorId;
+                    mirroredCount++;
+                }
+                else
+                {
+                    // Still has no Subject/Topic set (see MirrorFromPyqAsync's own early-return), or the
+                    // mirror attempt itself failed -- logged there already, nothing more to do here.
+                    skippedCount++;
+                }
+            }
+
+            await _db.SaveChangesAsync();
+            await _audit.LogAsync(adminId, "QuestionBank.BackfillMirrors", "Question", null,
+                $"{mirroredCount} question(s) newly mirrored into the Question Bank, {skippedCount} skipped (missing Subject/Topic, or mirror attempt failed)");
+
+            return Ok(new
+            {
+                message = mirroredCount > 0 || skippedCount > 0
+                    ? $"{mirroredCount} question(s) mirrored into the Question Bank." + (skippedCount > 0 ? $" {skippedCount} skipped (missing Subject/Topic)." : "")
+                    : "Every published PYQ question already has a Question Bank mirror -- nothing to do.",
+                mirroredCount,
+                skippedCount,
+                totalCandidates = candidates.Count
+            });
+        }
+
         private static string NotEditableMessage(PaperStatus status) =>
             status == PaperStatus.Published
                 ? "This paper is Published and can't be edited directly -- unpublish it first."

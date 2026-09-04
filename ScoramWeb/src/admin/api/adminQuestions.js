@@ -90,3 +90,11 @@ export function updateQuestion(token, id, question, images = {}, removeImages = 
 export function deleteQuestion(token, id) {
   return apiFetch(`/api/questions/${id}`, { method: "DELETE", token });
 }
+
+// POST /api/questions/backfill-question-bank-mirrors  (Super Admin only) -- one-time catch-up that
+// mirrors every already-Published PYQ question that never got a Question Bank mirror (uploaded
+// before IQuestionBankMirrorService existed, or a mirror attempt silently failed at the time) so it
+// finally shows up in "PYQs" (Question Bank search/browse) too. Safe to re-run any time.
+export function backfillQuestionBankMirrors(token) {
+  return apiFetch("/api/questions/backfill-question-bank-mirrors", { method: "POST", token });
+}

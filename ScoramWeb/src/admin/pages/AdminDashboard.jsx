@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import {
   UploadCloud, ListChecks, Users, BookOpen, FileStack, ArrowRight, RefreshCw,
   FileQuestion, CheckCircle2, FileEdit, ClipboardCheck, GraduationCap, Flag,
-  MessageCircle, Database, Search, HardDrive, ShieldAlert, TrendingUp,
+  MessageCircle, Database, Search, HardDrive, ShieldAlert, TrendingUp, Copy,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { getDashboardStats } from "../api/dashboard";
 import { reindexSearch } from "../api/papers";
+import { backfillQuestionBankMirrors } from "../api/adminQuestions";
 import { PageHeader, Card, Button, Alert, StatusBadge, friendlyError } from "../components/AdminUI";
 
 export default function AdminDashboard() {
@@ -232,6 +233,10 @@ function SystemStatusCard({ system, token, isSuperAdmin }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
+  const [isMirroring, setIsMirroring] = useState(false);
+  const [mirrorResult, setMirrorResult] = useState(null);
+  const [mirrorError, setMirrorError] = useState(null);
+
   async function handleReindex() {
     setIsReindexing(true);
     setResult(null);
@@ -243,6 +248,23 @@ function SystemStatusCard({ system, token, isSuperAdmin }) {
       setError(friendlyError(err));
     } finally {
       setIsReindexing(false);
+    }
+  }
+
+  // Catches up PYQ questions that predate the Question Bank mirror feature (or that failed to
+  // mirror at upload time) so they finally show up in "PYQs" (Question Bank search/browse) too.
+  // Safe to click repeatedly -- only ever touches questions still missing a mirror.
+  async function handleBackfillMirrors() {
+    setIsMirroring(true);
+    setMirrorResult(null);
+    setMirrorError(null);
+    try {
+      const res = await backfillQuestionBankMirrors(token);
+      setMirrorResult(res.message);
+    } catch (err) {
+      setMirrorError(friendlyError(err));
+    } finally {
+      setIsMirroring(false);
     }
   }
 
@@ -267,6 +289,13 @@ function SystemStatusCard({ system, token, isSuperAdmin }) {
           </Button>
           {result && <div className="mt-2"><Alert type="success">{result}</Alert></div>}
           {error && <div className="mt-2"><Alert>{error}</Alert></div>}
+
+          <Button variant="secondary" className="mt-2 w-full" onClick={handleBackfillMirrors} isLoading={isMirroring}>
+            <Copy className="h-4 w-4" strokeWidth={2.25} />
+            Backfill Question Bank mirrors
+          </Button>
+          {mirrorResult && <div className="mt-2"><Alert type="success">{mirrorResult}</Alert></div>}
+          {mirrorError && <div className="mt-2"><Alert>{mirrorError}</Alert></div>}
         </>
       )}
     </Card>

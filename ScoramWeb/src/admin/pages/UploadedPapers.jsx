@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Eye, PlayCircle, Trash2, User } from "lucide-react";
+import { Eye, PlayCircle, Trash2, User, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { listPapers, deletePaper } from "../api/papers";
@@ -14,6 +14,37 @@ function logoSrc(logoUrl) {
   return logoUrl.startsWith("http") ? logoUrl : `${API_BASE_URL}${logoUrl}`;
 }
 
+// A paper only shows the "Start Paper" button to students once it's BOTH configured
+// (durationMinutes/negativeMarkingRatio/requiredQuestionCount all set via Practice Settings) AND
+// complete (enough questions mapped to satisfy requiredQuestionCount) -- see PapersController's
+// MapToDto/IsConfiguredForPractice+IsComplete and StudentPapersController.Start. Publishing a paper
+// does NOT require either of those, so a paper can go live and sit there un-attemptable with no
+// error anywhere -- this badge is the only place that surfaces it.
+function PracticeReadinessBadge({ paper }) {
+  if (!paper.isConfiguredForPractice) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+        <AlertTriangle className="h-3 w-3" strokeWidth={2.5} />
+        Not configured for practice
+      </span>
+    );
+  }
+  if (!paper.isComplete) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+        <AlertTriangle className="h-3 w-3" strokeWidth={2.5} />
+        Incomplete ({paper.questionCount}/{paper.requiredQuestionCount} questions)
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-bold text-green-700">
+      <CheckCircle2 className="h-3 w-3" strokeWidth={2.5} />
+      Attemptable
+    </span>
+  );
+}
+
 export default function UploadedPapers() {
   const navigate = useNavigate();
   const { token, hasPermission } = useAdminAuth();
@@ -21,6 +52,7 @@ export default function UploadedPapers() {
   const initialStatus = STATUS_FILTERS.includes(searchParams.get("status")) ? searchParams.get("status") : "";
   const [status, setStatus] = useState(initialStatus);
   const [mineOnly, setMineOnly] = useState(false);
+  const [notAttemptableOnly, setNotAttemptableOnly] = useState(false);
   const [papers, setPapers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -54,6 +86,14 @@ export default function UploadedPapers() {
     }
   }
 
+  // Client-side only (the "not attemptable" state isn't a query param the API supports) -- applied
+  // on top of whatever page of results came back, so it's a quick spot-check, not an exhaustive
+  // audit across every page. Only meaningful for Published papers, since Draft/PendingReview papers
+  // aren't attemptable by students yet regardless of practice config.
+  const visiblePapers = notAttemptableOnly
+    ? papers.filter((p) => p.status === "Published" && !(p.isConfiguredForPractice && p.isComplete))
+    : papers;
+
   return (
     <div>
       <PageHeader title="Uploaded Papers" subtitle="Every PYQ paper, at every stage of the review pipeline." />
@@ -67,17 +107,28 @@ export default function UploadedPapers() {
             <input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} className="h-4 w-4 accent-primary-600" />
             Only my papers
           </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-ink-600">
+            <input
+              type="checkbox"
+              checked={notAttemptableOnly}
+              onChange={(e) => setNotAttemptableOnly(e.target.checked)}
+              className="h-4 w-4 accent-primary-600"
+            />
+            Not attemptable only (Published, this page)
+          </label>
         </div>
 
         {isLoading && <p className="text-sm text-ink-400">Loading papers…</p>}
         {loadError && <Alert>{loadError}</Alert>}
         {deleteError && <Alert>{deleteError}</Alert>}
-        {!isLoading && !loadError && papers.length === 0 && (
-          <p className="text-sm text-ink-400">No papers here yet.</p>
+        {!isLoading && !loadError && visiblePapers.length === 0 && (
+          <p className="text-sm text-ink-400">
+            {notAttemptableOnly && papers.length > 0 ? "Every paper on this page is attemptable." : "No papers here yet."}
+          </p>
         )}
 
         <div className="flex flex-col gap-3">
-          {papers.map((paper) => (
+          {visiblePapers.map((paper) => (
             <Card key={paper.id} className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 {logoSrc(paper.examLogoUrl) ? (
@@ -99,6 +150,7 @@ export default function UploadedPapers() {
                       <span className="rounded-full bg-secondary-50 px-2 py-0.5 text-[11px] font-bold text-secondary-600">{paper.shift}</span>
                     )}
                     <StatusBadge status={paper.status} />
+                    {paper.status === "Published" && <PracticeReadinessBadge paper={paper} />}
                   </div>
                   <p className="mt-0.5 text-xs text-ink-400">
                     {paper.language}
