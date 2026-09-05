@@ -13,32 +13,94 @@ function imgSrc(url) {
 // overwhelming majority of existing questions, before this feature existed) comes back as a single
 // plain-text segment, so nothing changes visually for them.
 //
-// Deliberately a small hand-rolled splitter rather than a markdown/regex-heavy parser: the only
-// syntax this needs to recognize is "math between $ signs", and escaping is limited to allowing a
-// backslash-escaped literal \$ if a question genuinely needs a dollar sign in its text.
+// PYQ reasoning questions routinely use $, %, @, # as LITERAL operator-substitution symbols, not
+// math syntax -- e.g. "If @ = x, # = -, $ = /, and % = +, find the value of: 8 @ 3 # 4 % 6 $ 2".
+// That's a "define a symbol, then reuse it" pattern, so it very commonly contains a matched PAIR of
+// $ characters -- exactly what the regex-based version of this function treated as one giant inline
+// math expression, silently losing everything between the two $ signs (and if a literal % fell
+// inside that span, KaTeX/LaTeX treats % as a comment marker and drops everything after it too,
+// which is what made "है, तो मान ज्ञात कीजिए: 8 @ 3 # 4 % 6" specifically vanish). The stored text was
+// always correct -- see it reappear whole in the edit textarea -- only this rendering path mangled
+// it, in both the admin preview AND the saved list view, since both go through MathText.
+//
+// looksLikeMath (below) is the guard against exactly that: genuine LaTeX is Latin letters, digits,
+// and backslash commands, so Devanagari inside a $...$ span, an unescaped % (LaTeX's comment
+// character -- real intentional math escapes it as \%), or an implausibly long span are all strong
+// signals that a pair of $ delimiters was actually two unrelated literal symbols, not one math
+// expression. When that's the case, the span renders as plain text, $ signs and all, instead of
+// being sent to KaTeX.
+//
+// A hand-rolled scanner rather than a single regex, because handling \$ (backslash-escaped literal
+// dollar sign) and "does this pair actually look like math" both require inspecting a candidate
+// span's content before committing to treating it as a delimiter pair -- a single regex can capture
+// the span but can't conditionally un-match it and retry from the opening $ if the content fails
+// the check.
+const DEVANAGARI_RE = /[\u0900-\u097F]/;
+const UNESCAPED_PERCENT_RE = /(?<!\\)%/;
+const MAX_PLAUSIBLE_MATH_LENGTH = 150;
+
+function looksLikeMath(content) {
+  if (!content) return false;
+  if (content.length > MAX_PLAUSIBLE_MATH_LENGTH) return false;
+  if (DEVANAGARI_RE.test(content)) return false;
+  if (UNESCAPED_PERCENT_RE.test(content)) return false;
+  return true;
+}
+
 function splitMathSegments(text) {
   if (!text) return [];
   const segments = [];
-  // Matches $$...$$ first (non-greedy, no unescaped $ inside), falling back to $...$. The
-  // alternation order matters -- checking $ before $$ would split "$$x$$" into two adjacent
-  // inline-math segments ("" and "x") instead of one display-math segment.
-  const pattern = /\$\$([^$]+?)\$\$|\$([^$\n]+?)\$/g;
-  let lastIndex = 0;
-  let match;
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push({ type: "text", content: text.slice(lastIndex, match.index) });
+  let textBuffer = "";
+  let i = 0;
+
+  function flushText() {
+    if (textBuffer) {
+      segments.push({ type: "text", content: textBuffer });
+      textBuffer = "";
     }
-    if (match[1] !== undefined) {
-      segments.push({ type: "math", display: true, content: match[1] });
-    } else {
-      segments.push({ type: "math", display: false, content: match[2] });
+  }
+
+  while (i < text.length) {
+    // \$ is always a literal dollar sign, math or not.
+    if (text[i] === "\\" && text[i + 1] === "$") {
+      textBuffer += "$";
+      i += 2;
+      continue;
     }
-    lastIndex = pattern.lastIndex;
+
+    if (text[i] === "$") {
+      const isDisplay = text[i + 1] === "$";
+      const delimiter = isDisplay ? "$$" : "$";
+      const searchFrom = i + delimiter.length;
+
+      let closeIndex = -1;
+      let j = searchFrom;
+      while (j < text.length) {
+        if (text[j] === "\\" && text[j + 1] === "$") { j += 2; continue; }
+        if (!isDisplay && text[j] === "\n") break; // inline math can't span a line break
+        if (text.startsWith(delimiter, j)) { closeIndex = j; break; }
+        j++;
+      }
+
+      if (closeIndex !== -1) {
+        const rawContent = text.slice(searchFrom, closeIndex);
+        if (looksLikeMath(rawContent)) {
+          flushText();
+          segments.push({ type: "math", display: isDisplay, content: rawContent.replace(/\\\$/g, "$") });
+          i = closeIndex + delimiter.length;
+          continue;
+        }
+        // Doesn't look like math -- fall through and render just this opening $ as a literal
+        // character. The $ we found as a candidate close keeps its own turn to pair with a LATER $
+        // as we keep scanning forward.
+      }
+    }
+
+    textBuffer += text[i];
+    i++;
   }
-  if (lastIndex < text.length) {
-    segments.push({ type: "text", content: text.slice(lastIndex) });
-  }
+
+  flushText();
   return segments;
 }
 
