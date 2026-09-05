@@ -787,6 +787,27 @@ namespace ScoramAPI.Controllers
             var importedCount = 0;
             var mergedCount = 0;
 
+            // Which exams THIS batch has already given content to -- same reasoning as
+            // BulkPaperImportController's examsGivenAPaperThisBatch: a brand-new exam's first mapping
+            // isn't saved to the database until this loop's own SaveChangesAsync calls happen, so a
+            // second row naming that same new exam would otherwise also see "no content yet" via
+            // ExamHasContentAsync and wrongly get added to candidateEmptyExamIds a second time. Only
+            // the row genuinely alone on its exam should get credit for having been the one to fill it.
+            var examsTouchedThisBatch = new HashSet<Guid>();
+            var candidateEmptyExamIds = new List<Guid>();
+
+            async Task<Exam> ResolveExamAndTrackAsync(string examName)
+            {
+                var exam = await ExamsController.GetOrCreateExamCachedAsync(_db, examName, adminId, examCache);
+                if (!examsTouchedThisBatch.Contains(exam.Id))
+                {
+                    var wasEmpty = !await ExamsController.ExamHasContentAsync(_db, exam.Id, exam.Name);
+                    if (wasEmpty) candidateEmptyExamIds.Add(exam.Id);
+                    examsTouchedThisBatch.Add(exam.Id);
+                }
+                return exam;
+            }
+
             foreach (var row in toCommit)
             {
                 if (row.IsDuplicate && row.DuplicateOfQuestionId.HasValue)
@@ -803,16 +824,21 @@ namespace ScoramAPI.Controllers
 
                     foreach (var ey in row.ExamYears)
                     {
-                        var exam = await ExamsController.GetOrCreateExamCachedAsync(_db, ey.ExamName!, adminId, examCache);
-                        if (exam == null) continue;
+                        var exam = await ResolveExamAndTrackAsync(ey.ExamName!);
                         var alreadyMapped = existingMappings.Any(m => m.ExamId == exam.Id && m.Year == ey.Year);
                         if (alreadyMapped) continue;
 
+                        // ImportJobId tagged here (unlike a brand-new question's own mappings below) --
+                        // this mapping is being added to a question that already existed before this
+                        // job, so it's the ONLY trace of what this job actually changed on it. Needed
+                        // for Rollback to find and remove exactly this mapping without touching the
+                        // question itself. See QuestionBankExamMapping.ImportJobId's own comment.
                         _db.QuestionBankExamMappings.Add(new QuestionBankExamMapping
                         {
                             QuestionBankQuestionId = row.DuplicateOfQuestionId.Value,
                             ExamId = exam.Id,
-                            Year = ey.Year
+                            Year = ey.Year,
+                            ImportJobId = job.Id
                         });
                     }
                     mergedCount++;
@@ -865,8 +891,11 @@ namespace ScoramAPI.Controllers
 
                 foreach (var ey in row.ExamYears)
                 {
-                    var exam = await ExamsController.GetOrCreateExamCachedAsync(_db, ey.ExamName!, adminId, examCache);
-                    if (exam == null) continue;
+                    // Not tagged with ImportJobId -- this mapping belongs to a brand-new question this
+                    // same job is creating, so QuestionBankQuestion.ImportJobId above already
+                    // identifies it, and deleting the question on rollback cascades to this mapping
+                    // automatically (see OnModelCreating's Cascade on this FK).
+                    var exam = await ResolveExamAndTrackAsync(ey.ExamName!);
                     question.ExamMappings.Add(new QuestionBankExamMapping { Exam = exam, Year = ey.Year });
                 }
 
@@ -878,6 +907,9 @@ namespace ScoramAPI.Controllers
             job.ImportedCount = importedCount;
             job.MergedIntoExistingCount = mergedCount;
             job.CommittedAt = DateTime.UtcNow;
+            job.CandidateEmptyExamIds = candidateEmptyExamIds.Count > 0
+                ? string.Join(",", candidateEmptyExamIds.Distinct())
+                : null;
 
             await _db.SaveChangesAsync();
 
@@ -898,6 +930,112 @@ namespace ScoramAPI.Controllers
                 ImportedCount = importedCount,
                 MergedIntoExistingCount = mergedCount,
                 SkippedCount = skipped
+            });
+        }
+
+        // POST /api/admin/question-bank/bulk/{jobId}/rollback -- undoes exactly what this job's
+        // commit did: deletes the questions it created (see QuestionBankQuestion.ImportJobId) and
+        // removes the exam/year mappings it merged onto already-existing questions (see
+        // QuestionBankExamMapping.ImportJobId), then reports which of the exams this job first gave
+        // content to are now empty again, for the frontend's "delete this exam too?" prompt (same
+        // flow as BulkImportController.Rollback's ExamCleanupCandidateId, generalized to a list).
+        //
+        // A brand-new question is only deleted if NOTHING has touched it since this job created it --
+        // unlike a Paper's Question (which only becomes visible once its Paper is Published), a
+        // Question Bank question is independently browsable/searchable from the moment it's
+        // committed, so a student could have bookmarked, voted on, commented on, reported, or
+        // answered it (via a Mock Test/Quiz/Paper an admin added it to since) well before anyone
+        // decides to roll this import back. Every one of those is a Restrict FK (see
+        // OnModelCreating) -- the delete would fail with a raw SQL exception if any exist, so this
+        // checks for all of them up front and blocks the WHOLE rollback (not a partial one) if even
+        // one question this job created is now in use anywhere, same "all or nothing" behavior as
+        // BulkImportController.Rollback's hasAttempts check.
+        [HttpPost("bulk/{jobId:guid}/rollback")]
+        public async Task<ActionResult<QuestionBankImportRollbackResultDto>> Rollback(Guid jobId)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageQuestionBank))
+                return Forbid();
+
+            var job = await _db.QuestionBankImportJobs.FindAsync(jobId);
+            if (job == null) return NotFound(new { message = "Import job not found." });
+            if (job.Status != ImportJobStatus.Committed)
+                return BadRequest(new { message = $"This import is {job.Status}, not Committed -- there's nothing to roll back." });
+
+            var createdQuestionIds = await _db.QuestionBankQuestions
+                .Where(q => q.ImportJobId == jobId)
+                .Select(q => q.Id)
+                .ToListAsync();
+
+            if (createdQuestionIds.Count > 0)
+            {
+                var inUseIds = new HashSet<Guid>();
+                inUseIds.UnionWith(await _db.MockTestQuestions.Where(x => x.QuestionBankQuestionId != null && createdQuestionIds.Contains(x.QuestionBankQuestionId.Value)).Select(x => x.QuestionBankQuestionId!.Value).ToListAsync());
+                inUseIds.UnionWith(await _db.QuizQuestions.Where(x => createdQuestionIds.Contains(x.QuestionBankQuestionId)).Select(x => x.QuestionBankQuestionId).ToListAsync());
+                inUseIds.UnionWith(await _db.StudentAnswers.Where(x => x.QuestionBankQuestionId != null && createdQuestionIds.Contains(x.QuestionBankQuestionId.Value)).Select(x => x.QuestionBankQuestionId!.Value).ToListAsync());
+                inUseIds.UnionWith(await _db.Bookmarks.Where(x => x.QuestionBankQuestionId != null && createdQuestionIds.Contains(x.QuestionBankQuestionId.Value)).Select(x => x.QuestionBankQuestionId!.Value).ToListAsync());
+                inUseIds.UnionWith(await _db.PaperQuestionBankLinks.Where(x => createdQuestionIds.Contains(x.QuestionBankQuestionId)).Select(x => x.QuestionBankQuestionId).ToListAsync());
+                inUseIds.UnionWith(await _db.ChatMessages.Where(x => x.SharedQuestionBankQuestionId != null && createdQuestionIds.Contains(x.SharedQuestionBankQuestionId.Value)).Select(x => x.SharedQuestionBankQuestionId!.Value).ToListAsync());
+                inUseIds.UnionWith(await _db.DirectMessages.Where(x => x.SharedQuestionBankQuestionId != null && createdQuestionIds.Contains(x.SharedQuestionBankQuestionId.Value)).Select(x => x.SharedQuestionBankQuestionId!.Value).ToListAsync());
+                inUseIds.UnionWith(await _db.QuestionSolutions.Where(x => x.QuestionBankQuestionId != null && createdQuestionIds.Contains(x.QuestionBankQuestionId.Value)).Select(x => x.QuestionBankQuestionId!.Value).ToListAsync());
+                inUseIds.UnionWith(await _db.QuestionReports.Where(x => x.QuestionBankQuestionId != null && createdQuestionIds.Contains(x.QuestionBankQuestionId.Value)).Select(x => x.QuestionBankQuestionId!.Value).ToListAsync());
+                inUseIds.UnionWith(await _db.QuestionComments.Where(x => x.QuestionBankQuestionId != null && createdQuestionIds.Contains(x.QuestionBankQuestionId.Value)).Select(x => x.QuestionBankQuestionId!.Value).ToListAsync());
+                inUseIds.UnionWith(await _db.QuestionVotes.Where(x => x.QuestionBankQuestionId != null && createdQuestionIds.Contains(x.QuestionBankQuestionId.Value)).Select(x => x.QuestionBankQuestionId!.Value).ToListAsync());
+
+                if (inUseIds.Count > 0)
+                {
+                    return Conflict(new
+                    {
+                        message = $"{inUseIds.Count} of the {createdQuestionIds.Count} question(s) this import created have since been used elsewhere -- " +
+                                  "added to a test, bookmarked, voted on, commented on, reported, or answered by a student. " +
+                                  "Roll back is all-or-nothing, so none of this import was removed. Edit or remove those question(s) individually first if you still want to undo the rest."
+                    });
+                }
+            }
+
+            var mergedMappings = await _db.QuestionBankExamMappings
+                .Where(m => m.ImportJobId == jobId)
+                .ToListAsync();
+
+            if (createdQuestionIds.Count > 0)
+            {
+                var questionsToDelete = await _db.QuestionBankQuestions
+                    .Where(q => createdQuestionIds.Contains(q.Id))
+                    .ToListAsync();
+                _db.QuestionBankQuestions.RemoveRange(questionsToDelete); // cascades to their own ExamMappings
+            }
+            if (mergedMappings.Count > 0)
+            {
+                _db.QuestionBankExamMappings.RemoveRange(mergedMappings);
+            }
+
+            job.Status = ImportJobStatus.RolledBack;
+            job.RolledBackAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            var examCleanupCandidateIds = new List<Guid>();
+            if (!string.IsNullOrWhiteSpace(job.CandidateEmptyExamIds))
+            {
+                foreach (var idText in job.CandidateEmptyExamIds.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (!Guid.TryParse(idText, out var examId)) continue;
+                    var exam = await _db.Exams.FirstOrDefaultAsync(e => e.Id == examId);
+                    if (exam == null) continue; // already deleted some other way since
+                    if (!await ExamsController.ExamHasContentAsync(_db, examId, exam.Name))
+                        examCleanupCandidateIds.Add(examId);
+                }
+            }
+
+            var adminIdForAudit = User.GetAdminId();
+            await _audit.LogAsync(adminIdForAudit, "QuestionBank.BulkImport.Rollback", "QuestionBankImportJob", job.Id,
+                $"{createdQuestionIds.Count} question(s) removed, {mergedMappings.Count} merged mapping(s) removed, from {job.FileName}");
+
+            return Ok(new QuestionBankImportRollbackResultDto
+            {
+                JobId = job.Id,
+                Status = job.Status.ToString(),
+                QuestionsRemoved = createdQuestionIds.Count,
+                MergedMappingsRemoved = mergedMappings.Count,
+                ExamCleanupCandidateIds = examCleanupCandidateIds
             });
         }
 

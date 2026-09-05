@@ -1,13 +1,14 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, UploadCloud, Download, CheckCircle2, XCircle, Copy, AlertTriangle, History, ChevronDown, ChevronRight,
+  ArrowLeft, UploadCloud, Download, CheckCircle2, XCircle, Copy, AlertTriangle, History, ChevronDown, ChevronRight, Undo2,
 } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import {
-  previewQuestionBankImport, commitQuestionBankImport, getQuestionBankImportHistory, updatePreviewRow, updateRowImages,
-  downloadExcelTemplate, downloadJsonTemplate,
+  previewQuestionBankImport, commitQuestionBankImport, getQuestionBankImportHistory, rollbackQuestionBankImport,
+  updatePreviewRow, updateRowImages, downloadExcelTemplate, downloadJsonTemplate,
 } from "../api/questionBankImport";
+import { cleanupEmptyExam } from "../api/exams";
 import { PageHeader, Card, Button, FormField, TextInput, TextArea, Select, Alert, friendlyError } from "../components/AdminUI";
 import { MathText, RichQuestionBody } from "../../components/questions/MathText";
 import { RowBadges, safeParseBlocks } from "../components/BulkImportRowPreview";
@@ -46,6 +47,7 @@ export default function QuestionBankUploadWizard() {
   const [commitResult, setCommitResult] = useState(null);
 
   const [history, setHistory] = useState(null);
+  const [rollingBackId, setRollingBackId] = useState(null);
 
   useEffect(() => {
     refreshHistory();
@@ -54,6 +56,40 @@ export default function QuestionBankUploadWizard() {
 
   function refreshHistory() {
     getQuestionBankImportHistory(token, { page: 1, pageSize: 5 }).then((res) => setHistory(res.items)).catch(() => {});
+  }
+
+  // Mirrors BulkImportPanel's own handleRollback (the Paper-side equivalent) -- the one real
+  // difference is examCleanupCandidateIds coming back as a list here, since one Question Bank
+  // import can span several different exams across its rows, unlike a Paper which only ever
+  // belongs to one.
+  async function handleRollback(jobId) {
+    if (!window.confirm("Remove every question this import added (and any exam/year tags it merged onto existing questions)? This can't be undone.")) return;
+    setRollingBackId(jobId);
+    try {
+      const result = await rollbackQuestionBankImport(token, jobId);
+      refreshHistory();
+
+      if (result?.examCleanupCandidateIds?.length > 0) {
+        const wantsCleanup = window.confirm(
+          result.examCleanupCandidateIds.length === 1
+            ? "This exam now has no other papers, questions, or activity on it -- it was created just for this import. Delete it too?"
+            : `${result.examCleanupCandidateIds.length} exams now have no other papers, questions, or activity on them -- they were created just for this import. Delete them too?`
+        );
+        if (wantsCleanup) {
+          for (const examId of result.examCleanupCandidateIds) {
+            try {
+              await cleanupEmptyExam(token, examId);
+            } catch (err) {
+              window.alert(friendlyError(err));
+            }
+          }
+        }
+      }
+    } catch (err) {
+      window.alert(friendlyError(err));
+    } finally {
+      setRollingBackId(null);
+    }
   }
 
   function handleFileChange(e) {
@@ -392,6 +428,16 @@ export default function QuestionBankUploadWizard() {
                     <span className="font-semibold text-ink-900">{job.fileName}</span> · {job.status} ·{" "}
                     {job.importedCount} new, {job.mergedIntoExistingCount} merged / {job.totalRows} rows · by {job.createdByAdminName}
                   </span>
+                  {job.status === "Committed" && (
+                    <Button
+                      variant="secondary"
+                      isLoading={rollingBackId === job.id}
+                      onClick={() => handleRollback(job.id)}
+                    >
+                      <Undo2 className="h-3.5 w-3.5" strokeWidth={2.25} />
+                      Roll back
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>

@@ -26,4009 +26,4009 @@ namespace ScoramAPI.Migrations
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
             modelBuilder.Entity("ScoramAPI.Models.Admin", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Email")
-                    .IsRequired()
-                    .HasMaxLength(150)
-                    .HasColumnType("nvarchar(150)");
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
-                b.Property<string>("FullName")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<bool>("IsActive")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
 
-                b.Property<string>("PasswordHash")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("Role")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("Email")
-                    .IsUnique();
+                    b.HasIndex("Email")
+                        .IsUnique();
 
-                b.ToTable("Admins");
+                    b.ToTable("Admins");
 
-                b.HasData(
-                    new
-                    {
-                        Id = new Guid("a1b2c3d4-0000-4000-8000-000000000001"),
-                        CreatedAt = new DateTime(2026, 7, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                        Email = "superadmin@scoram.com",
-                        FullName = "Super Admin",
-                        IsActive = true,
-                        PasswordHash = "$2b$10$iHMto/L2wJaon4hjWIC8CeZNXGiQ3Fe4wMpa8tGvi9jybrHnSPqHa",
-                        Role = "SuperAdmin"
-                    });
-            });
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("a1b2c3d4-0000-4000-8000-000000000001"),
+                            CreatedAt = new DateTime(2026, 7, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            Email = "superadmin@scoram.com",
+                            FullName = "Super Admin",
+                            IsActive = true,
+                            PasswordHash = "$2b$10$iHMto/L2wJaon4hjWIC8CeZNXGiQ3Fe4wMpa8tGvi9jybrHnSPqHa",
+                            Role = "SuperAdmin"
+                        });
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.AdminPermissionGrant", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("AdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("AdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("GrantedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("GrantedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Permission")
-                    .IsRequired()
-                    .HasMaxLength(30)
-                    .HasColumnType("nvarchar(30)");
+                    b.Property<string>("Permission")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("AdminId", "Permission")
-                    .IsUnique();
+                    b.HasIndex("AdminId", "Permission")
+                        .IsUnique();
 
-                b.ToTable("AdminPermissionGrants");
-            });
+                    b.ToTable("AdminPermissionGrants");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.AdminTask", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("AssignedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("AssignedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("AssignedToAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("AssignedToAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("CompletedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<DateTime?>("Deadline")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("Deadline")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Description")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<string>("Title")
-                    .IsRequired()
-                    .HasMaxLength(200)
-                    .HasColumnType("nvarchar(200)");
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("AssignedByAdminId");
+                    b.HasIndex("AssignedByAdminId");
 
-                b.HasIndex("AssignedToAdminId");
+                    b.HasIndex("AssignedToAdminId");
 
-                b.ToTable("AdminTasks");
-            });
+                    b.ToTable("AdminTasks");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.AuditLog", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Action")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<Guid>("AdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("AdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Detail")
-                    .HasMaxLength(1000)
-                    .HasColumnType("nvarchar(1000)");
+                    b.Property<string>("Detail")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
-                b.Property<Guid?>("TargetId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("TargetId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("TargetType")
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("TargetType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("AdminId");
+                    b.HasIndex("AdminId");
 
-                b.ToTable("AuditLogs");
-            });
+                    b.ToTable("AuditLogs");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Badge", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("CriteriaDescription")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("CriteriaDescription")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("Description")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("IconUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("IconUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("Name")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.ToTable("Badges");
+                    b.ToTable("Badges");
 
-                b.HasData(
-                    new
-                    {
-                        Id = new Guid("8f14e45f-ceea-467e-add1-000000000001"),
-                        CriteriaDescription = "1 verified shortcut solution",
-                        Description = "Submitted a verified shortcut solution",
-                        Name = "10-Second Trick Master"
-                    },
-                    new
-                    {
-                        Id = new Guid("8f14e45f-ceea-467e-add1-000000000002"),
-                        CriteriaDescription = "50+ upvotes across solutions",
-                        Description = "Highly upvoted community solutions",
-                        Name = "Top Contributor"
-                    },
-                    new
-                    {
-                        Id = new Guid("8f14e45f-ceea-467e-add1-000000000003"),
-                        CriteriaDescription = "100 day streak",
-                        Description = "Maintained a 100 day streak",
-                        Name = "100 Day Warrior"
-                    },
-                    new
-                    {
-                        Id = new Guid("8f14e45f-ceea-467e-add1-000000000004"),
-                        CriteriaDescription = "1 admin-verified solution",
-                        Description = "Solution marked verified by admin",
-                        Name = "Verified Solver"
-                    });
-            });
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("8f14e45f-ceea-467e-add1-000000000001"),
+                            CriteriaDescription = "1 verified shortcut solution",
+                            Description = "Submitted a verified shortcut solution",
+                            Name = "10-Second Trick Master"
+                        },
+                        new
+                        {
+                            Id = new Guid("8f14e45f-ceea-467e-add1-000000000002"),
+                            CriteriaDescription = "50+ upvotes across solutions",
+                            Description = "Highly upvoted community solutions",
+                            Name = "Top Contributor"
+                        },
+                        new
+                        {
+                            Id = new Guid("8f14e45f-ceea-467e-add1-000000000003"),
+                            CriteriaDescription = "100 day streak",
+                            Description = "Maintained a 100 day streak",
+                            Name = "100 Day Warrior"
+                        },
+                        new
+                        {
+                            Id = new Guid("8f14e45f-ceea-467e-add1-000000000004"),
+                            CriteriaDescription = "1 admin-verified solution",
+                            Description = "Solution marked verified by admin",
+                            Name = "Verified Solver"
+                        });
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.BannedWord", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("AddedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("AddedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Word")
-                    .IsRequired()
-                    .HasMaxLength(200)
-                    .HasColumnType("nvarchar(200)");
+                    b.Property<string>("Word")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("AddedByAdminId");
+                    b.HasIndex("AddedByAdminId");
 
-                b.HasIndex("Word")
-                    .IsUnique();
+                    b.HasIndex("Word")
+                        .IsUnique();
 
-                b.ToTable("BannedWords");
-            });
+                    b.ToTable("BannedWords");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Bookmark", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("CommentId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("CommentId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid?>("MockTestId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("MockTestId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("PaperId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("PaperId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("QuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("QuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CommentId");
+                    b.HasIndex("CommentId");
 
-                b.HasIndex("MockTestId");
+                    b.HasIndex("MockTestId");
 
-                b.HasIndex("PaperId");
+                    b.HasIndex("PaperId");
 
-                b.HasIndex("QuestionBankQuestionId");
+                    b.HasIndex("QuestionBankQuestionId");
 
-                b.HasIndex("QuestionId");
+                    b.HasIndex("QuestionId");
 
-                b.HasIndex("UserId", "CommentId")
-                    .IsUnique()
-                    .HasFilter("[CommentId] IS NOT NULL");
+                    b.HasIndex("UserId", "CommentId")
+                        .IsUnique()
+                        .HasFilter("[CommentId] IS NOT NULL");
 
-                b.HasIndex("UserId", "MockTestId")
-                    .IsUnique()
-                    .HasFilter("[MockTestId] IS NOT NULL");
+                    b.HasIndex("UserId", "MockTestId")
+                        .IsUnique()
+                        .HasFilter("[MockTestId] IS NOT NULL");
 
-                b.HasIndex("UserId", "PaperId")
-                    .IsUnique()
-                    .HasFilter("[PaperId] IS NOT NULL");
+                    b.HasIndex("UserId", "PaperId")
+                        .IsUnique()
+                        .HasFilter("[PaperId] IS NOT NULL");
 
-                b.HasIndex("UserId", "QuestionBankQuestionId")
-                    .IsUnique()
-                    .HasFilter("[QuestionBankQuestionId] IS NOT NULL");
+                    b.HasIndex("UserId", "QuestionBankQuestionId")
+                        .IsUnique()
+                        .HasFilter("[QuestionBankQuestionId] IS NOT NULL");
 
-                b.HasIndex("UserId", "QuestionId")
-                    .IsUnique()
-                    .HasFilter("[QuestionId] IS NOT NULL");
+                    b.HasIndex("UserId", "QuestionId")
+                        .IsUnique()
+                        .HasFilter("[QuestionId] IS NOT NULL");
 
-                b.ToTable("Bookmarks");
-            });
+                    b.ToTable("Bookmarks");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatMessage", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("AttachmentUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("AttachmentUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<Guid>("ChatRoomId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ChatRoomId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<bool>("IsDeleted")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
 
-                b.Property<bool>("IsReported")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsReported")
+                        .HasColumnType("bit");
 
-                b.Property<string>("MessageText")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("MessageText")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("MessageType")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("MessageType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<Guid?>("PollId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("PollId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("SenderAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("SenderAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("SentAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid?>("SharedQuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("SharedQuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("SharedQuestionExamName")
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("SharedQuestionExamName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<Guid?>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("UserId1")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("UserId1")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("ChatRoomId");
+                    b.HasIndex("ChatRoomId");
 
-                b.HasIndex("PollId");
+                    b.HasIndex("PollId");
 
-                b.HasIndex("SenderAdminId");
+                    b.HasIndex("SenderAdminId");
 
-                b.HasIndex("SharedQuestionBankQuestionId");
+                    b.HasIndex("SharedQuestionBankQuestionId");
 
-                b.HasIndex("UserId");
+                    b.HasIndex("UserId");
 
-                b.HasIndex("UserId1");
+                    b.HasIndex("UserId1");
 
-                b.ToTable("ChatMessages");
-            });
+                    b.ToTable("ChatMessages");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatMessageMention", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("ChatMessageId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ChatMessageId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<bool>("IsRead")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
 
-                b.Property<Guid>("MentionedUserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("MentionedUserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("ChatMessageId");
+                    b.HasIndex("ChatMessageId");
 
-                b.HasIndex("MentionedUserId", "IsRead");
+                    b.HasIndex("MentionedUserId", "IsRead");
 
-                b.ToTable("ChatMessageMentions");
-            });
+                    b.ToTable("ChatMessageMentions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatPoll", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<bool>("AllowMultipleChoices")
-                    .HasColumnType("bit");
+                    b.Property<bool>("AllowMultipleChoices")
+                        .HasColumnType("bit");
 
-                b.Property<Guid>("ChatRoomId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ChatRoomId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("ClosedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<bool>("IsClosed")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsClosed")
+                        .HasColumnType("bit");
 
-                b.Property<string>("Question")
-                    .IsRequired()
-                    .HasMaxLength(300)
-                    .HasColumnType("nvarchar(300)");
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("ChatRoomId");
+                    b.HasIndex("ChatRoomId");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.ToTable("ChatPolls");
-            });
+                    b.ToTable("ChatPolls");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatPollOption", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("ChatPollId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ChatPollId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("DisplayOrder")
-                    .HasColumnType("int");
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
 
-                b.Property<string>("OptionText")
-                    .IsRequired()
-                    .HasMaxLength(200)
-                    .HasColumnType("nvarchar(200)");
+                    b.Property<string>("OptionText")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("ChatPollId");
+                    b.HasIndex("ChatPollId");
 
-                b.ToTable("ChatPollOptions");
-            });
+                    b.ToTable("ChatPollOptions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatPollVote", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("ChatPollOptionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ChatPollOptionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("VotedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("VotedAt")
+                        .HasColumnType("datetime2");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("UserId");
+                    b.HasIndex("UserId");
 
-                b.HasIndex("ChatPollOptionId", "UserId")
-                    .IsUnique();
+                    b.HasIndex("ChatPollOptionId", "UserId")
+                        .IsUnique();
 
-                b.ToTable("ChatPollVotes");
-            });
+                    b.ToTable("ChatPollVotes");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatReport", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("ChatMessageId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ChatMessageId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Reason")
-                    .IsRequired()
-                    .HasMaxLength(500)
-                    .HasColumnType("nvarchar(500)");
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
-                b.Property<Guid>("ReportedByUserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ReportedByUserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("ResolutionNote")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("ResolutionNote")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<DateTime?>("ResolvedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid?>("ResolvedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("ResolvedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("ChatMessageId");
+                    b.HasIndex("ChatMessageId");
 
-                b.HasIndex("ReportedByUserId");
+                    b.HasIndex("ReportedByUserId");
 
-                b.HasIndex("ResolvedByAdminId");
+                    b.HasIndex("ResolvedByAdminId");
 
-                b.ToTable("ChatReports");
-            });
+                    b.ToTable("ChatReports");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatRoom", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Description")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<Guid?>("ExamId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("ExamId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("IconUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("IconUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<bool>("IsChatDisabled")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsChatDisabled")
+                        .HasColumnType("bit");
 
-                b.Property<bool>("IsFeatured")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsFeatured")
+                        .HasColumnType("bit");
 
-                b.Property<string>("Language")
-                    .HasMaxLength(50)
-                    .HasColumnType("nvarchar(50)");
+                    b.Property<string>("Language")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
-                b.Property<string>("Name")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<int>("PostPermission")
-                    .HasColumnType("int");
+                    b.Property<int>("PostPermission")
+                        .HasColumnType("int");
 
-                b.Property<string>("Rules")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Rules")
+                        .HasColumnType("nvarchar(max)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("ExamId")
-                    .IsUnique()
-                    .HasFilter("[ExamId] IS NOT NULL");
+                    b.HasIndex("ExamId")
+                        .IsUnique()
+                        .HasFilter("[ExamId] IS NOT NULL");
 
-                b.ToTable("ChatRooms");
-            });
+                    b.ToTable("ChatRooms");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatRoomMembership", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("BannedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("BannedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid?>("BannedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("BannedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("ChatRoomId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ChatRoomId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<bool>("IsBanned")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsBanned")
+                        .HasColumnType("bit");
 
-                b.Property<DateTime>("JoinedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("BannedByAdminId");
+                    b.HasIndex("BannedByAdminId");
 
-                b.HasIndex("UserId");
+                    b.HasIndex("UserId");
 
-                b.HasIndex("ChatRoomId", "UserId")
-                    .IsUnique();
+                    b.HasIndex("ChatRoomId", "UserId")
+                        .IsUnique();
 
-                b.ToTable("ChatRoomMemberships");
-            });
+                    b.ToTable("ChatRoomMemberships");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.CommentReport", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("CommentId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CommentId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Reason")
-                    .HasMaxLength(500)
-                    .HasColumnType("nvarchar(500)");
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
-                b.Property<Guid>("ReportedByUserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ReportedByUserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("ResolvedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<int>("Status")
-                    .HasColumnType("int");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CommentId");
+                    b.HasIndex("CommentId");
 
-                b.HasIndex("ReportedByUserId");
+                    b.HasIndex("ReportedByUserId");
 
-                b.ToTable("CommentReports");
-            });
+                    b.ToTable("CommentReports");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.CommentVote", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("CommentId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CommentId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<bool>("IsUpvote")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsUpvote")
+                        .HasColumnType("bit");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CommentId");
+                    b.HasIndex("CommentId");
 
-                b.HasIndex("UserId", "CommentId")
-                    .IsUnique();
+                    b.HasIndex("UserId", "CommentId")
+                        .IsUnique();
 
-                b.ToTable("CommentVotes");
-            });
+                    b.ToTable("CommentVotes");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.CurrentAffair", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Category")
-                    .IsRequired()
-                    .HasMaxLength(30)
-                    .HasColumnType("nvarchar(30)");
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
-                b.Property<string>("Content")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateOnly>("PublishedDate")
-                    .HasColumnType("date");
+                    b.Property<DateOnly>("PublishedDate")
+                        .HasColumnType("date");
 
-                b.Property<string>("Title")
-                    .IsRequired()
-                    .HasMaxLength(200)
-                    .HasColumnType("nvarchar(200)");
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.ToTable("CurrentAffairs");
-            });
+                    b.ToTable("CurrentAffairs");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.DirectConversation", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<DateTime>("LastMessageAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("LastMessageAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("UserAId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserAId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("UserBId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserBId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("LastMessageAt");
+                    b.HasIndex("LastMessageAt");
 
-                b.HasIndex("UserBId");
+                    b.HasIndex("UserBId");
 
-                b.HasIndex("UserAId", "UserBId")
-                    .IsUnique();
+                    b.HasIndex("UserAId", "UserBId")
+                        .IsUnique();
 
-                b.ToTable("DirectConversations");
-            });
+                    b.ToTable("DirectConversations");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.DirectMessage", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int?>("AttachmentDurationSeconds")
-                    .HasColumnType("int");
+                    b.Property<int?>("AttachmentDurationSeconds")
+                        .HasColumnType("int");
 
-                b.Property<string>("AttachmentUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("AttachmentUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<Guid>("ConversationId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<bool>("IsDeleted")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
 
-                b.Property<bool>("IsRead")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
 
-                b.Property<string>("MessageText")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("MessageText")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("MessageType")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("MessageType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<Guid>("SenderId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("SenderId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("SentAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid?>("SharedQuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("SharedQuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("SharedQuestionExamName")
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("SharedQuestionExamName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("SenderId");
+                    b.HasIndex("SenderId");
 
-                b.HasIndex("SharedQuestionBankQuestionId");
+                    b.HasIndex("SharedQuestionBankQuestionId");
 
-                b.HasIndex("ConversationId", "SentAt");
+                    b.HasIndex("ConversationId", "SentAt");
 
-                b.ToTable("DirectMessages");
-            });
+                    b.ToTable("DirectMessages");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Document", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("BlobName")
-                    .IsRequired()
-                    .HasMaxLength(300)
-                    .HasColumnType("nvarchar(300)");
+                    b.Property<string>("BlobName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
-                b.Property<string>("Category")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<string>("ContentType")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<string>("FileName")
-                    .IsRequired()
-                    .HasMaxLength(260)
-                    .HasColumnType("nvarchar(260)");
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
 
-                b.Property<long>("FileSize")
-                    .HasColumnType("bigint");
+                    b.Property<long>("FileSize")
+                        .HasColumnType("bigint");
 
-                b.Property<string>("FileUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("FileUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<DateTime>("UploadedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid?>("UploadedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("UploadedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("UploadedByUserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("UploadedByUserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("BlobName")
-                    .IsUnique();
+                    b.HasIndex("BlobName")
+                        .IsUnique();
 
-                b.HasIndex("Category");
+                    b.HasIndex("Category");
 
-                b.HasIndex("UploadedByAdminId");
+                    b.HasIndex("UploadedByAdminId");
 
-                b.HasIndex("UploadedByUserId");
+                    b.HasIndex("UploadedByUserId");
 
-                b.ToTable("Documents");
-            });
+                    b.ToTable("Documents");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Exam", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<bool>("IsBlocked")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsBlocked")
+                        .HasColumnType("bit");
 
-                b.Property<string>("LogoUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("LogoUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("Name")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<Guid?>("OrganizationId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.HasIndex("Name")
-                    .IsUnique();
+                    b.HasIndex("Name")
+                        .IsUnique();
 
-                b.HasIndex("OrganizationId");
+                    b.HasIndex("OrganizationId");
 
-                b.ToTable("Exams");
-            });
+                    b.ToTable("Exams");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ExamCalendarEvent", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Description")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<DateOnly>("EventDate")
-                    .HasColumnType("date");
+                    b.Property<DateOnly>("EventDate")
+                        .HasColumnType("date");
 
-                b.Property<string>("EventType")
-                    .IsRequired()
-                    .HasMaxLength(30)
-                    .HasColumnType("nvarchar(30)");
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
-                b.Property<string>("ExamName")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("ExamName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.ToTable("ExamCalendarEvents");
-            });
+                    b.ToTable("ExamCalendarEvents");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ImportJob", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("CommittedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("CommittedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("FileName")
-                    .IsRequired()
-                    .HasMaxLength(255)
-                    .HasColumnType("nvarchar(255)");
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
-                b.Property<int>("Format")
-                    .HasColumnType("int");
+                    b.Property<int>("Format")
+                        .HasColumnType("int");
 
-                b.Property<int>("ImportedCount")
-                    .HasColumnType("int");
+                    b.Property<int>("ImportedCount")
+                        .HasColumnType("int");
 
-                b.Property<int>("InvalidRows")
-                    .HasColumnType("int");
+                    b.Property<int>("InvalidRows")
+                        .HasColumnType("int");
 
-                b.Property<Guid>("PaperId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("PaperId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("RolledBackAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("RolledBackAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<int>("Status")
-                    .HasColumnType("int");
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
-                b.Property<int>("TotalRows")
-                    .HasColumnType("int");
+                    b.Property<int>("TotalRows")
+                        .HasColumnType("int");
 
-                b.Property<int>("ValidRows")
-                    .HasColumnType("int");
+                    b.Property<int>("ValidRows")
+                        .HasColumnType("int");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.HasIndex("PaperId");
+                    b.HasIndex("PaperId");
 
-                b.ToTable("ImportJobs");
-            });
+                    b.ToTable("ImportJobs");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.JobAlert", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateOnly?>("ApplicationDeadline")
-                    .HasColumnType("date");
+                    b.Property<DateOnly?>("ApplicationDeadline")
+                        .HasColumnType("date");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Description")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("NotificationUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("NotificationUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("Organization")
-                    .IsRequired()
-                    .HasMaxLength(150)
-                    .HasColumnType("nvarchar(150)");
+                    b.Property<string>("Organization")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
-                b.Property<DateOnly>("PostedDate")
-                    .HasColumnType("date");
+                    b.Property<DateOnly>("PostedDate")
+                        .HasColumnType("date");
 
-                b.Property<string>("Title")
-                    .IsRequired()
-                    .HasMaxLength(200)
-                    .HasColumnType("nvarchar(200)");
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.ToTable("JobAlerts");
-            });
+                    b.ToTable("JobAlerts");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.MockTest", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("DurationMinutes")
-                    .HasColumnType("int");
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("int");
 
-                b.Property<DateTime?>("EndAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("EndAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid?>("ExamId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("ExamId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("ExamName")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("ExamName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<string>("Instructions")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Instructions")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<bool>("IsRandomOrder")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsRandomOrder")
+                        .HasColumnType("bit");
 
-                b.Property<bool>("IsShuffleOptions")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsShuffleOptions")
+                        .HasColumnType("bit");
 
-                b.Property<int?>("Language")
-                    .HasColumnType("int");
+                    b.Property<int?>("Language")
+                        .HasColumnType("int");
 
-                b.Property<int?>("MaxAttempts")
-                    .HasColumnType("int");
+                    b.Property<int?>("MaxAttempts")
+                        .HasColumnType("int");
 
-                b.Property<decimal>("NegativeMarkingRatio")
-                    .HasPrecision(4, 2)
-                    .HasColumnType("decimal(4,2)");
+                    b.Property<decimal>("NegativeMarkingRatio")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("decimal(4,2)");
 
-                b.Property<DateTime?>("ScheduledAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("ScheduledAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<string>("TestType")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("TestType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<string>("Title")
-                    .IsRequired()
-                    .HasMaxLength(150)
-                    .HasColumnType("nvarchar(150)");
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.HasIndex("ExamId");
+                    b.HasIndex("ExamId");
 
-                b.ToTable("MockTests");
-            });
+                    b.ToTable("MockTests");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.MockTestQuestion", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("MockTestId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("MockTestId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("QuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("QuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("QuestionOrder")
-                    .HasColumnType("int");
+                    b.Property<int>("QuestionOrder")
+                        .HasColumnType("int");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("MockTestId");
+                    b.HasIndex("MockTestId");
 
-                b.HasIndex("QuestionBankQuestionId");
+                    b.HasIndex("QuestionBankQuestionId");
 
-                b.HasIndex("QuestionId");
+                    b.HasIndex("QuestionId");
 
-                b.ToTable("MockTestQuestions");
-            });
+                    b.ToTable("MockTestQuestions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Notification", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Body")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<bool>("IsRead")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
 
-                b.Property<string>("LinkUrl")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("LinkUrl")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("Title")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("Type")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("UserId", "CreatedAt");
+                    b.HasIndex("UserId", "CreatedAt");
 
-                b.HasIndex("UserId", "IsRead");
+                    b.HasIndex("UserId", "IsRead");
 
-                b.ToTable("Notifications");
-            });
+                    b.ToTable("Notifications");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Organization", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<bool>("IsBlocked")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsBlocked")
+                        .HasColumnType("bit");
 
-                b.Property<string>("LogoUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("LogoUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("Name")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.HasIndex("Name")
-                    .IsUnique();
+                    b.HasIndex("Name")
+                        .IsUnique();
 
-                b.ToTable("Organizations");
-            });
+                    b.ToTable("Organizations");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Paper", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int?>("DurationMinutes")
-                    .HasColumnType("int");
+                    b.Property<int?>("DurationMinutes")
+                        .HasColumnType("int");
 
-                b.Property<bool>("ExamCreatedForThisPaper")
-                    .HasColumnType("bit");
+                    b.Property<bool>("ExamCreatedForThisPaper")
+                        .HasColumnType("bit");
 
-                b.Property<DateOnly?>("ExamDate")
-                    .HasColumnType("date");
+                    b.Property<DateOnly?>("ExamDate")
+                        .HasColumnType("date");
 
-                b.Property<Guid>("ExamId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ExamId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Language")
-                    .IsRequired()
-                    .HasMaxLength(10)
-                    .HasColumnType("nvarchar(10)");
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
 
-                b.Property<decimal?>("NegativeMarkingRatio")
-                    .HasPrecision(5, 2)
-                    .HasColumnType("decimal(5,2)");
+                    b.Property<decimal?>("NegativeMarkingRatio")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
-                b.Property<string>("PaperCode")
-                    .HasMaxLength(50)
-                    .HasColumnType("nvarchar(50)");
+                    b.Property<string>("PaperCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
-                b.Property<string>("PaperLabel")
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("PaperLabel")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<DateTime?>("PublishedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("PublishedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("RejectionReason")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("RejectionReason")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<int?>("RequiredQuestionCount")
-                    .HasColumnType("int");
+                    b.Property<int?>("RequiredQuestionCount")
+                        .HasColumnType("int");
 
-                b.Property<string>("Shift")
-                    .HasMaxLength(50)
-                    .HasColumnType("nvarchar(50)");
+                    b.Property<string>("Shift")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<string>("Tier")
-                    .HasMaxLength(50)
-                    .HasColumnType("nvarchar(50)");
+                    b.Property<string>("Tier")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
-                b.Property<int>("Year")
-                    .HasColumnType("int");
+                    b.Property<int>("Year")
+                        .HasColumnType("int");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.HasIndex("ExamId", "Year", "Language");
+                    b.HasIndex("ExamId", "Year", "Language");
 
-                b.ToTable("Papers");
-            });
+                    b.ToTable("Papers");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.PaperQuestionBankLink", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<bool>("IsNumberExact")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsNumberExact")
+                        .HasColumnType("bit");
 
-                b.Property<Guid>("LinkedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("LinkedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("PaperId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("PaperId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("QuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("QuestionNumber")
-                    .HasColumnType("int");
+                    b.Property<int>("QuestionNumber")
+                        .HasColumnType("int");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("LinkedByAdminId");
+                    b.HasIndex("LinkedByAdminId");
 
-                b.HasIndex("QuestionBankQuestionId");
+                    b.HasIndex("QuestionBankQuestionId");
 
-                b.HasIndex("PaperId", "QuestionBankQuestionId")
-                    .IsUnique();
+                    b.HasIndex("PaperId", "QuestionBankQuestionId")
+                        .IsUnique();
 
-                b.HasIndex("PaperId", "QuestionNumber")
-                    .IsUnique();
+                    b.HasIndex("PaperId", "QuestionNumber")
+                        .IsUnique();
 
-                b.ToTable("PaperQuestionBankLinks");
-            });
+                    b.ToTable("PaperQuestionBankLinks");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.PracticeTestTemplate", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Description")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("Difficulty")
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Difficulty")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<int>("DurationMinutes")
-                    .HasColumnType("int");
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("int");
 
-                b.Property<Guid?>("ExamId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("ExamId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<bool>("IsRandomOrder")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsRandomOrder")
+                        .HasColumnType("bit");
 
-                b.Property<decimal>("NegativeMarkingRatio")
-                    .HasPrecision(4, 2)
-                    .HasColumnType("decimal(4,2)");
+                    b.Property<decimal>("NegativeMarkingRatio")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("decimal(4,2)");
 
-                b.Property<int>("QuestionCount")
-                    .HasColumnType("int");
+                    b.Property<int>("QuestionCount")
+                        .HasColumnType("int");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<Guid?>("SubjectId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("SubjectId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Title")
-                    .IsRequired()
-                    .HasMaxLength(150)
-                    .HasColumnType("nvarchar(150)");
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
-                b.Property<Guid?>("TopicId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("TopicId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("UpdatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<int?>("YearFrom")
-                    .HasColumnType("int");
+                    b.Property<int?>("YearFrom")
+                        .HasColumnType("int");
 
-                b.Property<int?>("YearTo")
-                    .HasColumnType("int");
+                    b.Property<int?>("YearTo")
+                        .HasColumnType("int");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.HasIndex("ExamId");
+                    b.HasIndex("ExamId");
 
-                b.HasIndex("SubjectId");
+                    b.HasIndex("SubjectId");
 
-                b.HasIndex("TopicId");
+                    b.HasIndex("TopicId");
 
-                b.ToTable("PracticeTestTemplates");
-            });
+                    b.ToTable("PracticeTestTemplates");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.PracticeTestTemplateQuestion", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("PracticeTestTemplateId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("PracticeTestTemplateId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("QuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("QuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("QuestionOrder")
-                    .HasColumnType("int");
+                    b.Property<int>("QuestionOrder")
+                        .HasColumnType("int");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("PracticeTestTemplateId");
+                    b.HasIndex("PracticeTestTemplateId");
 
-                b.HasIndex("QuestionBankQuestionId");
+                    b.HasIndex("QuestionBankQuestionId");
 
-                b.HasIndex("QuestionId");
+                    b.HasIndex("QuestionId");
 
-                b.ToTable("PracticeTestTemplateQuestions");
-            });
+                    b.ToTable("PracticeTestTemplateQuestions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.PushSubscription", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Auth")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Auth")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Endpoint")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(450)");
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
 
-                b.Property<string>("P256dh")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("P256dh")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("Endpoint")
-                    .IsUnique();
+                    b.HasIndex("Endpoint")
+                        .IsUnique();
 
-                b.HasIndex("UserId");
+                    b.HasIndex("UserId");
 
-                b.ToTable("PushSubscriptions");
-            });
+                    b.ToTable("PushSubscriptions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Question", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("ContentBlocksJson")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("ContentBlocksJson")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("CorrectOption")
-                    .IsRequired()
-                    .HasMaxLength(5)
-                    .HasColumnType("nvarchar(5)");
+                    b.Property<string>("CorrectOption")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("DifficultyLevel")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("DifficultyLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<Guid?>("ExamId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("ExamId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("ExamName")
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("ExamName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<string>("Explanation")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Explanation")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("ExplanationImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("ExplanationImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<Guid?>("ImportJobId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("ImportJobId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Language")
-                    .HasMaxLength(30)
-                    .HasColumnType("nvarchar(30)");
+                    b.Property<string>("Language")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
-                b.Property<Guid?>("MirroredToQuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("MirroredToQuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("OptionA")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionA")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionAImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionAImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionB")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionB")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionBImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionBImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionC")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionC")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionCImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionCImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionD")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionD")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionDImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionDImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<Guid?>("PaperId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("PaperId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("QuestionImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("QuestionImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<int?>("QuestionNumber")
-                    .HasColumnType("int");
+                    b.Property<int?>("QuestionNumber")
+                        .HasColumnType("int");
 
-                b.Property<string>("QuestionText")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("QuestionText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("Shift")
-                    .HasMaxLength(50)
-                    .HasColumnType("nvarchar(50)");
+                    b.Property<string>("Shift")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
-                b.Property<string>("SourceReference")
-                    .HasMaxLength(255)
-                    .HasColumnType("nvarchar(255)");
+                    b.Property<string>("SourceReference")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
-                b.Property<string>("Subject")
-                    .IsRequired()
-                    .HasMaxLength(50)
-                    .HasColumnType("nvarchar(50)");
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
-                b.Property<string>("Topic")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<int>("Year")
-                    .HasColumnType("int");
+                    b.Property<int>("Year")
+                        .HasColumnType("int");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.HasIndex("ExamId");
+                    b.HasIndex("ExamId");
 
-                b.HasIndex("ImportJobId");
+                    b.HasIndex("ImportJobId");
 
-                b.HasIndex("PaperId", "QuestionNumber")
-                    .IsUnique()
-                    .HasFilter("[PaperId] IS NOT NULL AND [QuestionNumber] IS NOT NULL");
+                    b.HasIndex("PaperId", "QuestionNumber")
+                        .IsUnique()
+                        .HasFilter("[PaperId] IS NOT NULL AND [QuestionNumber] IS NOT NULL");
 
-                b.ToTable("Questions");
-            });
+                    b.ToTable("Questions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankExamMapping", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("ExamId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ExamId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("QuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("Year")
-                    .HasColumnType("int");
+                    b.Property<int>("Year")
+                        .HasColumnType("int");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("ExamId");
+                    b.HasIndex("ExamId");
 
-                b.HasIndex("Year");
+                    b.HasIndex("Year");
 
-                b.HasIndex("QuestionBankQuestionId", "ExamId", "Year")
-                    .IsUnique();
+                    b.HasIndex("QuestionBankQuestionId", "ExamId", "Year")
+                        .IsUnique();
 
-                b.ToTable("QuestionBankExamMappings");
-            });
+                    b.ToTable("QuestionBankExamMappings");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankImportJob", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("CommittedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("CommittedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("DuplicateRows")
-                    .HasColumnType("int");
+                    b.Property<int>("DuplicateRows")
+                        .HasColumnType("int");
 
-                b.Property<string>("FileName")
-                    .IsRequired()
-                    .HasMaxLength(255)
-                    .HasColumnType("nvarchar(255)");
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
-                b.Property<string>("Format")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<int>("ImportedCount")
-                    .HasColumnType("int");
+                    b.Property<int>("ImportedCount")
+                        .HasColumnType("int");
 
-                b.Property<int>("InvalidRows")
-                    .HasColumnType("int");
+                    b.Property<int>("InvalidRows")
+                        .HasColumnType("int");
 
-                b.Property<int>("MergedIntoExistingCount")
-                    .HasColumnType("int");
+                    b.Property<int>("MergedIntoExistingCount")
+                        .HasColumnType("int");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<int>("TotalRows")
-                    .HasColumnType("int");
+                    b.Property<int>("TotalRows")
+                        .HasColumnType("int");
 
-                b.Property<int>("ValidRows")
-                    .HasColumnType("int");
+                    b.Property<int>("ValidRows")
+                        .HasColumnType("int");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.ToTable("QuestionBankImportJobs");
-            });
+                    b.ToTable("QuestionBankImportJobs");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankQuestion", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("ContentBlocksJson")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("ContentBlocksJson")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("CorrectOption")
-                    .IsRequired()
-                    .HasMaxLength(5)
-                    .HasColumnType("nvarchar(5)");
+                    b.Property<string>("CorrectOption")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("DifficultyLevel")
-                    .HasColumnType("int");
+                    b.Property<int>("DifficultyLevel")
+                        .HasColumnType("int");
 
-                b.Property<string>("Explanation")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Explanation")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("ExplanationImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("ExplanationImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<Guid?>("ImportJobId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("ImportJobId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<bool>("IsActive")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
 
-                b.Property<string>("Language")
-                    .HasMaxLength(10)
-                    .HasColumnType("nvarchar(10)");
+                    b.Property<string>("Language")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
 
-                b.Property<string>("NormalizedQuestionText")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(450)");
+                    b.Property<string>("NormalizedQuestionText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
 
-                b.Property<string>("OptionA")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionA")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionAImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionAImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionB")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionB")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionBImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionBImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionC")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionC")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionCImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionCImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionD")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionD")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionDImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionDImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("QuestionImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("QuestionImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("QuestionText")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("QuestionText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("SourceReference")
-                    .HasMaxLength(255)
-                    .HasColumnType("nvarchar(255)");
+                    b.Property<string>("SourceReference")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
 
-                b.Property<Guid>("SubjectId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("TopicId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("TopicId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("UpdatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.HasIndex("ImportJobId");
+                    b.HasIndex("ImportJobId");
 
-                b.HasIndex("NormalizedQuestionText");
+                    b.HasIndex("NormalizedQuestionText");
 
-                b.HasIndex("TopicId");
+                    b.HasIndex("TopicId");
 
-                b.HasIndex("SubjectId", "TopicId");
+                    b.HasIndex("SubjectId", "TopicId");
 
-                b.ToTable("QuestionBankQuestions");
-            });
+                    b.ToTable("QuestionBankQuestions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankSubject", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<bool>("IsActive")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
 
-                b.Property<string>("Name")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.HasIndex("Name")
-                    .IsUnique();
+                    b.HasIndex("Name")
+                        .IsUnique();
 
-                b.ToTable("QuestionBankSubjects");
-            });
+                    b.ToTable("QuestionBankSubjects");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankTopic", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<bool>("IsActive")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
 
-                b.Property<string>("Name")
-                    .IsRequired()
-                    .HasMaxLength(150)
-                    .HasColumnType("nvarchar(150)");
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
-                b.Property<Guid>("SubjectId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.HasIndex("SubjectId", "Name")
-                    .IsUnique();
+                    b.HasIndex("SubjectId", "Name")
+                        .IsUnique();
 
-                b.ToTable("QuestionBankTopics");
-            });
+                    b.ToTable("QuestionBankTopics");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionComment", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("CommentText")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("CommentText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<int>("DownvoteCount")
-                    .HasColumnType("int");
+                    b.Property<int>("DownvoteCount")
+                        .HasColumnType("int");
 
-                b.Property<bool>("IsAdminHighlighted")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsAdminHighlighted")
+                        .HasColumnType("bit");
 
-                b.Property<bool>("IsPinned")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsPinned")
+                        .HasColumnType("bit");
 
-                b.Property<bool>("IsResolved")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsResolved")
+                        .HasColumnType("bit");
 
-                b.Property<Guid?>("ParentCommentId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("ParentCommentId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("QuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("QuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("SubmittedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("SubmittedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("UpvoteCount")
-                    .HasColumnType("int");
+                    b.Property<int>("UpvoteCount")
+                        .HasColumnType("int");
 
-                b.Property<Guid?>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("ParentCommentId");
+                    b.HasIndex("ParentCommentId");
 
-                b.HasIndex("QuestionBankQuestionId");
+                    b.HasIndex("QuestionBankQuestionId");
 
-                b.HasIndex("QuestionId");
+                    b.HasIndex("QuestionId");
 
-                b.HasIndex("SubmittedByAdminId");
+                    b.HasIndex("SubmittedByAdminId");
 
-                b.HasIndex("UserId");
+                    b.HasIndex("UserId");
 
-                b.ToTable("QuestionComments");
-            });
+                    b.ToTable("QuestionComments");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionReport", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Description")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("ProofUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("ProofUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<Guid?>("QuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("QuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("ReportType")
-                    .IsRequired()
-                    .HasMaxLength(30)
-                    .HasColumnType("nvarchar(30)");
+                    b.Property<string>("ReportType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
-                b.Property<Guid>("ReportedByUserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ReportedByUserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("ResolvedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("QuestionBankQuestionId");
+                    b.HasIndex("QuestionBankQuestionId");
 
-                b.HasIndex("QuestionId");
+                    b.HasIndex("QuestionId");
 
-                b.HasIndex("ReportedByUserId");
+                    b.HasIndex("ReportedByUserId");
 
-                b.ToTable("QuestionReports");
-            });
+                    b.ToTable("QuestionReports");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionSolution", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("ImageUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<bool>("IsApproved")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsApproved")
+                        .HasColumnType("bit");
 
-                b.Property<bool>("IsEasiestMethod")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsEasiestMethod")
+                        .HasColumnType("bit");
 
-                b.Property<bool>("IsVerified")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsVerified")
+                        .HasColumnType("bit");
 
-                b.Property<int>("Priority")
-                    .HasColumnType("int");
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
 
-                b.Property<Guid?>("QuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("QuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("SolutionText")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("SolutionText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("SolutionType")
-                    .IsRequired()
-                    .HasMaxLength(30)
-                    .HasColumnType("nvarchar(30)");
+                    b.Property<string>("SolutionType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
-                b.Property<Guid?>("SubmittedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("SubmittedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("SubmittedByUserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("SubmittedByUserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Title")
-                    .IsRequired()
-                    .HasMaxLength(150)
-                    .HasColumnType("nvarchar(150)");
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
-                b.Property<int>("UpvoteCount")
-                    .HasColumnType("int");
+                    b.Property<int>("UpvoteCount")
+                        .HasColumnType("int");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("QuestionBankQuestionId");
+                    b.HasIndex("QuestionBankQuestionId");
 
-                b.HasIndex("QuestionId");
+                    b.HasIndex("QuestionId");
 
-                b.HasIndex("SubmittedByAdminId");
+                    b.HasIndex("SubmittedByAdminId");
 
-                b.HasIndex("SubmittedByUserId");
+                    b.HasIndex("SubmittedByUserId");
 
-                b.ToTable("QuestionSolutions");
-            });
+                    b.ToTable("QuestionSolutions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionVote", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<bool>("IsLike")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsLike")
+                        .HasColumnType("bit");
 
-                b.Property<Guid?>("QuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("QuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("QuestionBankQuestionId");
+                    b.HasIndex("QuestionBankQuestionId");
 
-                b.HasIndex("QuestionId");
+                    b.HasIndex("QuestionId");
 
-                b.HasIndex("UserId", "QuestionBankQuestionId")
-                    .IsUnique()
-                    .HasFilter("[QuestionBankQuestionId] IS NOT NULL");
+                    b.HasIndex("UserId", "QuestionBankQuestionId")
+                        .IsUnique()
+                        .HasFilter("[QuestionBankQuestionId] IS NOT NULL");
 
-                b.HasIndex("UserId", "QuestionId")
-                    .IsUnique()
-                    .HasFilter("[QuestionId] IS NOT NULL");
+                    b.HasIndex("UserId", "QuestionId")
+                        .IsUnique()
+                        .HasFilter("[QuestionId] IS NOT NULL");
 
-                b.ToTable("QuestionVotes");
-            });
+                    b.ToTable("QuestionVotes");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Quiz", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("AvailableFrom")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("AvailableFrom")
+                        .HasColumnType("datetime2");
 
-                b.Property<DateTime?>("AvailableTo")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("AvailableTo")
+                        .HasColumnType("datetime2");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("CreatedByAdminId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("DurationMinutes")
-                    .HasColumnType("int");
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("int");
 
-                b.Property<int?>("Language")
-                    .HasColumnType("int");
+                    b.Property<int?>("Language")
+                        .HasColumnType("int");
 
-                b.Property<int?>("MaxAttempts")
-                    .HasColumnType("int");
+                    b.Property<int?>("MaxAttempts")
+                        .HasColumnType("int");
 
-                b.Property<decimal>("NegativeMarkingRatio")
-                    .HasPrecision(4, 2)
-                    .HasColumnType("decimal(4,2)");
+                    b.Property<decimal>("NegativeMarkingRatio")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("decimal(4,2)");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<string>("Title")
-                    .IsRequired()
-                    .HasMaxLength(150)
-                    .HasColumnType("nvarchar(150)");
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
-                b.Property<string>("Topic")
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("Topic")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("CreatedByAdminId");
+                    b.HasIndex("CreatedByAdminId");
 
-                b.ToTable("Quizzes");
-            });
+                    b.ToTable("Quizzes");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuizChallenge", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("BatchId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("ChallengedAttemptId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("ChallengedAttemptId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("ChallengedUserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ChallengedUserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("ChallengerUserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ChallengerUserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<DateTime>("ExpiresAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("SourceAttemptId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("SourceAttemptId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("BatchId");
+                    b.HasIndex("BatchId");
 
-                b.HasIndex("ChallengedAttemptId");
+                    b.HasIndex("ChallengedAttemptId");
 
-                b.HasIndex("ChallengerUserId");
+                    b.HasIndex("ChallengerUserId");
 
-                b.HasIndex("SourceAttemptId");
+                    b.HasIndex("SourceAttemptId");
 
-                b.HasIndex("ChallengedUserId", "Status");
+                    b.HasIndex("ChallengedUserId", "Status");
 
-                b.ToTable("QuizChallenges");
-            });
+                    b.ToTable("QuizChallenges");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuizQuestion", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("QuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("QuestionOrder")
-                    .HasColumnType("int");
+                    b.Property<int>("QuestionOrder")
+                        .HasColumnType("int");
 
-                b.Property<Guid>("QuizId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("QuizId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("QuestionBankQuestionId");
+                    b.HasIndex("QuestionBankQuestionId");
 
-                b.HasIndex("QuizId");
+                    b.HasIndex("QuizId");
 
-                b.ToTable("QuizQuestions");
-            });
+                    b.ToTable("QuizQuestions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Referral", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<DateTime?>("JoinedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("JoinedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("ReferralCode")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("ReferralCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<Guid?>("ReferredUserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("ReferredUserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("ReferrerUserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ReferrerUserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("ReferralCode");
+                    b.HasIndex("ReferralCode");
 
-                b.HasIndex("ReferredUserId");
+                    b.HasIndex("ReferredUserId");
 
-                b.HasIndex("ReferrerUserId");
+                    b.HasIndex("ReferrerUserId");
 
-                b.ToTable("Referrals");
-            });
+                    b.ToTable("Referrals");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.StudentAnswer", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime?>("AnsweredAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("AnsweredAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("ContentBlocksJsonSnapshot")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("ContentBlocksJsonSnapshot")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("CorrectOptionSnapshot")
-                    .IsRequired()
-                    .HasMaxLength(5)
-                    .HasColumnType("nvarchar(5)");
+                    b.Property<string>("CorrectOptionSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
 
-                b.Property<string>("ExplanationImageUrlSnapshot")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("ExplanationImageUrlSnapshot")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("ExplanationSnapshot")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("ExplanationSnapshot")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<bool>("IsCorrect")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsCorrect")
+                        .HasColumnType("bit");
 
-                b.Property<bool>("IsMarkedForReview")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsMarkedForReview")
+                        .HasColumnType("bit");
 
-                b.Property<string>("OptionAImageUrlSnapshot")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionAImageUrlSnapshot")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionASnapshot")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionASnapshot")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionBImageUrlSnapshot")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionBImageUrlSnapshot")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionBSnapshot")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionBSnapshot")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionCImageUrlSnapshot")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionCImageUrlSnapshot")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionCSnapshot")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionCSnapshot")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionDImageUrlSnapshot")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionDImageUrlSnapshot")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("OptionDSnapshot")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("OptionDSnapshot")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<Guid?>("QuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("QuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("QuestionImageUrlSnapshot")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("QuestionImageUrlSnapshot")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<int>("QuestionOrder")
-                    .HasColumnType("int");
+                    b.Property<int>("QuestionOrder")
+                        .HasColumnType("int");
 
-                b.Property<string>("QuestionTextSnapshot")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("QuestionTextSnapshot")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("SelectedOption")
-                    .HasMaxLength(5)
-                    .HasColumnType("nvarchar(5)");
+                    b.Property<string>("SelectedOption")
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
 
-                b.Property<Guid>("StudentTestResultId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("StudentTestResultId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("SubjectSnapshot")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("SubjectSnapshot")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("TopicSnapshot")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("TopicSnapshot")
+                        .HasColumnType("nvarchar(max)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("QuestionBankQuestionId");
+                    b.HasIndex("QuestionBankQuestionId");
 
-                b.HasIndex("QuestionId");
+                    b.HasIndex("QuestionId");
 
-                b.HasIndex("StudentTestResultId", "QuestionOrder");
+                    b.HasIndex("StudentTestResultId", "QuestionOrder");
 
-                b.ToTable("StudentAnswers");
-            });
+                    b.ToTable("StudentAnswers");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.StudentSyllabusProgress", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<Guid>("SyllabusTopicId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("SyllabusTopicId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("UpdatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("SyllabusTopicId");
+                    b.HasIndex("SyllabusTopicId");
 
-                b.HasIndex("UserId");
+                    b.HasIndex("UserId");
 
-                b.ToTable("StudentSyllabusProgress");
-            });
+                    b.ToTable("StudentSyllabusProgress");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.StudentTestResult", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("AttemptedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("AttemptedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<int>("CorrectCount")
-                    .HasColumnType("int");
+                    b.Property<int>("CorrectCount")
+                        .HasColumnType("int");
 
-                b.Property<Guid?>("MockTestId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("MockTestId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<decimal>("NegativeMarkingRatio")
-                    .HasPrecision(4, 2)
-                    .HasColumnType("decimal(4,2)");
+                    b.Property<decimal>("NegativeMarkingRatio")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("decimal(4,2)");
 
-                b.Property<Guid?>("PaperId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("PaperId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("PracticeDifficulty")
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("PracticeDifficulty")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<int?>("PracticeDurationMinutes")
-                    .HasColumnType("int");
+                    b.Property<int?>("PracticeDurationMinutes")
+                        .HasColumnType("int");
 
-                b.Property<Guid?>("PracticeExamId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("PracticeExamId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("PracticeSubjectId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("PracticeSubjectId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("PracticeTestTemplateId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("PracticeTestTemplateId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid?>("PracticeTopicId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("PracticeTopicId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int?>("PracticeYearFrom")
-                    .HasColumnType("int");
+                    b.Property<int?>("PracticeYearFrom")
+                        .HasColumnType("int");
 
-                b.Property<int?>("PracticeYearTo")
-                    .HasColumnType("int");
+                    b.Property<int?>("PracticeYearTo")
+                        .HasColumnType("int");
 
-                b.Property<int?>("QuizDurationMinutes")
-                    .HasColumnType("int");
+                    b.Property<int?>("QuizDurationMinutes")
+                        .HasColumnType("int");
 
-                b.Property<Guid?>("QuizId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid?>("QuizId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int?>("Rank")
-                    .HasColumnType("int");
+                    b.Property<int?>("Rank")
+                        .HasColumnType("int");
 
-                b.Property<decimal>("Score")
-                    .HasPrecision(6, 2)
-                    .HasColumnType("decimal(6,2)");
+                    b.Property<decimal>("Score")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
 
-                b.Property<int>("SkippedCount")
-                    .HasColumnType("int");
+                    b.Property<int>("SkippedCount")
+                        .HasColumnType("int");
 
-                b.Property<DateTime>("StartedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Status")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<string>("TestKind")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("TestKind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<int>("TimeTakenSeconds")
-                    .HasColumnType("int");
+                    b.Property<int>("TimeTakenSeconds")
+                        .HasColumnType("int");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("WrongCount")
-                    .HasColumnType("int");
+                    b.Property<int>("WrongCount")
+                        .HasColumnType("int");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("MockTestId");
+                    b.HasIndex("MockTestId");
 
-                b.HasIndex("PaperId");
+                    b.HasIndex("PaperId");
 
-                b.HasIndex("PracticeTestTemplateId");
+                    b.HasIndex("PracticeTestTemplateId");
 
-                b.HasIndex("QuizId");
+                    b.HasIndex("QuizId");
 
-                b.HasIndex("UserId", "MockTestId", "Status")
-                    .IsUnique()
-                    .HasFilter("[MockTestId] IS NOT NULL AND [Status] = 'InProgress'");
+                    b.HasIndex("UserId", "MockTestId", "Status")
+                        .IsUnique()
+                        .HasFilter("[MockTestId] IS NOT NULL AND [Status] = 'InProgress'");
 
-                b.HasIndex("UserId", "PaperId", "Status")
-                    .IsUnique()
-                    .HasFilter("[PaperId] IS NOT NULL AND [Status] = 'InProgress'");
+                    b.HasIndex("UserId", "PaperId", "Status")
+                        .IsUnique()
+                        .HasFilter("[PaperId] IS NOT NULL AND [Status] = 'InProgress'");
 
-                b.HasIndex("UserId", "QuizId", "Status")
-                    .IsUnique()
-                    .HasFilter("[QuizId] IS NOT NULL AND [Status] = 'InProgress'");
+                    b.HasIndex("UserId", "QuizId", "Status")
+                        .IsUnique()
+                        .HasFilter("[QuizId] IS NOT NULL AND [Status] = 'InProgress'");
 
-                b.ToTable("StudentTestResults");
-            });
+                    b.ToTable("StudentTestResults");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.SyllabusTopic", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("ExamName")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("ExamName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<int>("OrderIndex")
-                    .HasColumnType("int");
+                    b.Property<int>("OrderIndex")
+                        .HasColumnType("int");
 
-                b.Property<string>("Subject")
-                    .IsRequired()
-                    .HasMaxLength(50)
-                    .HasColumnType("nvarchar(50)");
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
-                b.Property<string>("TopicName")
-                    .IsRequired()
-                    .HasMaxLength(150)
-                    .HasColumnType("nvarchar(150)");
+                    b.Property<string>("TopicName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.ToTable("SyllabusTopics");
-            });
+                    b.ToTable("SyllabusTopics");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.TypingTestResult", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<decimal>("Accuracy")
-                    .HasPrecision(5, 2)
-                    .HasColumnType("decimal(5,2)");
+                    b.Property<decimal>("Accuracy")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
-                b.Property<DateTime>("AttemptedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("AttemptedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<int>("DurationSeconds")
-                    .HasColumnType("int");
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("int");
 
-                b.Property<string>("Language")
-                    .IsRequired()
-                    .HasMaxLength(10)
-                    .HasColumnType("nvarchar(10)");
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<decimal>("WPM")
-                    .HasPrecision(5, 2)
-                    .HasColumnType("decimal(5,2)");
+                    b.Property<decimal>("WPM")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("UserId");
+                    b.HasIndex("UserId");
 
-                b.ToTable("TypingTestResults");
-            });
+                    b.ToTable("TypingTestResults");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.User", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("BonusMockAttempts")
-                    .HasColumnType("int");
+                    b.Property<int>("BonusMockAttempts")
+                        .HasColumnType("int");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("Email")
-                    .IsRequired()
-                    .HasMaxLength(150)
-                    .HasColumnType("nvarchar(150)");
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
-                b.Property<string>("FullName")
-                    .IsRequired()
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<bool>("IsActive")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
 
-                b.Property<DateTime?>("LastActiveAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime?>("LastActiveAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<bool>("NotifyOnDirectMessages")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("bit")
-                    .HasDefaultValue(true);
+                    b.Property<bool>("NotifyOnDirectMessages")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
-                b.Property<bool>("NotifyOnGroupMessages")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("bit")
-                    .HasDefaultValue(true);
+                    b.Property<bool>("NotifyOnGroupMessages")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
-                b.Property<string>("PasswordHash")
-                    .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("PhoneNumber")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("PhoneNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<string>("PhotoUrl")
-                    .HasColumnType("nvarchar(max)");
+                    b.Property<string>("PhotoUrl")
+                        .HasColumnType("nvarchar(max)");
 
-                b.Property<string>("ReferralCode")
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("ReferralCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<string>("Username")
-                    .IsRequired()
-                    .HasMaxLength(30)
-                    .HasColumnType("nvarchar(30)");
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("Email")
-                    .IsUnique();
+                    b.HasIndex("Email")
+                        .IsUnique();
 
-                b.HasIndex("PhoneNumber")
-                    .IsUnique();
+                    b.HasIndex("PhoneNumber")
+                        .IsUnique();
 
-                b.HasIndex("ReferralCode")
-                    .IsUnique()
-                    .HasFilter("[ReferralCode] IS NOT NULL");
+                    b.HasIndex("ReferralCode")
+                        .IsUnique()
+                        .HasFilter("[ReferralCode] IS NOT NULL");
 
-                b.HasIndex("Username")
-                    .IsUnique();
+                    b.HasIndex("Username")
+                        .IsUnique();
 
-                b.ToTable("Users");
-            });
+                    b.ToTable("Users");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.UserBadge", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("BadgeId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("BadgeId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("EarnedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("EarnedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("BadgeId");
+                    b.HasIndex("BadgeId");
 
-                b.HasIndex("UserId");
+                    b.HasIndex("UserId");
 
-                b.ToTable("UserBadges");
-            });
+                    b.ToTable("UserBadges");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.UserExamPreference", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("ExamId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("ExamId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<bool>("IsPrimary")
-                    .HasColumnType("bit");
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("bit");
 
-                b.Property<DateTime>("UpdatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("ExamId");
+                    b.HasIndex("ExamId");
 
-                b.HasIndex("UserId")
-                    .IsUnique()
-                    .HasFilter("[IsPrimary] = 1");
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("[IsPrimary] = 1");
 
-                b.HasIndex("UserId", "ExamId")
-                    .IsUnique();
+                    b.HasIndex("UserId", "ExamId")
+                        .IsUnique();
 
-                b.ToTable("UserExamPreferences");
-            });
+                    b.ToTable("UserExamPreferences");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.UserQuestionSolve", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<Guid>("QuestionBankQuestionId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<DateTime>("SolvedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("SolvedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("QuestionBankQuestionId");
+                    b.HasIndex("QuestionBankQuestionId");
 
-                b.HasIndex("UserId", "QuestionBankQuestionId")
-                    .IsUnique();
+                    b.HasIndex("UserId", "QuestionBankQuestionId")
+                        .IsUnique();
 
-                b.ToTable("UserQuestionSolves");
-            });
+                    b.ToTable("UserQuestionSolves");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.UserStreak", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("CurrentStreak")
-                    .HasColumnType("int");
+                    b.Property<int>("CurrentStreak")
+                        .HasColumnType("int");
 
-                b.Property<int>("FreezesUsedThisWeek")
-                    .HasColumnType("int");
+                    b.Property<int>("FreezesUsedThisWeek")
+                        .HasColumnType("int");
 
-                b.Property<DateOnly>("LastActiveDate")
-                    .HasColumnType("date");
+                    b.Property<DateOnly>("LastActiveDate")
+                        .HasColumnType("date");
 
-                b.Property<int>("LongestStreak")
-                    .HasColumnType("int");
+                    b.Property<int>("LongestStreak")
+                        .HasColumnType("int");
 
-                b.Property<DateTime>("UpdatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("UserId")
-                    .IsUnique();
+                    b.HasIndex("UserId")
+                        .IsUnique();
 
-                b.ToTable("UserStreaks");
-            });
+                    b.ToTable("UserStreaks");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.UserXP", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<string>("CurrentLevel")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("nvarchar(20)");
+                    b.Property<string>("CurrentLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
-                b.Property<int>("TotalXP")
-                    .HasColumnType("int");
+                    b.Property<int>("TotalXP")
+                        .HasColumnType("int");
 
-                b.Property<DateTime>("UpdatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("UserId")
-                    .IsUnique();
+                    b.HasIndex("UserId")
+                        .IsUnique();
 
-                b.ToTable("UserXPs");
-            });
+                    b.ToTable("UserXPs");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.XpTransaction", b =>
-            {
-                b.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uniqueidentifier");
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
-                b.Property<int>("Amount")
-                    .HasColumnType("int");
+                    b.Property<int>("Amount")
+                        .HasColumnType("int");
 
-                b.Property<DateTime>("CreatedAt")
-                    .HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                b.Property<string>("ExamName")
-                    .HasMaxLength(100)
-                    .HasColumnType("nvarchar(100)");
+                    b.Property<string>("ExamName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                b.Property<string>("Reason")
-                    .IsRequired()
-                    .HasMaxLength(50)
-                    .HasColumnType("nvarchar(50)");
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
-                b.Property<Guid>("UserId")
-                    .HasColumnType("uniqueidentifier");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
 
-                b.HasKey("Id");
+                    b.HasKey("Id");
 
-                b.HasIndex("ExamName", "CreatedAt");
+                    b.HasIndex("ExamName", "CreatedAt");
 
-                b.HasIndex("UserId", "CreatedAt");
+                    b.HasIndex("UserId", "CreatedAt");
 
-                b.ToTable("XpTransactions");
-            });
+                    b.ToTable("XpTransactions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.AdminPermissionGrant", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "Admin")
-                    .WithMany("PermissionGrants")
-                    .HasForeignKey("AdminId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "Admin")
+                        .WithMany("PermissionGrants")
+                        .HasForeignKey("AdminId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("Admin");
-            });
+                    b.Navigation("Admin");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.AdminTask", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "AssignedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("AssignedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "AssignedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("AssignedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.Admin", "AssignedToAdmin")
-                    .WithMany("AssignedTasks")
-                    .HasForeignKey("AssignedToAdminId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.Admin", "AssignedToAdmin")
+                        .WithMany("AssignedTasks")
+                        .HasForeignKey("AssignedToAdminId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("AssignedByAdmin");
+                    b.Navigation("AssignedByAdmin");
 
-                b.Navigation("AssignedToAdmin");
-            });
+                    b.Navigation("AssignedToAdmin");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.AuditLog", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "Admin")
-                    .WithMany()
-                    .HasForeignKey("AdminId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "Admin")
+                        .WithMany()
+                        .HasForeignKey("AdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("Admin");
-            });
+                    b.Navigation("Admin");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.BannedWord", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "AddedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("AddedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "AddedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("AddedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("AddedByAdmin");
-            });
+                    b.Navigation("AddedByAdmin");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Bookmark", b =>
-            {
-                b.HasOne("ScoramAPI.Models.QuestionComment", "Comment")
-                    .WithMany()
-                    .HasForeignKey("CommentId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionComment", "Comment")
+                        .WithMany()
+                        .HasForeignKey("CommentId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.MockTest", "MockTest")
-                    .WithMany()
-                    .HasForeignKey("MockTestId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.MockTest", "MockTest")
+                        .WithMany()
+                        .HasForeignKey("MockTestId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.Paper", "Paper")
-                    .WithMany()
-                    .HasForeignKey("PaperId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Paper", "Paper")
+                        .WithMany()
+                        .HasForeignKey("PaperId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
-                    .WithMany()
-                    .HasForeignKey("QuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany()
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.Question", "Question")
-                    .WithMany()
-                    .HasForeignKey("QuestionId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Question", "Question")
+                        .WithMany()
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany()
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("Comment");
+                    b.Navigation("Comment");
 
-                b.Navigation("MockTest");
+                    b.Navigation("MockTest");
 
-                b.Navigation("Paper");
+                    b.Navigation("Paper");
 
-                b.Navigation("Question");
+                    b.Navigation("Question");
 
-                b.Navigation("QuestionBankQuestion");
+                    b.Navigation("QuestionBankQuestion");
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatMessage", b =>
-            {
-                b.HasOne("ScoramAPI.Models.ChatRoom", "ChatRoom")
-                    .WithMany("Messages")
-                    .HasForeignKey("ChatRoomId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.ChatRoom", "ChatRoom")
+                        .WithMany("Messages")
+                        .HasForeignKey("ChatRoomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.ChatPoll", "Poll")
-                    .WithMany()
-                    .HasForeignKey("PollId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.ChatPoll", "Poll")
+                        .WithMany()
+                        .HasForeignKey("PollId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.Admin", "SenderAdmin")
-                    .WithMany()
-                    .HasForeignKey("SenderAdminId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Admin", "SenderAdmin")
+                        .WithMany()
+                        .HasForeignKey("SenderAdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "SharedQuestionBankQuestion")
-                    .WithMany()
-                    .HasForeignKey("SharedQuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.SetNull);
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "SharedQuestionBankQuestion")
+                        .WithMany()
+                        .HasForeignKey("SharedQuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany()
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.User", null)
-                    .WithMany("ChatMessages")
-                    .HasForeignKey("UserId1");
+                    b.HasOne("ScoramAPI.Models.User", null)
+                        .WithMany("ChatMessages")
+                        .HasForeignKey("UserId1");
 
-                b.Navigation("ChatRoom");
+                    b.Navigation("ChatRoom");
 
-                b.Navigation("Poll");
+                    b.Navigation("Poll");
 
-                b.Navigation("SenderAdmin");
+                    b.Navigation("SenderAdmin");
 
-                b.Navigation("SharedQuestionBankQuestion");
+                    b.Navigation("SharedQuestionBankQuestion");
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatMessageMention", b =>
-            {
-                b.HasOne("ScoramAPI.Models.ChatMessage", "ChatMessage")
-                    .WithMany("Mentions")
-                    .HasForeignKey("ChatMessageId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.ChatMessage", "ChatMessage")
+                        .WithMany("Mentions")
+                        .HasForeignKey("ChatMessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "MentionedUser")
-                    .WithMany()
-                    .HasForeignKey("MentionedUserId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "MentionedUser")
+                        .WithMany()
+                        .HasForeignKey("MentionedUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("ChatMessage");
+                    b.Navigation("ChatMessage");
 
-                b.Navigation("MentionedUser");
-            });
+                    b.Navigation("MentionedUser");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatPoll", b =>
-            {
-                b.HasOne("ScoramAPI.Models.ChatRoom", "ChatRoom")
-                    .WithMany("Polls")
-                    .HasForeignKey("ChatRoomId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.ChatRoom", "ChatRoom")
+                        .WithMany("Polls")
+                        .HasForeignKey("ChatRoomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("ChatRoom");
+                    b.Navigation("ChatRoom");
 
-                b.Navigation("CreatedByAdmin");
-            });
+                    b.Navigation("CreatedByAdmin");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatPollOption", b =>
-            {
-                b.HasOne("ScoramAPI.Models.ChatPoll", "ChatPoll")
-                    .WithMany("Options")
-                    .HasForeignKey("ChatPollId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.ChatPoll", "ChatPoll")
+                        .WithMany("Options")
+                        .HasForeignKey("ChatPollId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("ChatPoll");
-            });
+                    b.Navigation("ChatPoll");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatPollVote", b =>
-            {
-                b.HasOne("ScoramAPI.Models.ChatPollOption", "ChatPollOption")
-                    .WithMany("Votes")
-                    .HasForeignKey("ChatPollOptionId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.ChatPollOption", "ChatPollOption")
+                        .WithMany("Votes")
+                        .HasForeignKey("ChatPollOptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany()
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("ChatPollOption");
+                    b.Navigation("ChatPollOption");
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatReport", b =>
-            {
-                b.HasOne("ScoramAPI.Models.ChatMessage", "ChatMessage")
-                    .WithMany("Reports")
-                    .HasForeignKey("ChatMessageId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.ChatMessage", "ChatMessage")
+                        .WithMany("Reports")
+                        .HasForeignKey("ChatMessageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "ReportedByUser")
-                    .WithMany()
-                    .HasForeignKey("ReportedByUserId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "ReportedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReportedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.Admin", "ResolvedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("ResolvedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Admin", "ResolvedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("ResolvedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.Navigation("ChatMessage");
+                    b.Navigation("ChatMessage");
 
-                b.Navigation("ReportedByUser");
+                    b.Navigation("ReportedByUser");
 
-                b.Navigation("ResolvedByAdmin");
-            });
+                    b.Navigation("ResolvedByAdmin");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatRoom", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Exam", "Exam")
-                    .WithMany()
-                    .HasForeignKey("ExamId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                {
+                    b.HasOne("ScoramAPI.Models.Exam", "Exam")
+                        .WithMany()
+                        .HasForeignKey("ExamId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.Navigation("Exam");
-            });
+                    b.Navigation("Exam");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatRoomMembership", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "BannedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("BannedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "BannedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("BannedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.ChatRoom", "ChatRoom")
-                    .WithMany("Memberships")
-                    .HasForeignKey("ChatRoomId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.ChatRoom", "ChatRoom")
+                        .WithMany("Memberships")
+                        .HasForeignKey("ChatRoomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany()
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("BannedByAdmin");
+                    b.Navigation("BannedByAdmin");
 
-                b.Navigation("ChatRoom");
+                    b.Navigation("ChatRoom");
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.CommentReport", b =>
-            {
-                b.HasOne("ScoramAPI.Models.QuestionComment", "Comment")
-                    .WithMany()
-                    .HasForeignKey("CommentId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionComment", "Comment")
+                        .WithMany()
+                        .HasForeignKey("CommentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "ReportedByUser")
-                    .WithMany()
-                    .HasForeignKey("ReportedByUserId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "ReportedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReportedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("Comment");
+                    b.Navigation("Comment");
 
-                b.Navigation("ReportedByUser");
-            });
+                    b.Navigation("ReportedByUser");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.CommentVote", b =>
-            {
-                b.HasOne("ScoramAPI.Models.QuestionComment", "Comment")
-                    .WithMany()
-                    .HasForeignKey("CommentId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionComment", "Comment")
+                        .WithMany()
+                        .HasForeignKey("CommentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany()
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("Comment");
+                    b.Navigation("Comment");
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.CurrentAffair", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany("CurrentAffairsPosted")
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany("CurrentAffairsPosted")
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("CreatedByAdmin");
-            });
+                    b.Navigation("CreatedByAdmin");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.DirectConversation", b =>
-            {
-                b.HasOne("ScoramAPI.Models.User", "UserA")
-                    .WithMany()
-                    .HasForeignKey("UserAId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.User", "UserA")
+                        .WithMany()
+                        .HasForeignKey("UserAId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "UserB")
-                    .WithMany()
-                    .HasForeignKey("UserBId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "UserB")
+                        .WithMany()
+                        .HasForeignKey("UserBId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("UserA");
+                    b.Navigation("UserA");
 
-                b.Navigation("UserB");
-            });
+                    b.Navigation("UserB");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.DirectMessage", b =>
-            {
-                b.HasOne("ScoramAPI.Models.DirectConversation", "Conversation")
-                    .WithMany("Messages")
-                    .HasForeignKey("ConversationId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.DirectConversation", "Conversation")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "Sender")
-                    .WithMany()
-                    .HasForeignKey("SenderId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "Sender")
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "SharedQuestionBankQuestion")
-                    .WithMany()
-                    .HasForeignKey("SharedQuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.SetNull);
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "SharedQuestionBankQuestion")
+                        .WithMany()
+                        .HasForeignKey("SharedQuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
-                b.Navigation("Conversation");
+                    b.Navigation("Conversation");
 
-                b.Navigation("Sender");
+                    b.Navigation("Sender");
 
-                b.Navigation("SharedQuestionBankQuestion");
-            });
+                    b.Navigation("SharedQuestionBankQuestion");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Document", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "UploadedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("UploadedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "UploadedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("UploadedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.User", "UploadedByUser")
-                    .WithMany()
-                    .HasForeignKey("UploadedByUserId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.User", "UploadedByUser")
+                        .WithMany()
+                        .HasForeignKey("UploadedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.Navigation("UploadedByAdmin");
+                    b.Navigation("UploadedByAdmin");
 
-                b.Navigation("UploadedByUser");
-            });
+                    b.Navigation("UploadedByUser");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Exam", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.Organization", "Organization")
-                    .WithMany("Exams")
-                    .HasForeignKey("OrganizationId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Organization", "Organization")
+                        .WithMany("Exams")
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.Navigation("CreatedByAdmin");
+                    b.Navigation("CreatedByAdmin");
 
-                b.Navigation("Organization");
-            });
+                    b.Navigation("Organization");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ImportJob", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.Paper", "Paper")
-                    .WithMany()
-                    .HasForeignKey("PaperId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.Paper", "Paper")
+                        .WithMany()
+                        .HasForeignKey("PaperId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("CreatedByAdmin");
+                    b.Navigation("CreatedByAdmin");
 
-                b.Navigation("Paper");
-            });
+                    b.Navigation("Paper");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.JobAlert", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany("JobAlertsPosted")
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany("JobAlertsPosted")
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("CreatedByAdmin");
-            });
+                    b.Navigation("CreatedByAdmin");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.MockTest", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany("MockTestsCreated")
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany("MockTestsCreated")
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.Exam", "Exam")
-                    .WithMany()
-                    .HasForeignKey("ExamId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Exam", "Exam")
+                        .WithMany()
+                        .HasForeignKey("ExamId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.Navigation("CreatedByAdmin");
+                    b.Navigation("CreatedByAdmin");
 
-                b.Navigation("Exam");
-            });
+                    b.Navigation("Exam");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.MockTestQuestion", b =>
-            {
-                b.HasOne("ScoramAPI.Models.MockTest", "MockTest")
-                    .WithMany("MockTestQuestions")
-                    .HasForeignKey("MockTestId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.MockTest", "MockTest")
+                        .WithMany("MockTestQuestions")
+                        .HasForeignKey("MockTestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
-                    .WithMany()
-                    .HasForeignKey("QuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany()
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.Question", "Question")
-                    .WithMany("MockTestQuestions")
-                    .HasForeignKey("QuestionId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Question", "Question")
+                        .WithMany("MockTestQuestions")
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.Navigation("MockTest");
+                    b.Navigation("MockTest");
 
-                b.Navigation("Question");
+                    b.Navigation("Question");
 
-                b.Navigation("QuestionBankQuestion");
-            });
+                    b.Navigation("QuestionBankQuestion");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Notification", b =>
-            {
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany()
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Organization", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("CreatedByAdmin");
-            });
+                    b.Navigation("CreatedByAdmin");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Paper", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany("UploadedPapers")
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany("UploadedPapers")
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.Exam", "Exam")
-                    .WithMany("Papers")
-                    .HasForeignKey("ExamId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.Exam", "Exam")
+                        .WithMany("Papers")
+                        .HasForeignKey("ExamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("CreatedByAdmin");
+                    b.Navigation("CreatedByAdmin");
 
-                b.Navigation("Exam");
-            });
+                    b.Navigation("Exam");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.PaperQuestionBankLink", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "LinkedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("LinkedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "LinkedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("LinkedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.Paper", "Paper")
-                    .WithMany("QuestionBankLinks")
-                    .HasForeignKey("PaperId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.Paper", "Paper")
+                        .WithMany("QuestionBankLinks")
+                        .HasForeignKey("PaperId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
-                    .WithMany()
-                    .HasForeignKey("QuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany()
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("LinkedByAdmin");
+                    b.Navigation("LinkedByAdmin");
 
-                b.Navigation("Paper");
+                    b.Navigation("Paper");
 
-                b.Navigation("QuestionBankQuestion");
-            });
+                    b.Navigation("QuestionBankQuestion");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.PracticeTestTemplate", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.Exam", "Exam")
-                    .WithMany()
-                    .HasForeignKey("ExamId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Exam", "Exam")
+                        .WithMany()
+                        .HasForeignKey("ExamId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.QuestionBankSubject", "Subject")
-                    .WithMany()
-                    .HasForeignKey("SubjectId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.QuestionBankSubject", "Subject")
+                        .WithMany()
+                        .HasForeignKey("SubjectId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.QuestionBankTopic", "Topic")
-                    .WithMany()
-                    .HasForeignKey("TopicId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.QuestionBankTopic", "Topic")
+                        .WithMany()
+                        .HasForeignKey("TopicId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.Navigation("CreatedByAdmin");
+                    b.Navigation("CreatedByAdmin");
 
-                b.Navigation("Exam");
+                    b.Navigation("Exam");
 
-                b.Navigation("Subject");
+                    b.Navigation("Subject");
 
-                b.Navigation("Topic");
-            });
+                    b.Navigation("Topic");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.PracticeTestTemplateQuestion", b =>
-            {
-                b.HasOne("ScoramAPI.Models.PracticeTestTemplate", "PracticeTestTemplate")
-                    .WithMany("Questions")
-                    .HasForeignKey("PracticeTestTemplateId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.PracticeTestTemplate", "PracticeTestTemplate")
+                        .WithMany("Questions")
+                        .HasForeignKey("PracticeTestTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
-                    .WithMany()
-                    .HasForeignKey("QuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany()
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.Question", "Question")
-                    .WithMany()
-                    .HasForeignKey("QuestionId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Question", "Question")
+                        .WithMany()
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.Navigation("PracticeTestTemplate");
+                    b.Navigation("PracticeTestTemplate");
 
-                b.Navigation("Question");
+                    b.Navigation("Question");
 
-                b.Navigation("QuestionBankQuestion");
-            });
+                    b.Navigation("QuestionBankQuestion");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.PushSubscription", b =>
-            {
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany()
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Question", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany("QuestionsUploaded")
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany("QuestionsUploaded")
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.Exam", "Exam")
-                    .WithMany("Questions")
-                    .HasForeignKey("ExamId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Exam", "Exam")
+                        .WithMany("Questions")
+                        .HasForeignKey("ExamId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.ImportJob", "ImportJob")
-                    .WithMany()
-                    .HasForeignKey("ImportJobId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.ImportJob", "ImportJob")
+                        .WithMany()
+                        .HasForeignKey("ImportJobId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.Paper", "Paper")
-                    .WithMany("Questions")
-                    .HasForeignKey("PaperId")
-                    .OnDelete(DeleteBehavior.Cascade);
+                    b.HasOne("ScoramAPI.Models.Paper", "Paper")
+                        .WithMany("Questions")
+                        .HasForeignKey("PaperId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
-                b.Navigation("CreatedByAdmin");
+                    b.Navigation("CreatedByAdmin");
 
-                b.Navigation("Exam");
+                    b.Navigation("Exam");
 
-                b.Navigation("ImportJob");
+                    b.Navigation("ImportJob");
 
-                b.Navigation("Paper");
-            });
+                    b.Navigation("Paper");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankExamMapping", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Exam", "Exam")
-                    .WithMany()
-                    .HasForeignKey("ExamId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Exam", "Exam")
+                        .WithMany()
+                        .HasForeignKey("ExamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
-                    .WithMany("ExamMappings")
-                    .HasForeignKey("QuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany("ExamMappings")
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("Exam");
+                    b.Navigation("Exam");
 
-                b.Navigation("QuestionBankQuestion");
-            });
+                    b.Navigation("QuestionBankQuestion");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankImportJob", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("CreatedByAdmin");
-            });
+                    b.Navigation("CreatedByAdmin");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankQuestion", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.QuestionBankImportJob", "ImportJob")
-                    .WithMany()
-                    .HasForeignKey("ImportJobId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.QuestionBankImportJob", "ImportJob")
+                        .WithMany()
+                        .HasForeignKey("ImportJobId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.QuestionBankSubject", "Subject")
-                    .WithMany("Questions")
-                    .HasForeignKey("SubjectId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.QuestionBankSubject", "Subject")
+                        .WithMany("Questions")
+                        .HasForeignKey("SubjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.QuestionBankTopic", "Topic")
-                    .WithMany("Questions")
-                    .HasForeignKey("TopicId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.QuestionBankTopic", "Topic")
+                        .WithMany("Questions")
+                        .HasForeignKey("TopicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("CreatedByAdmin");
+                    b.Navigation("CreatedByAdmin");
 
-                b.Navigation("ImportJob");
+                    b.Navigation("ImportJob");
 
-                b.Navigation("Subject");
+                    b.Navigation("Subject");
 
-                b.Navigation("Topic");
-            });
+                    b.Navigation("Topic");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankSubject", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("CreatedByAdmin");
-            });
+                    b.Navigation("CreatedByAdmin");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankTopic", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.QuestionBankSubject", "Subject")
-                    .WithMany("Topics")
-                    .HasForeignKey("SubjectId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.QuestionBankSubject", "Subject")
+                        .WithMany("Topics")
+                        .HasForeignKey("SubjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("CreatedByAdmin");
+                    b.Navigation("CreatedByAdmin");
 
-                b.Navigation("Subject");
-            });
+                    b.Navigation("Subject");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionComment", b =>
-            {
-                b.HasOne("ScoramAPI.Models.QuestionComment", "ParentComment")
-                    .WithMany()
-                    .HasForeignKey("ParentCommentId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionComment", "ParentComment")
+                        .WithMany()
+                        .HasForeignKey("ParentCommentId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
-                    .WithMany("Comments")
-                    .HasForeignKey("QuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.Cascade);
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany("Comments")
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
-                b.HasOne("ScoramAPI.Models.Question", "Question")
-                    .WithMany("Comments")
-                    .HasForeignKey("QuestionId")
-                    .OnDelete(DeleteBehavior.Cascade);
+                    b.HasOne("ScoramAPI.Models.Question", "Question")
+                        .WithMany("Comments")
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
-                b.HasOne("ScoramAPI.Models.Admin", "SubmittedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("SubmittedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Admin", "SubmittedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("SubmittedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany("QuestionComments")
-                    .HasForeignKey("UserId");
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany("QuestionComments")
+                        .HasForeignKey("UserId");
 
-                b.Navigation("ParentComment");
+                    b.Navigation("ParentComment");
 
-                b.Navigation("Question");
+                    b.Navigation("Question");
 
-                b.Navigation("QuestionBankQuestion");
+                    b.Navigation("QuestionBankQuestion");
 
-                b.Navigation("SubmittedByAdmin");
+                    b.Navigation("SubmittedByAdmin");
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionReport", b =>
-            {
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
-                    .WithMany("Reports")
-                    .HasForeignKey("QuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.Cascade);
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany("Reports")
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
-                b.HasOne("ScoramAPI.Models.Question", "Question")
-                    .WithMany("Reports")
-                    .HasForeignKey("QuestionId")
-                    .OnDelete(DeleteBehavior.Cascade);
+                    b.HasOne("ScoramAPI.Models.Question", "Question")
+                        .WithMany("Reports")
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
-                b.HasOne("ScoramAPI.Models.User", "ReportedByUser")
-                    .WithMany("QuestionReports")
-                    .HasForeignKey("ReportedByUserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "ReportedByUser")
+                        .WithMany("QuestionReports")
+                        .HasForeignKey("ReportedByUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("Question");
+                    b.Navigation("Question");
 
-                b.Navigation("QuestionBankQuestion");
+                    b.Navigation("QuestionBankQuestion");
 
-                b.Navigation("ReportedByUser");
-            });
+                    b.Navigation("ReportedByUser");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionSolution", b =>
-            {
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
-                    .WithMany("Solutions")
-                    .HasForeignKey("QuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.Cascade);
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany("Solutions")
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
-                b.HasOne("ScoramAPI.Models.Question", "Question")
-                    .WithMany("Solutions")
-                    .HasForeignKey("QuestionId")
-                    .OnDelete(DeleteBehavior.Cascade);
+                    b.HasOne("ScoramAPI.Models.Question", "Question")
+                        .WithMany("Solutions")
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
-                b.HasOne("ScoramAPI.Models.Admin", "SubmittedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("SubmittedByAdminId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Admin", "SubmittedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("SubmittedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.User", "SubmittedByUser")
-                    .WithMany("QuestionSolutions")
-                    .HasForeignKey("SubmittedByUserId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.User", "SubmittedByUser")
+                        .WithMany("QuestionSolutions")
+                        .HasForeignKey("SubmittedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.Navigation("Question");
+                    b.Navigation("Question");
 
-                b.Navigation("QuestionBankQuestion");
+                    b.Navigation("QuestionBankQuestion");
 
-                b.Navigation("SubmittedByAdmin");
+                    b.Navigation("SubmittedByAdmin");
 
-                b.Navigation("SubmittedByUser");
-            });
+                    b.Navigation("SubmittedByUser");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionVote", b =>
-            {
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
-                    .WithMany("Votes")
-                    .HasForeignKey("QuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.Cascade);
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany("Votes")
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
-                b.HasOne("ScoramAPI.Models.Question", "Question")
-                    .WithMany("Votes")
-                    .HasForeignKey("QuestionId")
-                    .OnDelete(DeleteBehavior.Cascade);
+                    b.HasOne("ScoramAPI.Models.Question", "Question")
+                        .WithMany("Votes")
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany()
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("Question");
+                    b.Navigation("Question");
 
-                b.Navigation("QuestionBankQuestion");
+                    b.Navigation("QuestionBankQuestion");
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Quiz", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
-                    .WithMany()
-                    .HasForeignKey("CreatedByAdminId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("CreatedByAdmin");
-            });
+                    b.Navigation("CreatedByAdmin");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuizChallenge", b =>
-            {
-                b.HasOne("ScoramAPI.Models.StudentTestResult", "ChallengedAttempt")
-                    .WithMany()
-                    .HasForeignKey("ChallengedAttemptId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                {
+                    b.HasOne("ScoramAPI.Models.StudentTestResult", "ChallengedAttempt")
+                        .WithMany()
+                        .HasForeignKey("ChallengedAttemptId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.User", "ChallengedUser")
-                    .WithMany()
-                    .HasForeignKey("ChallengedUserId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "ChallengedUser")
+                        .WithMany()
+                        .HasForeignKey("ChallengedUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "ChallengerUser")
-                    .WithMany()
-                    .HasForeignKey("ChallengerUserId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "ChallengerUser")
+                        .WithMany()
+                        .HasForeignKey("ChallengerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.StudentTestResult", "SourceAttempt")
-                    .WithMany()
-                    .HasForeignKey("SourceAttemptId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.StudentTestResult", "SourceAttempt")
+                        .WithMany()
+                        .HasForeignKey("SourceAttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("ChallengedAttempt");
+                    b.Navigation("ChallengedAttempt");
 
-                b.Navigation("ChallengedUser");
+                    b.Navigation("ChallengedUser");
 
-                b.Navigation("ChallengerUser");
+                    b.Navigation("ChallengerUser");
 
-                b.Navigation("SourceAttempt");
-            });
+                    b.Navigation("SourceAttempt");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuizQuestion", b =>
-            {
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
-                    .WithMany()
-                    .HasForeignKey("QuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany()
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.Quiz", "Quiz")
-                    .WithMany("QuizQuestions")
-                    .HasForeignKey("QuizId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.Quiz", "Quiz")
+                        .WithMany("QuizQuestions")
+                        .HasForeignKey("QuizId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("QuestionBankQuestion");
+                    b.Navigation("QuestionBankQuestion");
 
-                b.Navigation("Quiz");
-            });
+                    b.Navigation("Quiz");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Referral", b =>
-            {
-                b.HasOne("ScoramAPI.Models.User", "ReferredUser")
-                    .WithMany()
-                    .HasForeignKey("ReferredUserId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                {
+                    b.HasOne("ScoramAPI.Models.User", "ReferredUser")
+                        .WithMany()
+                        .HasForeignKey("ReferredUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.User", "ReferrerUser")
-                    .WithMany()
-                    .HasForeignKey("ReferrerUserId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "ReferrerUser")
+                        .WithMany()
+                        .HasForeignKey("ReferrerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.Navigation("ReferredUser");
+                    b.Navigation("ReferredUser");
 
-                b.Navigation("ReferrerUser");
-            });
+                    b.Navigation("ReferrerUser");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.StudentAnswer", b =>
-            {
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
-                    .WithMany()
-                    .HasForeignKey("QuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany()
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.Question", "Question")
-                    .WithMany()
-                    .HasForeignKey("QuestionId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Question", "Question")
+                        .WithMany()
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.StudentTestResult", "StudentTestResult")
-                    .WithMany("Answers")
-                    .HasForeignKey("StudentTestResultId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.StudentTestResult", "StudentTestResult")
+                        .WithMany("Answers")
+                        .HasForeignKey("StudentTestResultId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("Question");
+                    b.Navigation("Question");
 
-                b.Navigation("QuestionBankQuestion");
+                    b.Navigation("QuestionBankQuestion");
 
-                b.Navigation("StudentTestResult");
-            });
+                    b.Navigation("StudentTestResult");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.StudentSyllabusProgress", b =>
-            {
-                b.HasOne("ScoramAPI.Models.SyllabusTopic", "SyllabusTopic")
-                    .WithMany("StudentProgress")
-                    .HasForeignKey("SyllabusTopicId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.SyllabusTopic", "SyllabusTopic")
+                        .WithMany("StudentProgress")
+                        .HasForeignKey("SyllabusTopicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany("SyllabusProgress")
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany("SyllabusProgress")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("SyllabusTopic");
+                    b.Navigation("SyllabusTopic");
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.StudentTestResult", b =>
-            {
-                b.HasOne("ScoramAPI.Models.MockTest", "MockTest")
-                    .WithMany("Results")
-                    .HasForeignKey("MockTestId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                {
+                    b.HasOne("ScoramAPI.Models.MockTest", "MockTest")
+                        .WithMany("Results")
+                        .HasForeignKey("MockTestId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.Paper", "Paper")
-                    .WithMany()
-                    .HasForeignKey("PaperId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Paper", "Paper")
+                        .WithMany()
+                        .HasForeignKey("PaperId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.PracticeTestTemplate", "PracticeTestTemplate")
-                    .WithMany()
-                    .HasForeignKey("PracticeTestTemplateId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.PracticeTestTemplate", "PracticeTestTemplate")
+                        .WithMany()
+                        .HasForeignKey("PracticeTestTemplateId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.Quiz", "Quiz")
-                    .WithMany("Results")
-                    .HasForeignKey("QuizId")
-                    .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("ScoramAPI.Models.Quiz", "Quiz")
+                        .WithMany("Results")
+                        .HasForeignKey("QuizId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany("StudentTestResults")
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany("StudentTestResults")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("MockTest");
+                    b.Navigation("MockTest");
 
-                b.Navigation("Paper");
+                    b.Navigation("Paper");
 
-                b.Navigation("PracticeTestTemplate");
+                    b.Navigation("PracticeTestTemplate");
 
-                b.Navigation("Quiz");
+                    b.Navigation("Quiz");
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.TypingTestResult", b =>
-            {
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany("TypingTestResults")
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany("TypingTestResults")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.UserBadge", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Badge", "Badge")
-                    .WithMany("UserBadges")
-                    .HasForeignKey("BadgeId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Badge", "Badge")
+                        .WithMany("UserBadges")
+                        .HasForeignKey("BadgeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany("UserBadges")
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany("UserBadges")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("Badge");
+                    b.Navigation("Badge");
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.UserExamPreference", b =>
-            {
-                b.HasOne("ScoramAPI.Models.Exam", "Exam")
-                    .WithMany()
-                    .HasForeignKey("ExamId")
-                    .OnDelete(DeleteBehavior.Restrict)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.Exam", "Exam")
+                        .WithMany()
+                        .HasForeignKey("ExamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany()
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("Exam");
+                    b.Navigation("Exam");
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.UserQuestionSolve", b =>
-            {
-                b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
-                    .WithMany()
-                    .HasForeignKey("QuestionBankQuestionId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany()
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany()
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("QuestionBankQuestion");
+                    b.Navigation("QuestionBankQuestion");
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.UserStreak", b =>
-            {
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithOne("UserStreak")
-                    .HasForeignKey("ScoramAPI.Models.UserStreak", "UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithOne("UserStreak")
+                        .HasForeignKey("ScoramAPI.Models.UserStreak", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.UserXP", b =>
-            {
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithOne("UserXP")
-                    .HasForeignKey("ScoramAPI.Models.UserXP", "UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithOne("UserXP")
+                        .HasForeignKey("ScoramAPI.Models.UserXP", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.XpTransaction", b =>
-            {
-                b.HasOne("ScoramAPI.Models.User", "User")
-                    .WithMany()
-                    .HasForeignKey("UserId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
+                {
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                b.Navigation("User");
-            });
+                    b.Navigation("User");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Admin", b =>
-            {
-                b.Navigation("AssignedTasks");
+                {
+                    b.Navigation("AssignedTasks");
 
-                b.Navigation("CurrentAffairsPosted");
+                    b.Navigation("CurrentAffairsPosted");
 
-                b.Navigation("JobAlertsPosted");
+                    b.Navigation("JobAlertsPosted");
 
-                b.Navigation("MockTestsCreated");
+                    b.Navigation("MockTestsCreated");
 
-                b.Navigation("PermissionGrants");
+                    b.Navigation("PermissionGrants");
 
-                b.Navigation("QuestionsUploaded");
+                    b.Navigation("QuestionsUploaded");
 
-                b.Navigation("UploadedPapers");
-            });
+                    b.Navigation("UploadedPapers");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Badge", b =>
-            {
-                b.Navigation("UserBadges");
-            });
+                {
+                    b.Navigation("UserBadges");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatMessage", b =>
-            {
-                b.Navigation("Mentions");
+                {
+                    b.Navigation("Mentions");
 
-                b.Navigation("Reports");
-            });
+                    b.Navigation("Reports");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatPoll", b =>
-            {
-                b.Navigation("Options");
-            });
+                {
+                    b.Navigation("Options");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatPollOption", b =>
-            {
-                b.Navigation("Votes");
-            });
+                {
+                    b.Navigation("Votes");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatRoom", b =>
-            {
-                b.Navigation("Memberships");
+                {
+                    b.Navigation("Memberships");
 
-                b.Navigation("Messages");
+                    b.Navigation("Messages");
 
-                b.Navigation("Polls");
-            });
+                    b.Navigation("Polls");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.DirectConversation", b =>
-            {
-                b.Navigation("Messages");
-            });
+                {
+                    b.Navigation("Messages");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Exam", b =>
-            {
-                b.Navigation("Papers");
+                {
+                    b.Navigation("Papers");
 
-                b.Navigation("Questions");
-            });
+                    b.Navigation("Questions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.MockTest", b =>
-            {
-                b.Navigation("MockTestQuestions");
+                {
+                    b.Navigation("MockTestQuestions");
 
-                b.Navigation("Results");
-            });
+                    b.Navigation("Results");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Organization", b =>
-            {
-                b.Navigation("Exams");
-            });
+                {
+                    b.Navigation("Exams");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Paper", b =>
-            {
-                b.Navigation("QuestionBankLinks");
+                {
+                    b.Navigation("QuestionBankLinks");
 
-                b.Navigation("Questions");
-            });
+                    b.Navigation("Questions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.PracticeTestTemplate", b =>
-            {
-                b.Navigation("Questions");
-            });
+                {
+                    b.Navigation("Questions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Question", b =>
-            {
-                b.Navigation("Comments");
+                {
+                    b.Navigation("Comments");
 
-                b.Navigation("MockTestQuestions");
+                    b.Navigation("MockTestQuestions");
 
-                b.Navigation("Reports");
+                    b.Navigation("Reports");
 
-                b.Navigation("Solutions");
+                    b.Navigation("Solutions");
 
-                b.Navigation("Votes");
-            });
+                    b.Navigation("Votes");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankQuestion", b =>
-            {
-                b.Navigation("Comments");
+                {
+                    b.Navigation("Comments");
 
-                b.Navigation("ExamMappings");
+                    b.Navigation("ExamMappings");
 
-                b.Navigation("Reports");
+                    b.Navigation("Reports");
 
-                b.Navigation("Solutions");
+                    b.Navigation("Solutions");
 
-                b.Navigation("Votes");
-            });
+                    b.Navigation("Votes");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankSubject", b =>
-            {
-                b.Navigation("Questions");
+                {
+                    b.Navigation("Questions");
 
-                b.Navigation("Topics");
-            });
+                    b.Navigation("Topics");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankTopic", b =>
-            {
-                b.Navigation("Questions");
-            });
+                {
+                    b.Navigation("Questions");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.Quiz", b =>
-            {
-                b.Navigation("QuizQuestions");
+                {
+                    b.Navigation("QuizQuestions");
 
-                b.Navigation("Results");
-            });
+                    b.Navigation("Results");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.StudentTestResult", b =>
-            {
-                b.Navigation("Answers");
-            });
+                {
+                    b.Navigation("Answers");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.SyllabusTopic", b =>
-            {
-                b.Navigation("StudentProgress");
-            });
+                {
+                    b.Navigation("StudentProgress");
+                });
 
             modelBuilder.Entity("ScoramAPI.Models.User", b =>
-            {
-                b.Navigation("ChatMessages");
+                {
+                    b.Navigation("ChatMessages");
 
-                b.Navigation("QuestionComments");
+                    b.Navigation("QuestionComments");
 
-                b.Navigation("QuestionReports");
+                    b.Navigation("QuestionReports");
 
-                b.Navigation("QuestionSolutions");
+                    b.Navigation("QuestionSolutions");
 
-                b.Navigation("StudentTestResults");
+                    b.Navigation("StudentTestResults");
 
-                b.Navigation("SyllabusProgress");
+                    b.Navigation("SyllabusProgress");
 
-                b.Navigation("TypingTestResults");
+                    b.Navigation("TypingTestResults");
 
-                b.Navigation("UserBadges");
+                    b.Navigation("UserBadges");
 
-                b.Navigation("UserStreak");
+                    b.Navigation("UserStreak");
 
-                b.Navigation("UserXP");
-            });
+                    b.Navigation("UserXP");
+                });
 #pragma warning restore 612, 618
         }
     }

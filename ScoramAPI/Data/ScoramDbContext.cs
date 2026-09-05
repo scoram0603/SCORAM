@@ -908,6 +908,18 @@ namespace ScoramAPI.Data
                 .HasForeignKey(m => m.ExamId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // Restrict, same rationale as Question.ImportJobId/QuestionBankQuestion.ImportJobId just
+            // above -- and doubly necessary here, since this mapping already has a Cascade path in
+            // from QuestionBankQuestion; a second Cascade path in from ImportJob would be exactly the
+            // "multiple cascade paths" conflict those two comments describe. Never actually exercised
+            // in normal use (a QuestionBankImportJob row is never deleted -- rollback only flips its
+            // Status to RolledBack), so Restrict here is a formality, not a real constraint on usage.
+            modelBuilder.Entity<QuestionBankExamMapping>()
+                .HasOne(m => m.ImportJob)
+                .WithMany()
+                .HasForeignKey(m => m.ImportJobId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             // The same question can't be tagged against the same Exam+Year twice (section 6:
             // "one logical question with multiple exam/year mappings", not repeated ones).
             modelBuilder.Entity<QuestionBankExamMapping>()

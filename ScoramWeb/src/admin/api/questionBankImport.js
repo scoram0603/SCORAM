@@ -98,6 +98,15 @@ export function getQuestionBankImportHistory(token, { page, pageSize } = {}) {
   return apiFetch(`/api/admin/question-bank/bulk/history${toQueryString({ page, pageSize })}`, { token });
 }
 
+// POST /api/admin/question-bank/bulk/{jobId}/rollback -- deletes the questions this job created and
+// removes the exam/year mappings it merged onto already-existing questions. Returns { jobId, status,
+// questionsRemoved, mergedMappingsRemoved, examCleanupCandidateIds } -- examCleanupCandidateIds is a
+// list (unlike bulkImport.js's rollbackImport, which has at most one) since one Question Bank import
+// can span several different exams across its rows.
+export function rollbackQuestionBankImport(token, jobId) {
+  return apiFetch(`/api/admin/question-bank/bulk/${jobId}/rollback`, { method: "POST", token });
+}
+
 // Template downloads are generated server-side so they're always in sync with what the importer
 // actually parses (see QuestionBankAdminController.DownloadExcelTemplate/DownloadJsonTemplate).
 // These return a raw file, not JSON, so they go through fetch()+Blob directly rather than apiFetch.

@@ -287,6 +287,20 @@ namespace ScoramAPI.DTOs
         public int SkippedCount { get; set; }
     }
 
+    // Mirrors BulkImportRollbackResultDto (the Paper-side equivalent), pluralized where Question
+    // Bank's own rollback genuinely differs: MergedMappingsRemoved has no Paper-side counterpart
+    // (Papers never merge into an existing question), and ExamCleanupCandidateIds is a list rather
+    // than one nullable Guid since a single Question Bank import can span several different exams
+    // across its rows, unlike a Paper which only ever belongs to one.
+    public class QuestionBankImportRollbackResultDto
+    {
+        public Guid JobId { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public int QuestionsRemoved { get; set; }
+        public int MergedMappingsRemoved { get; set; }
+        public List<Guid> ExamCleanupCandidateIds { get; set; } = new();
+    }
+
     public class QuestionBankImportJobDto
     {
         public Guid Id { get; set; }

@@ -159,6 +159,17 @@ namespace ScoramAPI.Models
 
         public int Year { get; set; }
 
+        // Set only when a bulk-import MERGE created this specific mapping (row's question already
+        // existed as a QuestionBankQuestion, so the import just adds this one new exam/year tag to
+        // it -- see QuestionBankAdminController.Commit's merge branch). A brand-new question's OWN
+        // mappings don't need this tag: QuestionBankQuestion.ImportJobId already identifies the job,
+        // and this table cascades on QuestionBankQuestion delete (see OnModelCreating), so deleting
+        // the question during a rollback takes its mappings with it automatically. This field exists
+        // purely so a rollback can find and remove the MERGE-created mappings on a question it must
+        // NOT delete (that question existed before this job and may have other, unrelated mappings).
+        public Guid? ImportJobId { get; set; }
+        public QuestionBankImportJob? ImportJob { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
@@ -196,7 +207,19 @@ namespace ScoramAPI.Models
         // QuestionBankQuestion row.
         public int MergedIntoExistingCount { get; set; }
 
+        // Comma-separated Guid list of exams that had NO other content on them (see
+        // ExamsController.ExamHasContentAsync) at the moment this job's commit gave them their
+        // first content -- either a brand-new question's own mapping or a merge's new mapping.
+        // Generalizes Paper.ExamCreatedForThisPaper's same "was this exam empty right before I
+        // touched it" reasoning to a list, since one Question Bank import can span several
+        // different exams across its rows (unlike a Paper, which only ever has one). Re-checked
+        // live at rollback time (via the same ExamHasContentAsync), never just trusted, since
+        // something else may have added real content to one of these exams since this job ran.
+        [MaxLength(4000)]
+        public string? CandidateEmptyExamIds { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? CommittedAt { get; set; }
+        public DateTime? RolledBackAt { get; set; }
     }
 }
