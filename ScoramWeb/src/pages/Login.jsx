@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Mail, Lock, User as UserIcon, Phone, AtSign, ArrowRight, Loader2,
   AlertCircle, CheckCircle2, XCircle, Eye, EyeOff,
@@ -250,6 +250,20 @@ export default function Login() {
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.25} />
               <span>{error}</span>
             </div>
+          )}
+
+          {mode === "register" && (
+            <p className="-mt-1 text-center text-xs text-ink-400">
+              By creating an account, you agree to SCORAM's{" "}
+              <Link to="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-secondary-500 hover:underline">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-secondary-500 hover:underline">
+                Privacy Policy
+              </Link>
+              .
+            </p>
           )}
 
           <button

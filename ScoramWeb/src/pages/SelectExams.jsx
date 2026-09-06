@@ -18,7 +18,7 @@ export default function SelectExams() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/";
-  const { save } = useMyExams();
+  const { save, skipOnboarding } = useMyExams();
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [examNames, setExamNames] = useState({}); // examId -> examName, for the Primary chips below
@@ -51,6 +51,15 @@ export default function SelectExams() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // "I'll choose later" -- lets a student through without picking an exam right now. No exams get
+  // saved, so Home/sections simply won't have a My Exams default until they configure this from
+  // their profile later; AppLayout won't bounce them back here for the rest of this session (see
+  // MyExamsContext's `skipped` flag).
+  function handleSkip() {
+    skipOnboarding();
+    navigate(redirectTo, { replace: true });
   }
 
   return (
@@ -113,6 +122,15 @@ export default function SelectExams() {
       >
         {saving && <Loader2 className="h-4 w-4 animate-spin" />}
         Continue
+      </button>
+
+      <button
+        type="button"
+        onClick={handleSkip}
+        disabled={saving}
+        className="mt-3 w-full text-center text-sm font-semibold text-ink-400 transition-colors hover:text-ink-600 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        I'll choose later
       </button>
     </div>
   );

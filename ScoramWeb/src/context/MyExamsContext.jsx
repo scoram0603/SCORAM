@@ -9,8 +9,24 @@ import { useAuth } from "./AuthContext";
 // explicit filter the student picks on that page always overrides it, never the other way around).
 const MyExamsContext = createContext(null);
 
+// "Skip for now" on the onboarding screen doesn't set any exams -- it just needs to stop AppLayout
+// from bouncing the student straight back to /select-exams. Scoped to sessionStorage (not
+// localStorage) per user id: it clears itself when the tab/browser closes, so a student who skips
+// gets asked again next time they open the app, rather than never being asked again. Keyed by
+// userId so it can never leak into a different student's session on a shared device.
+const SKIP_KEY_PREFIX = "scoram_skip_exams_";
+
+function readSkipped(userId) {
+  if (!userId) return false;
+  try {
+    return sessionStorage.getItem(SKIP_KEY_PREFIX + userId) === "1";
+  } catch {
+    return false; // sessionStorage unavailable (private browsing etc.) -- just re-prompt every time
+  }
+}
+
 export function MyExamsProvider({ children }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [exams, setExams] = useState([]);
   const [primaryExamId, setPrimaryExamId] = useState(null);
   // hasLoaded distinguishes "haven't checked yet" from "checked, and there are genuinely zero" --
@@ -18,6 +34,7 @@ export function MyExamsProvider({ children }) {
   // configured would flash onto the onboarding screen for a moment on every page load.
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [skipped, setSkipped] = useState(false);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -37,6 +54,7 @@ export function MyExamsProvider({ children }) {
       refresh().catch(() => setHasLoaded(true)); // a failed load still counts as "checked" -- don't
       // trap a student in a redirect loop to onboarding just because one request hiccuped; the
       // section pages simply won't have a My Exams default for the rest of this load.
+      setSkipped(readSkipped(user?.userId));
     } else {
       // Logged out (or a different student just logged in) -- clear immediately so the previous
       // session's selections can never leak into the next one (spec section 9: logging out and
@@ -44,16 +62,36 @@ export function MyExamsProvider({ children }) {
       setExams([]);
       setPrimaryExamId(null);
       setHasLoaded(false);
+      setSkipped(false);
     }
-  }, [isAuthenticated, refresh]);
+  }, [isAuthenticated, user?.userId, refresh]);
+
+  const skipOnboarding = useCallback(() => {
+    setSkipped(true);
+    if (user?.userId) {
+      try {
+        sessionStorage.setItem(SKIP_KEY_PREFIX + user.userId, "1");
+      } catch {
+        // ignore -- skip just won't survive a reload this session
+      }
+    }
+  }, [user]);
 
   const save = useCallback(async ({ examIds, primaryExamId: newPrimaryId }) => {
     const res = await myExamsApi.setMyExams({ examIds, primaryExamId: newPrimaryId });
     setExams(res.exams || []);
     setPrimaryExamId(res.primaryExamId || null);
     setHasLoaded(true);
+    setSkipped(false); // exams are configured now -- the skip flag is moot, clean it up
+    if (user?.userId) {
+      try {
+        sessionStorage.removeItem(SKIP_KEY_PREFIX + user.userId);
+      } catch {
+        // ignore
+      }
+    }
     return res;
-  }, []);
+  }, [user]);
 
   const addExam = useCallback(async (examId) => {
     const res = await myExamsApi.addMyExam(examId);
@@ -79,10 +117,13 @@ export function MyExamsProvider({ children }) {
 
   const value = useMemo(
     () => ({
-      exams, examIds, primaryExamId, hasLoaded, hasConfigured, isLoading,
-      refresh, save, addExam, removeExam, setPrimary,
+      exams, examIds, primaryExamId, hasLoaded, hasConfigured, isLoading, skipped,
+      refresh, save, addExam, removeExam, setPrimary, skipOnboarding,
     }),
-    [exams, examIds, primaryExamId, hasLoaded, hasConfigured, isLoading, refresh, save, addExam, removeExam, setPrimary]
+    [
+      exams, examIds, primaryExamId, hasLoaded, hasConfigured, isLoading, skipped,
+      refresh, save, addExam, removeExam, setPrimary, skipOnboarding,
+    ]
   );
 
   return <MyExamsContext.Provider value={value}>{children}</MyExamsContext.Provider>;

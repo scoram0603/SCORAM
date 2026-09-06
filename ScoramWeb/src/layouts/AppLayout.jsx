@@ -13,7 +13,7 @@ import { sidebarNavItems, bottomNavItems } from "../data/mockData";
 
 export default function AppLayout() {
   const { isAuthenticated, user, logout } = useAuth();
-  const { hasLoaded, hasConfigured } = useMyExams();
+  const { hasLoaded, hasConfigured, skipped } = useMyExams();
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -41,8 +41,10 @@ export default function AppLayout() {
   // Excludes /select-exams itself (avoid a redirect loop) and /my-exams (a student already deep
   // in the management screen removing their way down isn't blocked mid-edit by this check --
   // though the backend's own last-exam guard means they can never actually reach zero that way).
+  // Also excluded once `skipped` is set (student tapped "I'll choose later" on the onboarding
+  // screen) -- see MyExamsContext for how that flag is scoped and cleared.
   if (
-    isAuthenticated && hasLoaded && !hasConfigured &&
+    isAuthenticated && hasLoaded && !hasConfigured && !skipped &&
     location.pathname !== "/select-exams" && location.pathname !== "/my-exams"
   ) {
     const target = location.pathname + location.search;

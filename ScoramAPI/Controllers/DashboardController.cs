@@ -33,9 +33,21 @@ namespace ScoramAPI.Controllers
         {
             var today = DateTime.UtcNow.Date;
 
+            // TOTAL QUESTIONS FIX -- "Total questions" on the admin dashboard must be PYP (legacy
+            // Question rows, uploaded via the Paper flow) PLUS PYQ (QuestionBankQuestions, the
+            // separate individual-question search bank) -- previously this only counted the PYP
+            // half, same under-count bug as ExamsController's per-exam QuestionCount (see that
+            // file's GetCombinedQuestionCountAsync comment, which also explains the next line: every
+            // PYP question gets auto-mirrored into the Question Bank, so the PYQ side here must
+            // exclude mirrors of an already-counted PYP question or every mirrored question would be
+            // counted twice and the total would be inflated instead of correct).
+            var totalPypQuestions = await _db.Questions.CountAsync();
+            var totalPyqQuestions = await _db.QuestionBankQuestions
+                .CountAsync(x => x.IsActive && !_db.Questions.Any(q => q.MirroredToQuestionBankQuestionId == x.Id));
+
             var content = new DashboardContentStatsDto
             {
-                TotalQuestions = await _db.Questions.CountAsync(),
+                TotalQuestions = totalPypQuestions + totalPyqQuestions,
                 TotalPapers = await _db.Papers.CountAsync(),
                 TotalExams = await _db.Exams.CountAsync(),
                 PublishedPapers = await _db.Papers.CountAsync(p => p.Status == PaperStatus.Published),

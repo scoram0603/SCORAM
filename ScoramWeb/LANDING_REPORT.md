@@ -140,9 +140,12 @@ logo (`src/assets/scoram-logo-square.png`), not generated.
   copy — generic quotes, "Placeholder Student" as the name, no star rating, no "verified" badge.
   Swap in real student testimonials (with permission) before launch.
 - **Privacy Policy / Terms pages** (`/privacy-policy`, `/terms`) — the brief's footer structure
-  requires these links to go somewhere real rather than 404. I added minimal, generic draft pages,
-  clearly marked in-file as templates **not reviewed by a lawyer** — please have actual counsel
-  review before relying on them.
+  requires these links to go somewhere real rather than 404. Updated on Sep 6, 2026 from generic
+  placeholder copy to content that reflects what SCORAM actually collects and does (account data,
+  content ownership, Azure Blob Storage + Web Push as the only third parties, account
+  termination/skip flows, etc.) — see the files' own top-of-file comments. Still marked as drafts
+  **not reviewed by a lawyer**; please have actual counsel review before relying on them. Links now
+  also appear on the signup form (Login.jsx, register mode) and in Settings, not just the footer.
 - **"Pricing" nav item** — there's no pricing page/route in the app (SCORAM appears to be free per
   the brief's own CTA copy), so it scroll-links to the FAQ section, which now includes an
   "Is SCORAM free to use?" entry.

@@ -26,11 +26,20 @@ namespace ScoramAPI.Controllers
         // GET /api/public-stats -- anonymous. Real counts only, never fabricated: PYQ-paper
         // questions + Question Bank questions, published/unblocked exams, and active registered
         // students. Kept as one cheap round trip since this loads on every visit to "/".
+        //
+        // DOUBLE-COUNT FIX -- every PYP (paper) question is auto-mirrored into the Question Bank the
+        // moment it's created (IQuestionBankMirrorService, tracked via
+        // Question.MirroredToQuestionBankQuestionId) purely so it's searchable/reusable elsewhere --
+        // it's the same question, not a second one. bankQuestions must exclude those mirrors, or
+        // this stat inflates itself (a straight paperQuestions + bankQuestions double-counts every
+        // successfully-mirrored PYP question). See ExamsController.GetCombinedQuestionCountAsync for
+        // the same fix applied to the per-exam count.
         [HttpGet]
         public async Task<ActionResult<PublicStatsDto>> Get()
         {
             var paperQuestions = await _db.Questions.CountAsync();
-            var bankQuestions = await _db.QuestionBankQuestions.CountAsync();
+            var bankQuestions = await _db.QuestionBankQuestions
+                .CountAsync(x => !_db.Questions.Any(q => q.MirroredToQuestionBankQuestionId == x.Id));
             var exams = await _db.Exams.CountAsync(e => !e.IsBlocked);
             var students = await _db.Users.CountAsync(u => u.IsActive);
 

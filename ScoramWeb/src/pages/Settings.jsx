@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Lock, Mail, Phone, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Lock, Mail, Phone, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, FileText, Shield } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 export default function Settings() {
@@ -11,7 +12,37 @@ export default function Settings() {
       <ChangePasswordCard />
       <ChangeEmailCard />
       <ChangePhoneCard />
+      <LegalCard />
     </div>
+  );
+}
+
+// Required reading, not a form -- just two links out to the standalone legal pages (see
+// LegalPage.jsx). Same card shell as the settings forms above for visual consistency.
+function LegalCard() {
+  return (
+    <SettingsCard icon={Shield} title="Legal">
+      <div className="mt-3 flex flex-col gap-1">
+        <Link
+          to="/terms"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2.5 rounded-xl2 px-1 py-2 text-sm font-medium text-ink-600 hover:text-primary-600"
+        >
+          <FileText className="h-4 w-4 shrink-0 text-ink-400" strokeWidth={2} />
+          Terms of Service
+        </Link>
+        <Link
+          to="/privacy-policy"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2.5 rounded-xl2 px-1 py-2 text-sm font-medium text-ink-600 hover:text-primary-600"
+        >
+          <Shield className="h-4 w-4 shrink-0 text-ink-400" strokeWidth={2} />
+          Privacy Policy
+        </Link>
+      </div>
+    </SettingsCard>
   );
 }
 

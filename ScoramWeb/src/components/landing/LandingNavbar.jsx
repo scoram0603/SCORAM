@@ -63,7 +63,7 @@ export default function LandingNavbar() {
         <div className="hidden items-center gap-3 lg:flex">
           <Link
             to="/login"
-            className="rounded-xl px-4 py-2.5 text-sm font-semibold text-primary-600 transition-colors hover:bg-primary-50"
+            className="rounded-xl border border-primary-100 bg-white px-4 py-2.5 text-sm font-semibold text-primary-600 transition-colors hover:bg-primary-50"
           >
             Login
           </Link>
@@ -76,19 +76,25 @@ export default function LandingNavbar() {
           </Link>
         </div>
 
+        {/* Was `lg:hidden` while the nav links above only appeared at `xl:flex` -- between 1024px
+            and 1280px that left no hamburger AND no visible nav links, so those links were
+            completely unreachable at that viewport width. Now hidden at exactly the breakpoint
+            where the full nav list takes over, so there's never a dead zone. */}
         <button
           type="button"
-          onClick={() => setDrawerOpen(true)}
-          aria-label="Open menu"
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary-100 text-primary-600 lg:hidden"
+          onClick={() => setDrawerOpen((open) => !open)}
+          aria-label={drawerOpen ? "Close menu" : "Open menu"}
+          aria-expanded={drawerOpen}
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary-100 bg-white text-primary-600 xl:hidden"
         >
-          <Menu className="h-5 w-5" strokeWidth={2.25} />
+          {drawerOpen ? <X className="h-5 w-5" strokeWidth={2.25} /> : <Menu className="h-5 w-5" strokeWidth={2.25} />}
         </button>
       </nav>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer -- must hide at the same breakpoint (`xl`) as the trigger button above, or
+          the button reappears in a range where this drawer is force-hidden and can never open. */}
       <div
-        className={`fixed inset-0 z-50 transition-opacity lg:hidden ${
+        className={`fixed inset-0 z-50 transition-opacity xl:hidden ${
           drawerOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
       >
@@ -128,7 +134,7 @@ export default function LandingNavbar() {
             <Link
               to="/login"
               onClick={() => setDrawerOpen(false)}
-              className="rounded-xl border border-primary-100 px-4 py-3 text-center text-sm font-semibold text-primary-600"
+              className="rounded-xl border border-primary-100 bg-white px-4 py-3 text-center text-sm font-semibold text-primary-600"
             >
               Login
             </Link>

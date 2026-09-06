@@ -58,12 +58,18 @@ namespace ScoramAPI.Controllers
                     Name = e.Name,
                     LogoUrl = e.LogoUrl,
                     IsBlocked = e.IsBlocked,
+                    // PYP half only here -- the PYQ (Question Bank) half is merged in below via
+                    // GetQuestionBankCountsByExamAsync, see that method's own comment for why.
                     QuestionCount = e.Questions.Count + e.Papers.SelectMany(p => p.Questions).Count(),
                     CreatedAt = e.CreatedAt,
                     OrganizationId = e.OrganizationId,
                     OrganizationName = e.Organization != null ? e.Organization.Name : null
                 })
                 .ToListAsync();
+
+            var bankCounts = await GetQuestionBankCountsByExamAsync(_db);
+            foreach (var exam in exams)
+                exam.QuestionCount += bankCounts.GetValueOrDefault(exam.Id);
 
             return Ok(exams);
         }
@@ -85,12 +91,18 @@ namespace ScoramAPI.Controllers
                     Name = e.Name,
                     LogoUrl = e.LogoUrl,
                     IsBlocked = e.IsBlocked,
+                    // PYP half only here -- the PYQ (Question Bank) half is merged in below via
+                    // GetQuestionBankCountsByExamAsync, see that method's own comment for why.
                     QuestionCount = e.Questions.Count + e.Papers.SelectMany(p => p.Questions).Count(),
                     CreatedAt = e.CreatedAt,
                     OrganizationId = e.OrganizationId,
                     OrganizationName = e.Organization != null ? e.Organization.Name : null
                 })
                 .ToListAsync();
+
+            var bankCounts = await GetQuestionBankCountsByExamAsync(_db);
+            foreach (var exam in exams)
+                exam.QuestionCount += bankCounts.GetValueOrDefault(exam.Id);
 
             return Ok(exams);
         }
@@ -222,7 +234,7 @@ namespace ScoramAPI.Controllers
                 Name = exam.Name,
                 LogoUrl = exam.LogoUrl,
                 IsBlocked = exam.IsBlocked,
-                QuestionCount = await _db.Questions.CountAsync(q => q.ExamId == id) + await _db.Papers.Where(p => p.ExamId == id).SelectMany(p => p.Questions).CountAsync(),
+                QuestionCount = await GetCombinedQuestionCountAsync(_db, id),
                 CreatedAt = exam.CreatedAt,
                 OrganizationId = exam.OrganizationId,
                 OrganizationName = updatedOrgName
@@ -255,7 +267,7 @@ namespace ScoramAPI.Controllers
                 Name = exam.Name,
                 LogoUrl = exam.LogoUrl,
                 IsBlocked = exam.IsBlocked,
-                QuestionCount = await _db.Questions.CountAsync(q => q.ExamId == id) + await _db.Papers.Where(p => p.ExamId == id).SelectMany(p => p.Questions).CountAsync(),
+                QuestionCount = await GetCombinedQuestionCountAsync(_db, id),
                 CreatedAt = exam.CreatedAt,
                 OrganizationId = exam.OrganizationId,
                 OrganizationName = orgName
@@ -343,6 +355,64 @@ namespace ScoramAPI.Controllers
             await db.SaveChangesAsync();
             cache[name] = exam;
             return exam;
+        }
+
+        // TOTAL QUESTIONS FIX -- an exam's "Total Questions" must be PYP (legacy Question rows +
+        // Paper-attached Questions) PLUS PYQ (Question Bank questions tagged to this exam via
+        // QuestionBankExamMapping -- the separate, independent-of-any-Paper question bank, section
+        // 21 of the spec). Previously this only ever counted the PYP half, so an exam with e.g. 100
+        // PYP questions and 73 PYQ questions showed "100" everywhere instead of "173".
+        //
+        // IMPORTANT -- do NOT just add the two counts raw. IQuestionBankMirrorService auto-copies
+        // every PYP question into the Question Bank the moment it's created (see
+        // QuestionsController.Create/BulkImportController.Commit, tracked via
+        // Question.MirroredToQuestionBankQuestionId). That mirror exists purely so the PYP content
+        // is searchable/reusable elsewhere -- it's the SAME question, not a second one. Counting it
+        // on both sides would inflate every exam's total by its own mirrored-question count (e.g.
+        // 100 PYP + 73 genuinely-separate PYQ would wrongly show 100 + (100 mirrors + 73) = 273
+        // instead of 173). So the PYQ half here only counts bank questions NOT pointed at by any
+        // Question.MirroredToQuestionBankQuestionId -- i.e. questions actually added straight to the
+        // Question Bank, not a paper's own question surfacing there for search.
+        //
+        // Used by the single-exam endpoints below (Update/SetBlocked); List/AdminList use the bulk
+        // GetQuestionBankCountsByExamAsync version instead since those return many exams at once.
+        // .Any()-based (not a mapping count) so a question tagged to the same exam across several
+        // years (see QuestionBankExamMapping.Year) still only counts once.
+        internal static async Task<int> GetCombinedQuestionCountAsync(ScoramDbContext db, Guid examId)
+        {
+            var pypCount = await db.Questions.CountAsync(q => q.ExamId == examId)
+                + await db.Papers.Where(p => p.ExamId == examId).SelectMany(p => p.Questions).CountAsync();
+            var pyqCount = await db.QuestionBankQuestions
+                .CountAsync(x => x.IsActive
+                    && x.ExamMappings.Any(m => m.ExamId == examId)
+                    && !db.Questions.Any(q => q.MirroredToQuestionBankQuestionId == x.Id));
+            return pypCount + pyqCount;
+        }
+
+        // Bulk sibling of GetCombinedQuestionCountAsync's PYQ half, for List/AdminList which return
+        // every exam in one round trip -- one aggregate query instead of one subquery per exam.
+        // Same two safeguards as the single-exam version above: excludes bank questions that are
+        // just an auto-mirror of an already-counted PYP question, and dedupes (QuestionId, ExamId)
+        // pairs so a question tagged to one exam across multiple years only counts once for it.
+        private static async Task<Dictionary<Guid, int>> GetQuestionBankCountsByExamAsync(ScoramDbContext db)
+        {
+            var mirroredBankQuestionIds = await db.Questions
+                .Where(q => q.MirroredToQuestionBankQuestionId != null)
+                .Select(q => q.MirroredToQuestionBankQuestionId!.Value)
+                .Distinct()
+                .ToListAsync();
+            var mirroredSet = mirroredBankQuestionIds.ToHashSet();
+
+            var pairs = await db.QuestionBankQuestions
+                .Where(x => x.IsActive)
+                .SelectMany(x => x.ExamMappings.Select(m => new { QuestionId = x.Id, m.ExamId }))
+                .Distinct()
+                .ToListAsync();
+
+            return pairs
+                .Where(p => !mirroredSet.Contains(p.QuestionId))
+                .GroupBy(p => p.ExamId)
+                .ToDictionary(g => g.Key, g => g.Count());
         }
 
         // Shared by Delete, CleanupIfEmpty above, and PapersController.Create (which stamps
