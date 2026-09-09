@@ -140,6 +140,11 @@ export default function BulkImportPanel({ paperId, token, paperStatus = "Draft",
       refreshHistory();
     } catch (err) {
       setError(friendlyError(err));
+      // See QuestionBankUploadWizard's identical handling -- a timed-out commit may still complete
+      // server-side, so keep polling history instead of leaving the admin to guess/re-try.
+      if (err?.data?.timedOut) {
+        [5000, 10000, 20000, 30000].forEach((delay) => setTimeout(refreshHistory, delay));
+      }
     } finally {
       setCommitting(false);
     }

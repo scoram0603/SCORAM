@@ -70,6 +70,7 @@ export async function apiFetch(path, { method = "GET", body, auth = false, token
       signal,
     });
   } catch (networkError) {
+    if (networkError.name === "AbortError") throw new ApiError(TIMEOUT_MESSAGE, 0, { timedOut: true });
     // Distinguish "backend isn't reachable" from a normal HTTP error, since this is the
     // most common failure mode during local development (API not running / wrong port / CORS).
     throw new ApiError(
@@ -79,6 +80,30 @@ export async function apiFetch(path, { method = "GET", body, auth = false, token
   }
 
   return parseApiResponse(response, resolvedToken, token !== undefined && token !== null);
+}
+
+// Shown when a request is aborted via an AbortController timeout (see withTimeoutSignal below) --
+// deliberately does NOT say "failed" or "couldn't reach the API", because unlike a real network
+// error, the request may well have reached the server and be completing in the background (ASP.NET
+// keeps processing a request after the client gives up on it unless it explicitly checks
+// RequestAborted). Telling the admin to just retry immediately is how a slow-but-successful bulk
+// commit turns into a confusing duplicate attempt -- see QuestionBankUploadWizard's own comment.
+const TIMEOUT_MESSAGE =
+  "This is taking longer than usual. It may still be completing on the server -- please wait a moment, then check Recent Imports before trying again (retrying immediately can create a confusing duplicate attempt).";
+
+// Combines a caller-provided AbortSignal (if any) with a timeout -- used for requests, like a bulk
+// import commit, that can legitimately take a while (many rows / many images) but where an
+// indefinitely-hanging fetch with no feedback is worse than telling the admin what's likely going
+// on. Returns a plain AbortSignal, so it's a drop-in replacement for `signal` in any apiFetch*
+// call above.
+export function withTimeoutSignal(timeoutMs, existingSignal) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  existingSignal?.addEventListener("abort", () => controller.abort());
+  // Not exposed to the caller today, but harmless to clear once the request settles if a future
+  // caller wants to; left as a documented no-op hook rather than adding API surface prematurely.
+  controller.signal.addEventListener("abort", () => clearTimeout(timer));
+  return controller.signal;
 }
 
 /**

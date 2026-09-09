@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchForm, API_BASE_URL } from "../../api/client";
+import { apiFetch, apiFetchForm, API_BASE_URL, withTimeoutSignal } from "../../api/client";
 
 function toQueryString(params = {}) {
   const query = new URLSearchParams();
@@ -32,11 +32,21 @@ export function previewQuestionBankImport(token, file, format, language) {
 
 // POST /api/admin/question-bank/bulk/{jobId}/commit -- rowNumbers omitted = commit every valid row
 // (new questions + duplicates merged into their existing question's exam/year mappings).
+//
+// A large ZIP batch (many rows, each with several images) can genuinely take a while server-side --
+// see QuestionBankAdminController.Commit's own comment on the image-copy parallelization. Rather
+// than let the browser's fetch hang indefinitely with no feedback, this aborts client-side after 2
+// minutes and surfaces a clear "may still be completing, check history" message (see
+// withTimeoutSignal/TIMEOUT_MESSAGE) instead of a generic network-error one -- the request may well
+// still succeed on the server even after the client gives up waiting on it.
+const COMMIT_TIMEOUT_MS = 2 * 60 * 1000;
+
 export function commitQuestionBankImport(token, jobId, rowNumbers) {
   return apiFetch(`/api/admin/question-bank/bulk/${jobId}/commit`, {
     method: "POST",
     token,
     body: { rowNumbers: rowNumbers || null },
+    signal: withTimeoutSignal(COMMIT_TIMEOUT_MS),
   });
 }
 

@@ -353,12 +353,21 @@ namespace ScoramAPI.Controllers
                 // (already used by QuestionBankMirrorService for the same "needs its own independent
                 // copy" reason) no-ops to null for a null source, so this is safe to call
                 // unconditionally even for a non-ZIP import where these are all null.
-                question.QuestionImageUrl = await _fileStorage.CopyImageAsync(row.QuestionImageUrl, "question-images");
-                question.OptionAImageUrl = await _fileStorage.CopyImageAsync(row.OptionAImageUrl, "question-images");
-                question.OptionBImageUrl = await _fileStorage.CopyImageAsync(row.OptionBImageUrl, "question-images");
-                question.OptionCImageUrl = await _fileStorage.CopyImageAsync(row.OptionCImageUrl, "question-images");
-                question.OptionDImageUrl = await _fileStorage.CopyImageAsync(row.OptionDImageUrl, "question-images");
-                question.ExplanationImageUrl = await _fileStorage.CopyImageAsync(row.ExplanationImageUrl, "question-images");
+                // Concurrent instead of sequential -- see the identical comment in
+                // QuestionBankAdminController.Commit for why (this was the same slow pattern there).
+                var questionImageTask = _fileStorage.CopyImageAsync(row.QuestionImageUrl, "question-images");
+                var optionAImageTask = _fileStorage.CopyImageAsync(row.OptionAImageUrl, "question-images");
+                var optionBImageTask = _fileStorage.CopyImageAsync(row.OptionBImageUrl, "question-images");
+                var optionCImageTask = _fileStorage.CopyImageAsync(row.OptionCImageUrl, "question-images");
+                var optionDImageTask = _fileStorage.CopyImageAsync(row.OptionDImageUrl, "question-images");
+                var explanationImageTask = _fileStorage.CopyImageAsync(row.ExplanationImageUrl, "question-images");
+                await Task.WhenAll(questionImageTask, optionAImageTask, optionBImageTask, optionCImageTask, optionDImageTask, explanationImageTask);
+                question.QuestionImageUrl = questionImageTask.Result;
+                question.OptionAImageUrl = optionAImageTask.Result;
+                question.OptionBImageUrl = optionBImageTask.Result;
+                question.OptionCImageUrl = optionCImageTask.Result;
+                question.OptionDImageUrl = optionDImageTask.Result;
+                question.ExplanationImageUrl = explanationImageTask.Result;
 
                 _db.Questions.Add(question);
                 createdQuestions.Add(question);

@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchForm } from "../../api/client";
+import { apiFetch, apiFetchForm, withTimeoutSignal } from "../../api/client";
 
 function toQueryString(params = {}) {
   const query = new URLSearchParams();
@@ -18,12 +18,16 @@ export function previewBulkImport(token, paperId, file) {
 }
 
 // POST /api/admin/bulk-import/{jobId}/commit -- rowNumbers omitted = commit every valid row;
-// pass a subset for a partial import.
+// pass a subset for a partial import. Timeout-guarded the same way as
+// questionBankImport.js's commitQuestionBankImport -- see that file's own comment.
+const COMMIT_TIMEOUT_MS = 2 * 60 * 1000;
+
 export function commitBulkImport(token, jobId, rowNumbers) {
   return apiFetch(`/api/admin/bulk-import/${jobId}/commit`, {
     method: "POST",
     token,
     body: { rowNumbers: rowNumbers || null },
+    signal: withTimeoutSignal(COMMIT_TIMEOUT_MS),
   });
 }
 

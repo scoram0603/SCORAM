@@ -796,9 +796,24 @@ namespace ScoramAPI.Controllers
             var examsTouchedThisBatch = new HashSet<Guid>();
             var candidateEmptyExamIds = new List<Guid>();
 
+            // Deliberately does NOT auto-create a missing exam (unlike BulkPaperImportController's
+            // equivalent, which still uses ExamsController.GetOrCreateExamCachedAsync) -- Question
+            // Bank bulk import can only add content to an exam the admin already created via Manage
+            // Exam. Preview/ValidateAsync already rejects any row naming a non-existent exam, so this
+            // should never actually fire in normal use; it's here as defense-in-depth for the rare
+            // race where an exam gets deleted in the ~30 minutes between Preview and Commit. Throwing
+            // is safe here -- nothing in this loop is persisted until the single SaveChangesAsync
+            // after it, so an exception here aborts the whole commit with nothing written.
             async Task<Exam> ResolveExamAndTrackAsync(string examName)
             {
-                var exam = await ExamsController.GetOrCreateExamCachedAsync(_db, examName, adminId, examCache);
+                var name = examName.Trim();
+                if (!examCache.TryGetValue(name, out var exam))
+                {
+                    exam = await _db.Exams.FirstOrDefaultAsync(e => e.Name == name)
+                        ?? throw new InvalidOperationException(
+                            $"Exam \"{name}\" no longer exists -- it may have been deleted since this file was previewed. Re-upload and try again.");
+                    examCache[name] = exam;
+                }
                 if (!examsTouchedThisBatch.Contains(exam.Id))
                 {
                     var wasEmpty = !await ExamsController.ExamHasContentAsync(_db, exam.Id, exam.Name);
@@ -808,6 +823,8 @@ namespace ScoramAPI.Controllers
                 return exam;
             }
 
+            try
+            {
             foreach (var row in toCommit)
             {
                 if (row.IsDuplicate && row.DuplicateOfQuestionId.HasValue)
@@ -882,12 +899,24 @@ namespace ScoramAPI.Controllers
                 // folder, same reasoning as BulkImportController.Commit -- the whole staging folder
                 // gets deleted once this method finishes. CopyImageAsync no-ops to null for a null
                 // source, so safe to call unconditionally for a non-ZIP import too.
-                question.QuestionImageUrl = await _fileStorage.CopyImageAsync(row.QuestionImageUrl, "question-images");
-                question.OptionAImageUrl = await _fileStorage.CopyImageAsync(row.OptionAImageUrl, "question-images");
-                question.OptionBImageUrl = await _fileStorage.CopyImageAsync(row.OptionBImageUrl, "question-images");
-                question.OptionCImageUrl = await _fileStorage.CopyImageAsync(row.OptionCImageUrl, "question-images");
-                question.OptionDImageUrl = await _fileStorage.CopyImageAsync(row.OptionDImageUrl, "question-images");
-                question.ExplanationImageUrl = await _fileStorage.CopyImageAsync(row.ExplanationImageUrl, "question-images");
+                //
+                // Run all six fields' copies concurrently instead of one-at-a-time -- each is an
+                // independent network call to Azure Blob Storage (the SDK client is safe for
+                // concurrent use), and a big ZIP batch doing this sequentially per row is the main
+                // reason a large commit can take long enough to look "stuck" from the browser.
+                var questionImageTask = _fileStorage.CopyImageAsync(row.QuestionImageUrl, "question-images");
+                var optionAImageTask = _fileStorage.CopyImageAsync(row.OptionAImageUrl, "question-images");
+                var optionBImageTask = _fileStorage.CopyImageAsync(row.OptionBImageUrl, "question-images");
+                var optionCImageTask = _fileStorage.CopyImageAsync(row.OptionCImageUrl, "question-images");
+                var optionDImageTask = _fileStorage.CopyImageAsync(row.OptionDImageUrl, "question-images");
+                var explanationImageTask = _fileStorage.CopyImageAsync(row.ExplanationImageUrl, "question-images");
+                await Task.WhenAll(questionImageTask, optionAImageTask, optionBImageTask, optionCImageTask, optionDImageTask, explanationImageTask);
+                question.QuestionImageUrl = questionImageTask.Result;
+                question.OptionAImageUrl = optionAImageTask.Result;
+                question.OptionBImageUrl = optionBImageTask.Result;
+                question.OptionCImageUrl = optionCImageTask.Result;
+                question.OptionDImageUrl = optionDImageTask.Result;
+                question.ExplanationImageUrl = explanationImageTask.Result;
 
                 foreach (var ey in row.ExamYears)
                 {
@@ -901,6 +930,13 @@ namespace ScoramAPI.Controllers
 
                 _db.QuestionBankQuestions.Add(question);
                 importedCount++;
+            }
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Thrown by ResolveExamAndTrackAsync above -- nothing was saved (see that method's own
+                // comment), so it's safe to just report the problem rather than committing anything.
+                return BadRequest(new { message = ex.Message });
             }
 
             job.Status = ImportJobStatus.Committed;

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Pencil, Ban, CheckCircle2, Trash2, X } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
-import { listAdminExams, createExam, updateExam, setExamBlocked, deleteExam } from "../api/exams";
+import { listAdminExams, createExam, updateExam, setExamBlocked } from "../api/exams";
 import { listAdminOrganizations } from "../api/organizations";
 import { PageHeader, Card, Button, FormField, TextInput, Select, Alert, friendlyError } from "../components/AdminUI";
+import ExamDeleteModal from "../components/ExamDeleteModal";
 import { API_BASE_URL } from "../../api/client";
 
 function logoSrc(url) {
@@ -29,6 +30,7 @@ export default function ExamManagement() {
   const [orgFilter, setOrgFilter] = useState(""); // "" = all, "__unassigned" = no Organization
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingExam, setEditingExam] = useState(null);
+  const [deletingExam, setDeletingExam] = useState(null);
 
   useEffect(() => {
     refresh();
@@ -66,13 +68,17 @@ export default function ExamManagement() {
     }
   }
 
-  async function handleDelete(exam) {
-    if (!window.confirm(`Delete "${exam.name}"? This can't be undone.`)) return;
-    try {
-      await deleteExam(token, exam.id);
-      setExams((prev) => prev.filter((e) => e.id !== exam.id));
-    } catch (err) {
-      window.alert(friendlyError(err));
+  // Deleting an exam always goes through ExamDeleteModal now -- a strict warning + explicit
+  // paper/PYQ-year selection + typed-name confirmation, since the underlying endpoint (unlike the
+  // old plain delete) will force-remove real content and real student activity, not just refuse if
+  // the exam isn't already empty. See ExamDeleteModal's own comment for the full flow. Doesn't close
+  // the modal itself -- it shows its own success summary with a Close button, so the admin gets to
+  // read what was actually removed before it goes away.
+  function handleExamDeleted(examId, result) {
+    if (result.examDeleted) {
+      setExams((prev) => prev.filter((e) => e.id !== examId));
+    } else {
+      refresh(); // partial delete -- question counts on the remaining exam changed
     }
   }
 
@@ -80,7 +86,7 @@ export default function ExamManagement() {
     <div>
       <PageHeader
         title="Manage Exams"
-        subtitle="Rename, re-logo, block, delete, or map an exam to its Organization. Blocking hides an exam from students without deleting anything."
+        subtitle="Rename, re-logo, block, delete, or map an exam to its Organization. Blocking hides an exam from students without deleting anything; deleting is permanent and can remove real questions and student activity -- see the warning on the delete screen."
         action={
           <Button variant="secondary" onClick={() => setShowCreateForm((s) => !s)}>
             <Plus className="h-4 w-4" strokeWidth={2.5} />
@@ -115,6 +121,17 @@ export default function ExamManagement() {
                 setEditingExam(null);
               }}
               onCancel={() => setEditingExam(null)}
+            />
+          </div>
+        )}
+
+        {deletingExam && (
+          <div className="mb-4">
+            <ExamDeleteModal
+              exam={deletingExam}
+              token={token}
+              onClose={() => setDeletingExam(null)}
+              onDeleted={handleExamDeleted}
             />
           </div>
         )}
@@ -178,7 +195,7 @@ export default function ExamManagement() {
                     {exam.isBlocked ? "Unblock" : "Block"}
                   </Button>
                   {isSuperAdmin && (
-                    <Button variant="danger" onClick={() => handleDelete(exam)}>
+                    <Button variant="danger" onClick={() => setDeletingExam(exam)}>
                       <Trash2 className="h-4 w-4" strokeWidth={2.25} />
                     </Button>
                   )}

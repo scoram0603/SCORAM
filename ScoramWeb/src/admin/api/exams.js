@@ -58,3 +58,34 @@ export function deleteExam(token, examId) {
 export function cleanupEmptyExam(token, examId) {
   return apiFetch(`/api/admin/exams/${examId}/empty-cleanup`, { method: "DELETE", token });
 }
+
+// ---------- Force-delete-an-exam (Manage Exam "Delete" flow, SuperAdmin only) ----------
+// Separate from the plain deleteExam above, which only ever removes an exam that's already empty.
+// This pair powers a much more dangerous flow: delete a whole exam (or a chosen subset of its
+// papers/PYQ years) along with every real question and every bit of student activity attached to
+// it. See ExamsController.GetDeleteOptions/DeleteCascade for the full reasoning server-side.
+
+// GET /api/admin/exams/{id}/delete-options -- everything ExamDeleteModal needs to render the
+// warning + selection screen: { examId, examName, papers: [...], pyqYears: [...],
+// legacyQuestionCount, usage: {...} }.
+export function getExamDeleteOptions(token, examId) {
+  return apiFetch(`/api/admin/exams/${examId}/delete-options`, { token });
+}
+
+// POST /api/admin/exams/{id}/delete-cascade -- the actual delete. confirmExamName must exactly
+// match the exam's current name (case-insensitive) -- re-checked server-side regardless of the
+// frontend's own confirmation input. Either deleteAll, or a specific paperIds/pyqYears selection
+// (both may be given together). Returns { examDeleted, papersDeleted, pypQuestionsDeleted,
+// pyqQuestionsDeleted, pyqMappingsRemoved }.
+export function deleteExamCascade(token, examId, { confirmExamName, deleteAll, paperIds, pyqYears }) {
+  return apiFetch(`/api/admin/exams/${examId}/delete-cascade`, {
+    method: "POST",
+    token,
+    body: {
+      confirmExamName,
+      deleteAll: !!deleteAll,
+      paperIds: paperIds && paperIds.length > 0 ? paperIds : null,
+      pyqYears: pyqYears && pyqYears.length > 0 ? pyqYears : null,
+    },
+  });
+}

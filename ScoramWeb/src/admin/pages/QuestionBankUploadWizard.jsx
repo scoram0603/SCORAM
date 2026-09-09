@@ -175,6 +175,15 @@ export default function QuestionBankUploadWizard() {
       refreshHistory();
     } catch (err) {
       setError(friendlyError(err));
+      // A timed-out commit (see commitQuestionBankImport's own comment) may still complete on the
+      // server after the browser gives up waiting -- keep refreshing "Recent imports" for a bit so
+      // the real outcome (Committed with its actual count, ready to roll back if needed) shows up
+      // here without the admin needing to guess and re-try. Real network/validation errors don't get
+      // this treatment -- only a client-side timeout does, since only that one is ambiguous about
+      // whether the server actually finished.
+      if (err?.data?.timedOut) {
+        [5000, 10000, 20000, 30000].forEach((delay) => setTimeout(refreshHistory, delay));
+      }
     } finally {
       setCommitting(false);
     }

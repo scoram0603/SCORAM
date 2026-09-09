@@ -315,6 +315,15 @@ namespace ScoramAPI.Services
                 .GroupBy(q => q.NormalizedQuestionText)
                 .ToDictionary(g => g.Key, g => g.First());
 
+            // Bulk import must never silently create a new Exam -- an Exam+Year pair can only
+            // reference an exam the admin already created via Manage Exam (ExamsController.Create).
+            // Loaded once here (not per-row) and checked against every row's parsed ExamYears below;
+            // a row naming an exam that doesn't exist yet is marked invalid with a message pointing
+            // the admin at Manage Exam, instead of Commit silently calling GetOrCreateExamCachedAsync
+            // the way it used to.
+            var existingExamNames = await db.Exams.Select(e => e.Name).ToListAsync();
+            var existingExamNameSet = new HashSet<string>(existingExamNames, StringComparer.OrdinalIgnoreCase);
+
             var seenInBatch = new Dictionary<string, int>(); // normalized text -> first RowNumber that used it
 
             foreach (var row in rows)
@@ -358,6 +367,18 @@ namespace ScoramAPI.Services
                 foreach (var err in examYearErrors) row.Errors.Add(err);
                 if (row.ExamYears.Count == 0 && examYearErrors.Count == 0)
                     row.Errors.Add("At least one Exam+Year is required, e.g. \"SSC CGL:2018; UP TGT:2022\".");
+
+                // Every exam named in this row must already exist in Manage Exam -- see
+                // existingExamNameSet's own comment above. Reported per distinct missing name (not
+                // per pair) so a row repeating the same typo'd exam across two years doesn't show the
+                // same error twice.
+                var missingExamNames = row.ExamYears
+                    .Select(ey => ey.ExamName!.Trim())
+                    .Where(name => !existingExamNameSet.Contains(name))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                foreach (var missingName in missingExamNames)
+                    row.Errors.Add($"Exam \"{missingName}\" doesn't exist yet -- create it first in Manage Exam, then re-upload or fix this row.");
 
                 if (!string.IsNullOrWhiteSpace(row.QuestionText))
                 {
