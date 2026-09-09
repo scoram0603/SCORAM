@@ -53,6 +53,13 @@ namespace ScoramAPI.Models
         // ExpiryMinutes (currently 24h), so a genuinely active student re-logs in roughly daily anyway.
         public DateTime? LastActiveAt { get; set; }
 
+        // DIRECT MESSAGES -- "last seen" for the DM presence indicator. Deliberately separate from
+        // LastActiveAt above: that one only moves on login and is a poor proxy for "was this student
+        // just looking at their Messages tab" (could be a day stale). This is set the moment a
+        // student's last DM-section connection drops (see ChatHub.PersistAndBroadcastDmOfflineAsync)
+        // -- null until they've had the Messages tab open at least once.
+        public DateTime? DmLastSeenAt { get; set; }
+
         // Navigation properties
         public ICollection<QuestionSolution> QuestionSolutions { get; set; } = new List<QuestionSolution>();
         public ICollection<QuestionReport> QuestionReports { get; set; } = new List<QuestionReport>();

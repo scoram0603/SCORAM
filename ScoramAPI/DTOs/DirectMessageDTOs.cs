@@ -25,6 +25,13 @@ namespace ScoramAPI.DTOs
         public string? LastMessageType { get; set; }
         public DateTime LastMessageAt { get; set; }
         public int UnreadCount { get; set; }
+
+        // DM presence -- IsOnline reflects IDmPresenceService at request time (a snapshot; the client
+        // gets live updates after this via the hub's DmPresenceUpdated event). LastSeenAt is only
+        // meaningful when IsOnline is false, and is null if this student has never had the Messages
+        // section open (see User.DmLastSeenAt).
+        public bool IsOnline { get; set; }
+        public DateTime? LastSeenAt { get; set; }
     }
 
     // [FromForm]-bound -- a message is either text, an attachment (image/document/audio), or both

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, Send, Paperclip, Mic, X, FileText, ImageIcon, Loader2, ChevronUp, Play, Pause, Trash2, Share2,
+  Check, CheckCheck,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useChatConnection } from "../../context/ChatConnectionContext";
 import { getDirectMessages, sendDirectMessage, markConversationRead, deleteDirectMessage } from "../../api/directMessages";
 import { API_BASE_URL } from "../../api/client";
+import { timeAgo } from "../../utils/format";
 import { Avatar } from "./ConversationsList";
 import AudioRecorder from "./AudioRecorder";
 
@@ -14,12 +16,26 @@ function fileSrc(url) {
   return url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
 }
 
+function lastSeenText(lastSeenAt) {
+  const ago = timeAgo(lastSeenAt);
+  // timeAgo returns "just now" as a complete phrase already (no unit to suffix "ago" onto), unlike
+  // its other outputs ("5m", "2h", "3d") which read as a plain duration.
+  return ago === "just now" ? "Last seen just now" : `Last seen ${ago} ago`;
+}
+
 export default function ConversationThread({ conversation, onBack, onMessageSent }) {
   const { user } = useAuth();
   const { connection } = useChatConnection();
   const [messages, setMessages] = useState([]);
   const [status, setStatus] = useState("loading");
   const [hasMore, setHasMore] = useState(true);
+  // Seeded from the list's own snapshot (see ConversationSummaryDto), kept live below -- there's no
+  // GET-by-id for a single conversation, so this is the only initial value available, same reasoning
+  // as `conversation` itself being passed in whole via props rather than re-fetched here.
+  const [presence, setPresence] = useState({
+    isOnline: conversation.isOnline,
+    lastSeenAt: conversation.lastSeenAt,
+  });
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -35,6 +51,25 @@ export default function ConversationThread({ conversation, onBack, onMessageSent
     markConversationRead(conversation.id).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation.id]);
+
+  // This component is reused across different open threads (GroupChat.jsx doesn't remount it, just
+  // passes a new `conversation` prop), so `presence` needs an explicit reset back to the new thread's
+  // own snapshot -- otherwise switching from an online contact to an offline one would carry the old
+  // "Active now" over for a moment.
+  useEffect(() => {
+    setPresence({ isOnline: conversation.isOnline, lastSeenAt: conversation.lastSeenAt });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation.id]);
+
+  useEffect(() => {
+    if (!connection) return undefined;
+    const onPresence = ({ userId, isOnline, lastSeenAt }) => {
+      if (userId !== conversation.otherUserId) return;
+      setPresence({ isOnline, lastSeenAt });
+    };
+    connection.on("DmPresenceUpdated", onPresence);
+    return () => connection.off("DmPresenceUpdated", onPresence);
+  }, [connection, conversation.otherUserId]);
 
   useEffect(() => {
     if (!connection) return;
@@ -101,10 +136,16 @@ export default function ConversationThread({ conversation, onBack, onMessageSent
         <button type="button" onClick={onBack} className="text-ink-400 hover:text-ink-600">
           <ArrowLeft className="h-5 w-5" strokeWidth={2.25} />
         </button>
-        <Avatar photoUrl={conversation.otherPhotoUrl} fullName={conversation.otherFullName} size="h-9 w-9" />
+        <Avatar photoUrl={conversation.otherPhotoUrl} fullName={conversation.otherFullName} size="h-9 w-9" isOnline={presence.isOnline} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-ink-900">{conversation.otherFullName}</p>
-          <p className="text-xs text-ink-400">@{conversation.otherUsername}</p>
+          <p className={`truncate text-xs ${presence.isOnline ? "font-semibold text-emerald-600" : "text-ink-400"}`}>
+            {presence.isOnline
+              ? "Active now"
+              : presence.lastSeenAt
+                ? lastSeenText(presence.lastSeenAt)
+                : `@${conversation.otherUsername}`}
+          </p>
         </div>
       </div>
 
@@ -197,8 +238,17 @@ function MessageBubble({ message, isOwn, onDelete }) {
             )}
           </>
         )}
-        <p className={`mt-1 text-[10px] ${isOwn ? "text-white/70" : "text-ink-400"}`}>
+        <p className={`mt-1 flex items-center gap-1 text-[10px] ${isOwn ? "text-white/70" : "text-ink-400"}`}>
           {new Date(message.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          {/* Sent/seen ticks -- mirrors the mobile app's dm_message_bubble.dart exactly, including its
+              same limitation: this reflects message.isRead at fetch time, not a live push when the
+              other student reads it mid-session (MarkRead has no socket broadcast on either platform
+              yet) -- reopening the thread picks up the real state either way. */}
+          {isOwn && !message.isDeleted && (
+            message.isRead
+              ? <CheckCheck className="h-3 w-3" strokeWidth={2.5} />
+              : <Check className="h-3 w-3" strokeWidth={2.5} />
+          )}
         </p>
       </div>
     </div>

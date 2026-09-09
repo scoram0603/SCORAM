@@ -27,6 +27,29 @@ namespace ScoramAPI.Controllers
             _gamification = gamification;
         }
 
+        // VISIBILITY FIX -- IQuestionBankMirrorService mirrors a PYP question into the Question Bank
+        // the moment it's created (QuestionsController.Create), while its Paper is still Draft --
+        // Create() only ever runs on a Draft paper (see the BadRequest guard there), and the mirror
+        // row defaults to IsActive = true with nothing else gating it. That means every student-facing
+        // endpoint below, filtering on IsActive alone, was showing unreviewed Draft/PendingReview
+        // paper content in the public "PYQs" page before an admin ever clicked Publish -- exactly the
+        // leak BackfillQuestionBankMirrors's own comment says shouldn't happen ("a Draft/PendingReview
+        // paper's questions shouldn't leak into Question Bank search before the paper itself is
+        // public"). This is also very likely why subject/exam counts on this page can look "off" --
+        // they were including whatever's mid-edit in Draft right now, not just reviewed, live content.
+        //
+        // Fixed at query time rather than by flipping IsActive on Publish, so it self-corrects through
+        // Unpublish -> edit -> Publish cycles automatically and never needs a migration: a bank
+        // question is visible here when EITHER it was never mirrored from any Paper question at all
+        // (added straight to the Bank -- always visible, unaffected by any Paper's status) OR at least
+        // one of its mirror-source Questions belongs to a Published paper. IsActive is untouched and
+        // still means exactly what it always did (an admin's own manual enable/disable of a Bank
+        // question), just ANDed with this new "not still-only-a-draft" condition.
+        private IQueryable<QuestionBankQuestion> VisibleQuestions() =>
+            _db.QuestionBankQuestions.Where(x => x.IsActive
+                && (!_db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == x.Id)
+                    || _db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == x.Id && src.Paper!.Status == PaperStatus.Published)));
+
         // GET /api/question-bank/search?search=&subjectIds=&topicIds=&examIds=&years=&languages=&page=&pageSize=
         // Server-side search + filtering + pagination throughout (section 15/16) -- never loads the
         // whole table into memory, works the same whether the bank has 500 questions or 500,000.
@@ -36,9 +59,7 @@ namespace ScoramAPI.Controllers
             var page = Math.Max(1, query.Page);
             var pageSize = Math.Clamp(query.PageSize, 1, 100);
 
-            var q = _db.QuestionBankQuestions
-                .Where(x => x.IsActive)
-                .AsQueryable();
+            var q = VisibleQuestions();
 
             if (!string.IsNullOrWhiteSpace(query.Search))
             {
@@ -139,12 +160,12 @@ namespace ScoramAPI.Controllers
         [HttpGet("{id:guid}")]
         public async Task<ActionResult<QuestionBankQuestionResponseDto>> GetById(Guid id)
         {
-            var question = await _db.QuestionBankQuestions
+            var question = await VisibleQuestions()
                 .Include(x => x.Subject)
                 .Include(x => x.Topic)
                 .Include(x => x.ExamMappings).ThenInclude(m => m.Exam)
                 .Include(x => x.Solutions)
-                .FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
+                .FirstOrDefaultAsync(x => x.Id == id);
 
             if (question == null) return NotFound(new { message = "Question not found." });
 
@@ -171,7 +192,7 @@ namespace ScoramAPI.Controllers
         [Authorize(Roles = "Student")]
         public async Task<IActionResult> MarkSolved(Guid id)
         {
-            var questionExists = await _db.QuestionBankQuestions.AnyAsync(q => q.Id == id && q.IsActive);
+            var questionExists = await VisibleQuestions().AnyAsync(q => q.Id == id);
             if (!questionExists) return NotFound(new { message = "Question not found." });
 
             var userId = User.GetUserId();
@@ -202,7 +223,13 @@ namespace ScoramAPI.Controllers
                     Id = s.Id,
                     Name = s.Name,
                     IsActive = s.IsActive,
-                    QuestionCount = s.Questions.Count(q => q.IsActive)
+                    // Same visibility rule as VisibleQuestions() above (kept inline here since this
+                    // runs inside a Select projection over QuestionBankSubjects, not QuestionBankQuestions) --
+                    // otherwise a subject's count would include questions still sitting in an
+                    // unpublished paper's Draft, which is exactly the leak this fixes.
+                    QuestionCount = s.Questions.Count(q => q.IsActive
+                        && (!_db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id)
+                            || _db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id && src.Paper!.Status == PaperStatus.Published)))
                 })
                 .ToListAsync();
             return Ok(subjects);
@@ -225,7 +252,11 @@ namespace ScoramAPI.Controllers
                     SubjectName = t.Subject!.Name,
                     Name = t.Name,
                     IsActive = t.IsActive,
-                    QuestionCount = t.Questions.Count(q => q.IsActive)
+                    // Same visibility rule as VisibleQuestions() above, see GetSubjects's own comment
+                    // on why this is inlined here instead of reused directly.
+                    QuestionCount = t.Questions.Count(q => q.IsActive
+                        && (!_db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id)
+                            || _db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id && src.Paper!.Status == PaperStatus.Published)))
                 })
                 .ToListAsync();
             return Ok(topics);
@@ -234,10 +265,14 @@ namespace ScoramAPI.Controllers
         [HttpGet("exams")]
         public async Task<ActionResult<List<object>>> GetExams()
         {
-            // Every exam that's actually tagged on at least one Question Bank question -- not the
-            // full Exams master list, so the dropdown doesn't show exams with zero results in this
-            // feature. Reuses the existing Exam picklist (Models/Exam.cs) rather than a second one.
+            // Every exam that's actually tagged on at least one VISIBLE Question Bank question -- not
+            // the full Exams master list (so the dropdown doesn't show exams with zero visible
+            // results in this feature), and not just "at least one mapping" as before, which could
+            // surface an exam whose only tagged question is still sitting in a Draft paper (see
+            // VisibleQuestions' own comment). Reuses the existing Exam picklist (Models/Exam.cs)
+            // rather than a second one.
             var exams = await _db.QuestionBankExamMappings
+                .Where(m => VisibleQuestions().Any(v => v.Id == m.QuestionBankQuestionId))
                 .Select(m => m.Exam)
                 .Where(e => e != null)
                 .Distinct()
@@ -250,7 +285,10 @@ namespace ScoramAPI.Controllers
         [HttpGet("years")]
         public async Task<ActionResult<List<int>>> GetYears()
         {
+            // Same visibility rule as GetExams above -- a year should only show up here if it has at
+            // least one question a student can actually see.
             var years = await _db.QuestionBankExamMappings
+                .Where(m => VisibleQuestions().Any(v => v.Id == m.QuestionBankQuestionId))
                 .Select(m => m.Year)
                 .Distinct()
                 .OrderByDescending(y => y)

@@ -26,9 +26,11 @@ export function ChatConnectionProvider({ children }) {
       .withAutomaticReconnect()
       .build();
 
-    // The events this provider cares about globally -- everything room-specific (ReceiveMessage,
-    // MessageDeleted, PollUpdated, ChatLockChanged, MemberRemoved) is subscribed to directly by
-    // whichever room's chat view is currently open, via the shared `connection` below.
+    // The events this provider cares about globally -- everything room/DM-view-specific
+    // (ReceiveMessage, MessageDeleted, PollUpdated, ChatLockChanged, MemberRemoved, and DM presence's
+    // DmPresenceUpdated) is subscribed to directly by whichever view is currently open, via the shared
+    // `connection` below -- ConversationsList and ConversationThread do exactly that for
+    // DmPresenceUpdated.
     conn.on("ReceiveMention", (message) => setLatestMention(message));
     conn.on("ReceiveDirectMessage", (message) => setLatestDirectMessage(message));
     conn.on("ReceiveNotification", (notification) => setLatestNotification(notification));
@@ -51,12 +53,20 @@ export function ChatConnectionProvider({ children }) {
 
   const joinRoomGroup = useCallback((roomId) => connection?.invoke("JoinRoomGroup", roomId).catch(() => {}), [connection]);
   const leaveRoomGroup = useCallback((roomId) => connection?.invoke("LeaveRoomGroup", roomId).catch(() => {}), [connection]);
+  // Deliberately decoupled from `connection`'s own lifecycle (which spans the whole authenticated
+  // session, for @mentions/notifications on every page) -- these are the DM-section presence signal,
+  // called explicitly by GroupChat.jsx only while its Messages tab is the one actually visible. See
+  // ChatHub's own header comment for why "connection exists" alone isn't a valid proxy for that here.
+  const enterDmSection = useCallback(() => connection?.invoke("EnterDmSection").catch(() => {}), [connection]);
+  const leaveDmSection = useCallback(() => connection?.invoke("LeaveDmSection").catch(() => {}), [connection]);
 
   const value = {
     connection,
     isConnected: Boolean(connection),
     joinRoomGroup,
     leaveRoomGroup,
+    enterDmSection,
+    leaveDmSection,
     latestMention,
     clearLatestMention: () => setLatestMention(null),
     latestDirectMessage,

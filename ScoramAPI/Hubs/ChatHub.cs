@@ -17,22 +17,33 @@ namespace ScoramAPI.Hubs
     //   "user-{userId}"  -- this connection's own personal group; receives ReceiveMention regardless of
     //                        which room the mention happened in or whether that room's group has this
     //                        connection in it right now. Also reused by DirectMessagesController to
-    //                        push ReceiveDirectMessage -- personal 1:1 chat needs no group of its own.
+    //                        push ReceiveDirectMessage, and by EnterDmSection/LeaveDmSection below to
+    //                        push DmPresenceUpdated -- personal 1:1 features need no group of their own.
     //
     // GROUP CHAT -- "Online user list": JoinRoomGroup/LeaveRoomGroup (called when a student opens/
     // closes a specific room's chat view -- see GroupChat.jsx) double as the presence signal, tracked
     // separately in IChatPresenceService since SignalR's own group membership isn't a reliable proxy
     // for that (see OnConnectedAsync below, which pre-joins every room a student belongs to).
+    //
+    // DIRECT MESSAGES -- "Active now" / "Last seen": EnterDmSection/LeaveDmSection are the exact same
+    // idiom as JoinRoomGroup/LeaveRoomGroup, deliberately decoupled from the hub connection's own
+    // lifecycle -- the website keeps one hub connection alive for the whole session (for
+    // @mentions/notifications on every page), so "connection exists" is NOT a valid proxy for "student
+    // is looking at Messages right now" the way it incidentally is on mobile (which only connects the
+    // hub while its Messages tab is open). Tracked in IDmPresenceService, broadcast only to that
+    // student's DM conversation partners (never a global broadcast) via their "user-{id}" groups.
     [Authorize]
     public class ChatHub : Hub
     {
         private readonly ScoramDbContext _db;
         private readonly IChatPresenceService _presence;
+        private readonly IDmPresenceService _dmPresence;
 
-        public ChatHub(ScoramDbContext db, IChatPresenceService presence)
+        public ChatHub(ScoramDbContext db, IChatPresenceService presence, IDmPresenceService dmPresence)
         {
             _db = db;
             _presence = presence;
+            _dmPresence = dmPresence;
         }
 
         public override async Task OnConnectedAsync()
@@ -64,6 +75,12 @@ namespace ScoramAPI.Hubs
             var wentOffline = _presence.RemoveConnection(Context.ConnectionId);
             foreach (var roomId in wentOffline.Select(x => x.RoomId).Distinct())
                 await BroadcastPresenceAsync(roomId);
+
+            // Covers the "app killed / network dropped" case where LeaveDmSection never got called --
+            // same reasoning as the room cleanup above, just for the DM-section signal instead.
+            var dmUserWentOffline = _dmPresence.RemoveConnection(Context.ConnectionId);
+            if (dmUserWentOffline.HasValue)
+                await PersistAndBroadcastDmOfflineAsync(dmUserWentOffline.Value);
 
             await base.OnDisconnectedAsync(exception);
         }
@@ -106,6 +123,62 @@ namespace ScoramAPI.Hubs
                 .ToListAsync();
 
             await Clients.Group($"room-{roomId}").SendAsync("PresenceUpdated", new { roomId, onlineUsers = users });
+        }
+
+        // Called by the client when the Messages/DM screen becomes the visible one -- on mobile that's
+        // GroupChatScreen's DM tab (and staying "in" for as long as a DM thread pushed on top of it is
+        // open too); on the website, ConversationsList/ConversationThread's own mount, independent of
+        // the hub connection itself which is already alive for other reasons. Multiple tabs/devices
+        // calling this for the same user is fine -- only the first one flips them online.
+        public async Task EnterDmSection()
+        {
+            var userId = Context.User!.GetUserId();
+            if (_dmPresence.AddPresence(userId, Context.ConnectionId))
+                await BroadcastDmPresenceAsync(userId, isOnline: true, lastSeenAt: null);
+        }
+
+        // Called when the student navigates away from Messages while remaining connected (the mirror
+        // of LeaveRoomGroup) -- e.g. going back to Home. OnDisconnectedAsync above covers the case
+        // where the connection itself drops instead.
+        public async Task LeaveDmSection()
+        {
+            var userId = Context.User!.GetUserId();
+            if (_dmPresence.RemovePresence(userId, Context.ConnectionId))
+                await PersistAndBroadcastDmOfflineAsync(userId);
+        }
+
+        // Shared by LeaveDmSection and the OnDisconnectedAsync cleanup path -- both mean the same
+        // thing (this student has no DM-section connections left), just discovered two different ways.
+        private async Task PersistAndBroadcastDmOfflineAsync(Guid userId)
+        {
+            var lastSeenAt = DateTime.UtcNow;
+
+            var user = await _db.Users.FindAsync(userId);
+            if (user != null)
+            {
+                user.DmLastSeenAt = lastSeenAt;
+                await _db.SaveChangesAsync();
+            }
+
+            await BroadcastDmPresenceAsync(userId, isOnline: false, lastSeenAt);
+        }
+
+        // Deliberately targeted, never a global broadcast -- only pushed to users who actually share a
+        // DirectConversation with this student (their "contacts", for presence purposes), the same way
+        // WhatsApp-style presence doesn't tell the whole server who's online. Each partner receives it
+        // on their own "user-{id}" group regardless of how many tabs/devices they have open.
+        private async Task BroadcastDmPresenceAsync(Guid userId, bool isOnline, DateTime? lastSeenAt)
+        {
+            var partnerIds = await _db.DirectConversations
+                .Where(c => c.UserAId == userId || c.UserBId == userId)
+                .Select(c => c.UserAId == userId ? c.UserBId : c.UserAId)
+                .ToListAsync();
+
+            foreach (var partnerId in partnerIds)
+            {
+                await Clients.Group($"user-{partnerId}")
+                    .SendAsync("DmPresenceUpdated", new { userId, isOnline, lastSeenAt });
+            }
         }
     }
 }

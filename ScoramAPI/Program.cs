@@ -54,6 +54,7 @@ builder.Services.AddScoped<IQuestionBankMirrorService, QuestionBankMirrorService
 builder.Services.AddScoped<ITestAttemptService, TestAttemptService>(); // SCORAM_TESTS
 builder.Services.AddScoped<IGamificationService, GamificationService>(); // GAMIFICATION
 builder.Services.AddSingleton<IChatPresenceService, ChatPresenceService>(); // GROUP CHAT -- online user list
+builder.Services.AddSingleton<IDmPresenceService, DmPresenceService>(); // DIRECT MESSAGES -- "Active now" / "Last seen"
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IInstantSearchService, InstantSearchService>();

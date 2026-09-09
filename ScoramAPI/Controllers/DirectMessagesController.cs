@@ -16,7 +16,10 @@ namespace ScoramAPI.Controllers
     // is a completely separate model (DirectConversation/DirectMessage, not ChatRoom/ChatMessage).
     // Same real-time approach as room chat though: REST does all persistence/validation, ChatHub's
     // existing "user-{id}" group (already joined by every connection, originally for @mentions) is
-    // reused to push new messages -- no new hub groups or methods needed for this feature at all.
+    // reused to push new messages. Presence ("Active now" / "Last seen") is the one piece that does
+    // need its own hub methods -- see ChatHub.EnterDmSection/LeaveDmSection -- this controller just
+    // reads the current snapshot (IDmPresenceService.IsOnline + User.DmLastSeenAt) into
+    // ConversationSummaryDto below; live updates after that go straight over the hub, not through here.
     [ApiController]
     [Route("api/directmessages")]
     [Authorize(Roles = "Student")]
@@ -26,13 +29,15 @@ namespace ScoramAPI.Controllers
         private readonly IFileStorageService _fileStorage;
         private readonly IHubContext<ChatHub> _hub;
         private readonly INotificationService _notifications;
+        private readonly IDmPresenceService _dmPresence;
 
-        public DirectMessagesController(ScoramDbContext db, IFileStorageService fileStorage, IHubContext<ChatHub> hub, INotificationService notifications)
+        public DirectMessagesController(ScoramDbContext db, IFileStorageService fileStorage, IHubContext<ChatHub> hub, INotificationService notifications, IDmPresenceService dmPresence)
         {
             _db = db;
             _fileStorage = fileStorage;
             _hub = hub;
             _notifications = notifications;
+            _dmPresence = dmPresence;
         }
 
         // GET /api/directmessages/conversations -- sorted by most recent activity, newest first.
@@ -65,7 +70,9 @@ namespace ScoramAPI.Controllers
                 LastMessagePreview = PreviewFor(x.LastMessage),
                 LastMessageType = x.LastMessage?.MessageType.ToString(),
                 LastMessageAt = x.Conversation.LastMessageAt,
-                UnreadCount = x.UnreadCount
+                UnreadCount = x.UnreadCount,
+                IsOnline = _dmPresence.IsOnline(x.OtherUser!.Id),
+                LastSeenAt = x.OtherUser!.DmLastSeenAt
             }).ToList());
         }
 
@@ -108,7 +115,9 @@ namespace ScoramAPI.Controllers
                 LastMessagePreview = null,
                 LastMessageType = null,
                 LastMessageAt = conversation.LastMessageAt,
-                UnreadCount = 0
+                UnreadCount = 0,
+                IsOnline = _dmPresence.IsOnline(otherUser.Id),
+                LastSeenAt = otherUser.DmLastSeenAt
             });
         }
 

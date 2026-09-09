@@ -39,60 +39,70 @@ export default function LandingNavbar() {
   }, [drawerOpen]);
 
   return (
-    <header
-      id="top"
-      className={`sticky top-0 z-40 transition-all ${
-        scrolled ? "bg-white/95 shadow-card backdrop-blur" : "bg-white/70 backdrop-blur-sm"
-      }`}
-    >
-      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:h-20 lg:px-8" aria-label="Main">
-        <a href="#top" className="flex shrink-0 items-center">
-          <img src={logo} alt="SCORAM — Learn, Discuss, Score" className="h-9 w-auto lg:h-11" />
-        </a>
+    <>
+      <header
+        id="top"
+        className={`sticky top-0 z-40 transition-all ${
+          scrolled ? "bg-white/95 shadow-card backdrop-blur" : "bg-white/70 backdrop-blur-sm"
+        }`}
+      >
+        <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:h-20 lg:px-8" aria-label="Main">
+          <a href="#top" className="flex shrink-0 items-center">
+            <img src={logo} alt="SCORAM — Learn, Discuss, Score" className="h-9 w-auto lg:h-11" />
+          </a>
 
-        <div className="hidden items-center gap-7 xl:flex">
-          {navLinks.map((item) => (
-            <NavItem
-              key={item.label}
-              item={item}
-              className="text-[15px] font-medium text-ink-600 transition-colors hover:text-primary-600"
-            />
-          ))}
-        </div>
+          <div className="hidden items-center gap-7 xl:flex">
+            {navLinks.map((item) => (
+              <NavItem
+                key={item.label}
+                item={item}
+                className="text-[15px] font-medium text-ink-600 transition-colors hover:text-primary-600"
+              />
+            ))}
+          </div>
 
-        <div className="hidden items-center gap-3 lg:flex">
-          <Link
-            to="/login"
-            className="rounded-xl border border-primary-100 bg-white px-4 py-2.5 text-sm font-semibold text-primary-600 transition-colors hover:bg-primary-50"
+          <div className="hidden items-center gap-3 lg:flex">
+            <Link
+              to="/login"
+              className="rounded-xl border border-primary-100 bg-white px-4 py-2.5 text-sm font-semibold text-primary-600 transition-colors hover:bg-primary-50"
+            >
+              Login
+            </Link>
+            <Link
+              to="/login?mode=register"
+              className="flex items-center gap-1.5 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-floating transition-colors hover:bg-primary-700"
+            >
+              Sign Up
+              <ArrowRight className="h-4 w-4" strokeWidth={2.5} />
+            </Link>
+          </div>
+
+          {/* Was `lg:hidden` while the nav links above only appeared at `xl:flex` -- between 1024px
+              and 1280px that left no hamburger AND no visible nav links, so those links were
+              completely unreachable at that viewport width. Now hidden at exactly the breakpoint
+              where the full nav list takes over, so there's never a dead zone. */}
+          <button
+            type="button"
+            onClick={() => setDrawerOpen((open) => !open)}
+            aria-label={drawerOpen ? "Close menu" : "Open menu"}
+            aria-expanded={drawerOpen}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary-100 bg-white text-primary-600 xl:hidden"
           >
-            Login
-          </Link>
-          <Link
-            to="/login?mode=register"
-            className="flex items-center gap-1.5 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-floating transition-colors hover:bg-primary-700"
-          >
-            Sign Up
-            <ArrowRight className="h-4 w-4" strokeWidth={2.5} />
-          </Link>
-        </div>
+            {drawerOpen ? <X className="h-5 w-5" strokeWidth={2.25} /> : <Menu className="h-5 w-5" strokeWidth={2.25} />}
+          </button>
+        </nav>
+      </header>
 
-        {/* Was `lg:hidden` while the nav links above only appeared at `xl:flex` -- between 1024px
-            and 1280px that left no hamburger AND no visible nav links, so those links were
-            completely unreachable at that viewport width. Now hidden at exactly the breakpoint
-            where the full nav list takes over, so there's never a dead zone. */}
-        <button
-          type="button"
-          onClick={() => setDrawerOpen((open) => !open)}
-          aria-label={drawerOpen ? "Close menu" : "Open menu"}
-          aria-expanded={drawerOpen}
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary-100 bg-white text-primary-600 xl:hidden"
-        >
-          {drawerOpen ? <X className="h-5 w-5" strokeWidth={2.25} /> : <Menu className="h-5 w-5" strokeWidth={2.25} />}
-        </button>
-      </nav>
-
-      {/* Mobile drawer -- must hide at the same breakpoint (`xl`) as the trigger button above, or
-          the button reappears in a range where this drawer is force-hidden and can never open. */}
+      {/* Mobile drawer -- deliberately rendered as a SIBLING of <header>, not nested inside it.
+          <header> always carries `backdrop-blur`/`backdrop-blur-sm` (line above), and on iOS
+          Safari an element with `backdrop-filter` establishes a new containing block for any
+          `position: fixed` descendant -- so this drawer (fixed inset-0) was being confined to
+          header's own ~64-80px height instead of the full viewport. That's what made the drawer's
+          own mini-header (logo + X) render, immediately squeeze out the nav-links list, and push
+          the Login/Sign Up footer up to overlap the Hero section right below it. Keeping the
+          drawer outside <header> entirely sidesteps that quirk -- it's still positioned via its
+          own `fixed inset-0` relative to the real viewport. Hides at `xl` to match the trigger
+          button above. */}
       <div
         className={`fixed inset-0 z-50 transition-opacity xl:hidden ${
           drawerOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
@@ -148,6 +158,6 @@ export default function LandingNavbar() {
           </div>
         </div>
       </div>
-    </header>
+    </>
   );
 }

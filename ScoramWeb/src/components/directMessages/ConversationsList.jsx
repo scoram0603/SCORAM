@@ -3,6 +3,7 @@ import { Search, Loader2, MessageCircleOff, X } from "lucide-react";
 import { listConversations, searchUsers, startConversation } from "../../api/directMessages";
 import { API_BASE_URL } from "../../api/client";
 import { timeAgo } from "../../utils/format";
+import { useChatConnection } from "../../context/ChatConnectionContext";
 
 function photoSrc(url) {
   if (!url) return null;
@@ -23,12 +24,27 @@ export default function ConversationsList({ onOpenConversation, refreshSignal })
   const [searching, setSearching] = useState(false);
   const [startingUserId, setStartingUserId] = useState(null);
   const debounceRef = useRef(null);
+  const { connection } = useChatConnection();
 
   useEffect(() => {
     refresh();
     // refreshSignal bumps whenever a new message arrives elsewhere in the app, so the list
     // (previews, unread counts, ordering) stays live without the user having to navigate away and back.
   }, [refreshSignal]);
+
+  // Live "Active now" / "Last seen" for every row -- subscribed directly here (not via context-level
+  // state) since this is exactly the DM-view-specific case ChatConnectionContext's own comment
+  // describes: only whichever view is actually showing these users needs the event.
+  useEffect(() => {
+    if (!connection) return undefined;
+    const onPresence = ({ userId, isOnline, lastSeenAt }) => {
+      setConversations((prev) =>
+        prev.map((c) => (c.otherUserId === userId ? { ...c, isOnline, lastSeenAt } : c))
+      );
+    };
+    connection.on("DmPresenceUpdated", onPresence);
+    return () => connection.off("DmPresenceUpdated", onPresence);
+  }, [connection]);
 
   function refresh() {
     setStatus("loading");
@@ -154,7 +170,7 @@ export default function ConversationsList({ onOpenConversation, refreshSignal })
                   onClick={() => onOpenConversation(c)}
                   className="flex items-center gap-3 rounded-xl2 border border-primary-100 bg-white p-3 text-left shadow-card transition-colors hover:bg-primary-50/40"
                 >
-                  <Avatar photoUrl={c.otherPhotoUrl} fullName={c.otherFullName} />
+                  <Avatar photoUrl={c.otherPhotoUrl} fullName={c.otherFullName} isOnline={c.isOnline} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center justify-between gap-2">
                       <span className="truncate text-sm font-bold text-ink-900">{c.otherFullName}</span>
@@ -179,12 +195,21 @@ export default function ConversationsList({ onOpenConversation, refreshSignal })
   );
 }
 
-export function Avatar({ photoUrl, fullName, size = "h-11 w-11" }) {
-  return photoSrc(photoUrl) ? (
-    <img src={photoSrc(photoUrl)} alt="" className={`${size} shrink-0 rounded-full object-cover`} />
-  ) : (
-    <span className={`flex ${size} shrink-0 items-center justify-center rounded-full bg-secondary-50 text-sm font-bold text-secondary-500`}>
-      {initialsFor(fullName)}
+export function Avatar({ photoUrl, fullName, size = "h-11 w-11", isOnline = false }) {
+  return (
+    <span className="relative inline-flex shrink-0">
+      {photoSrc(photoUrl) ? (
+        <img src={photoSrc(photoUrl)} alt="" className={`${size} shrink-0 rounded-full object-cover`} />
+      ) : (
+        <span className={`flex ${size} shrink-0 items-center justify-center rounded-full bg-secondary-50 text-sm font-bold text-secondary-500`}>
+          {initialsFor(fullName)}
+        </span>
+      )}
+      {/* "Active now" dot -- see ConversationSummaryDto.isOnline's own comment for what it does/
+          doesn't reflect (Messages-tab-scoped, not "site is open in some other tab"). */}
+      {isOnline && (
+        <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
+      )}
     </span>
   );
 }

@@ -37,7 +37,17 @@ export default function GroupChat() {
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [dmRefreshSignal, setDmRefreshSignal] = useState(0);
-  const { latestDirectMessage, clearLatestDirectMessage } = useChatConnection();
+  const { latestDirectMessage, clearLatestDirectMessage, enterDmSection, leaveDmSection } = useChatConnection();
+
+  // Mirrors the mobile app's GroupChatScreen tab-switch handling — DM "Active now" presence (see
+  // ChatHub.EnterDmSection/LeaveDmSection) is tied to the Messages tab being the visible one, not to
+  // this connection's own lifecycle (which spans the whole session here, unlike mobile). Re-runs once
+  // `connection` in the context populates too, since enterDmSection/leaveDmSection are no-ops until then.
+  useEffect(() => {
+    if (tab !== "messages") return undefined;
+    enterDmSection();
+    return () => leaveDmSection();
+  }, [tab, enterDmSection, leaveDmSection]);
 
   // Bumps the Messages list's refresh signal on any DM activity anywhere in the app (even while
   // looking at Rooms), so previews/unread counts/ordering are never stale when the user switches tabs.
