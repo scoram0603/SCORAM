@@ -51,6 +51,16 @@ export function deleteExam(token, examId) {
   return apiFetch(`/api/admin/exams/${examId}`, { method: "DELETE", token });
 }
 
+// POST /api/admin/exams/{id}/merge-into/{targetId}  (Admin or SuperAdmin -- same as updateExam)
+// -- reached from EditExamForm when a rename collides with an exam that already has that name
+// (see updateExam's own 409 handling). Moves everything on examId onto targetId and deletes
+// examId; targetId's own name/logo/organization/blocked-status are untouched, and examId's chat
+// history is not carried over (a deliberate choice made on the way this feature was designed, not
+// a limitation to work around). Returns the updated targetId exam (same shape as updateExam).
+export function mergeExam(token, examId, targetId) {
+  return apiFetch(`/api/admin/exams/${examId}/merge-into/${targetId}`, { method: "POST", token });
+}
+
 // DELETE /api/admin/exams/{id}/empty-cleanup  (DeletePaper permission -- Admin or SuperAdmin) --
 // narrower sibling of deleteExam above, reached only from BulkImportPanel's rollback flow after the
 // admin confirms "this exam has nothing else on it -- delete it too?". Runs the exact same

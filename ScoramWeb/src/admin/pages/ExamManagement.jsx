@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Pencil, Ban, CheckCircle2, Trash2, X } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
-import { listAdminExams, createExam, updateExam, setExamBlocked } from "../api/exams";
+import { listAdminExams, createExam, updateExam, setExamBlocked, mergeExam } from "../api/exams";
 import { listAdminOrganizations } from "../api/organizations";
 import { PageHeader, Card, Button, FormField, TextInput, Select, Alert, friendlyError } from "../components/AdminUI";
 import ExamDeleteModal from "../components/ExamDeleteModal";
@@ -119,6 +119,13 @@ export default function ExamManagement() {
               onDone={(updated) => {
                 setExams((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
                 setEditingExam(null);
+              }}
+              onMerged={() => {
+                // Unlike onDone above, the id that changed here (the merge target) usually isn't
+                // editingExam's own id -- simplest to just refetch the whole list rather than work
+                // out which row(s) to patch in place.
+                setEditingExam(null);
+                refresh();
               }}
               onCancel={() => setEditingExam(null)}
             />
@@ -263,12 +270,18 @@ function CreateExamForm({ token, organizations, onDone, onCancel }) {
   );
 }
 
-function EditExamForm({ token, exam, organizations, onDone, onCancel }) {
+function EditExamForm({ token, exam, organizations, onDone, onMerged, onCancel }) {
   const [name, setName] = useState(exam.name);
   const [logoFile, setLogoFile] = useState(null);
   const [organizationId, setOrganizationId] = useState(exam.organizationId || "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
+  // Set when a rename collides with an exam that already has that name (409 from updateExam, with
+  // conflictingExamId in the body -- see ExamsController.Update's own comment). Rather than just
+  // dead-ending on the error, this offers "merge into it instead?" -- see mergeExam's own comment
+  // for exactly what that moves and what it deliberately leaves behind (chat history).
+  const [mergeConflict, setMergeConflict] = useState(null);
+  const [merging, setMerging] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -283,10 +296,46 @@ function EditExamForm({ token, exam, organizations, onDone, onCancel }) {
       });
       onDone(updated);
     } catch (err) {
-      setError(friendlyError(err));
+      if (err.status === 409 && err.data?.conflictingExamId) {
+        setMergeConflict({ id: err.data.conflictingExamId, name: name.trim() });
+      } else {
+        setError(friendlyError(err));
+      }
     } finally {
       setSending(false);
     }
+  }
+
+  async function handleConfirmMerge() {
+    setMerging(true);
+    setError(null);
+    try {
+      await mergeExam(token, exam.id, mergeConflict.id);
+      onMerged();
+    } catch (err) {
+      setError(friendlyError(err));
+      setMergeConflict(null);
+    } finally {
+      setMerging(false);
+    }
+  }
+
+  if (mergeConflict) {
+    return (
+      <Card className="mx-auto max-w-lg border-2 border-red-200">
+        <h3 className="mb-2 text-sm font-bold text-red-600">Merge into existing exam?</h3>
+        <p className="mb-2 text-xs text-ink-600">
+          An exam named "{mergeConflict.name}" already exists. Merging will move every paper, PYQ, mock test, and
+          practice template from "{exam.name}" into it, then delete "{exam.name}" -- its chat history will{" "}
+          <strong>not</strong> be carried over. This can't be undone.
+        </p>
+        {error && <Alert>{error}</Alert>}
+        <div className="flex gap-2">
+          <Button variant="danger" onClick={handleConfirmMerge} isLoading={merging}>Yes, merge</Button>
+          <Button variant="ghost" onClick={() => setMergeConflict(null)}>Cancel</Button>
+        </div>
+      </Card>
+    );
   }
 
   return (

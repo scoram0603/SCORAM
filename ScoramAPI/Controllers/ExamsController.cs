@@ -190,8 +190,11 @@ namespace ScoramAPI.Controllers
             {
                 var name = dto.Name.Trim();
                 if (string.IsNullOrWhiteSpace(name)) return BadRequest(new { message = "Name can't be empty." });
-                if (await _db.Exams.AnyAsync(e => e.Id != id && e.Name.ToLower() == name.ToLower()))
-                    return Conflict(new { message = $"An exam named \"{name}\" already exists." });
+                var conflictingExam = await _db.Exams.FirstOrDefaultAsync(e => e.Id != id && e.Name.ToLower() == name.ToLower());
+                if (conflictingExam != null)
+                    // conflictingExamId lets the frontend offer "merge into it?" instead of just
+                    // showing this as a dead-end error -- see MergeInto below for what that means.
+                    return Conflict(new { message = $"An exam named \"{name}\" already exists.", conflictingExamId = conflictingExam.Id });
 
                 exam.Name = name;
 
@@ -238,6 +241,116 @@ namespace ScoramAPI.Controllers
                 CreatedAt = exam.CreatedAt,
                 OrganizationId = exam.OrganizationId,
                 OrganizationName = updatedOrgName
+            });
+        }
+
+        // POST /api/admin/exams/{sourceId}/merge-into/{targetId}  (same Admin/SuperAdmin gate as
+        // Update above) -- reached from Manage Exam when a rename collides with an exam that already
+        // has that name (see Update's own conflictingExamId). Moves every real thing on sourceId onto
+        // targetId, then deletes sourceId: all Papers and legacy standalone Questions (a straight
+        // ExamId reassignment -- neither has any exam-scoped uniqueness constraint that this could
+        // violate), every QuestionBankExamMapping (reassigned unless the same question is already
+        // mapped to targetId under the same Year, in which case sourceId's copy is just dropped as
+        // redundant rather than colliding with the (QuestionBankQuestionId, ExamId, Year) unique
+        // index). targetId's own Organization/Logo/IsBlocked/Name are left completely untouched --
+        // it's the surviving exam, sourceId is the one being absorbed. sourceId's chat room is
+        // deleted without migrating its messages (a deliberate choice, not an oversight -- merging
+        // chat history was explicitly ruled out in favor of simplicity); targetId's own chat room is
+        // untouched. Runs in one transaction, same as DeleteCascade.
+        [HttpPost("/api/admin/exams/{sourceId:guid}/merge-into/{targetId:guid}")]
+        [Authorize(Roles = "Admin,SuperAdmin")]
+        public async Task<ActionResult<ExamResponseDto>> MergeInto(Guid sourceId, Guid targetId)
+        {
+            if (sourceId == targetId) return BadRequest(new { message = "Can't merge an exam into itself." });
+
+            var source = await _db.Exams.FirstOrDefaultAsync(e => e.Id == sourceId);
+            var target = await _db.Exams.FirstOrDefaultAsync(e => e.Id == targetId);
+            if (source == null || target == null) return NotFound();
+
+            await using var transaction = await _db.Database.BeginTransactionAsync();
+
+            var papers = await _db.Papers.Where(p => p.ExamId == sourceId).ToListAsync();
+            foreach (var p in papers) p.ExamId = targetId;
+
+            var legacyQuestions = await _db.Questions.Where(q => q.ExamId == sourceId).ToListAsync();
+            foreach (var q in legacyQuestions) q.ExamId = targetId;
+
+            // MockTest.ExamId / PracticeTestTemplate.ExamId -- neither has any exam-scoped uniqueness
+            // constraint (unlike the mapping/preference tables below), so a straight reassignment is
+            // enough; both are Restrict FKs (see ScoramDbContext), so skipping this would make the
+            // final _db.Exams.Remove(source) below fail instead of silently losing anything.
+            var mockTests = await _db.MockTests.Where(m => m.ExamId == sourceId).ToListAsync();
+            foreach (var m in mockTests) m.ExamId = targetId;
+
+            var practiceTemplates = await _db.PracticeTestTemplates.Where(t => t.ExamId == sourceId).ToListAsync();
+            foreach (var t in practiceTemplates) t.ExamId = targetId;
+
+            var sourceMappings = await _db.QuestionBankExamMappings.Where(m => m.ExamId == sourceId).ToListAsync();
+            var targetPairs = await _db.QuestionBankExamMappings
+                .Where(m => m.ExamId == targetId)
+                .Select(m => new { m.QuestionBankQuestionId, m.Year })
+                .ToListAsync();
+            var targetPairSet = targetPairs.Select(x => (x.QuestionBankQuestionId, x.Year)).ToHashSet();
+
+            foreach (var m in sourceMappings)
+            {
+                if (targetPairSet.Contains((m.QuestionBankQuestionId, m.Year)))
+                    _db.QuestionBankExamMappings.Remove(m); // already tagged to target for this year -- source's copy is redundant
+                else
+                    m.ExamId = targetId;
+            }
+
+            // UserExamPreference -- (UserId, ExamId) is unique (a student can't have the same exam
+            // twice in "My Exams"), so a student who already has BOTH source and target exams saved
+            // would collide on a straight reassignment; source's row is dropped as redundant instead,
+            // same idea as the mapping dedup above. IsPrimary is preserved across the drop -- if the
+            // row being dropped was this student's Primary Exam and the surviving (target) row isn't,
+            // the flag is carried over rather than just disappearing (at most one of the two rows can
+            // already be Primary -- see the UserId-where-IsPrimary=1 filtered unique index).
+            var sourcePrefs = await _db.UserExamPreferences.Where(p => p.ExamId == sourceId).ToListAsync();
+            var targetPrefsByUser = await _db.UserExamPreferences
+                .Where(p => p.ExamId == targetId)
+                .ToDictionaryAsync(p => p.UserId);
+
+            foreach (var pref in sourcePrefs)
+            {
+                if (targetPrefsByUser.TryGetValue(pref.UserId, out var existingTargetPref))
+                {
+                    if (pref.IsPrimary && !existingTargetPref.IsPrimary) existingTargetPref.IsPrimary = true;
+                    _db.UserExamPreferences.Remove(pref);
+                }
+                else
+                {
+                    pref.ExamId = targetId;
+                }
+            }
+
+            var sourceRoom = await _db.ChatRooms.FirstOrDefaultAsync(r => r.ExamId == sourceId);
+            if (sourceRoom != null) _db.ChatRooms.Remove(sourceRoom); // chat history intentionally not migrated -- see this method's own comment
+
+            _db.Exams.Remove(source);
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            await _audit.LogAsync(User.GetAdminId(), "Exam.MergeInto", "Exam", targetId,
+                $"Merged \"{source.Name}\" into \"{target.Name}\": {papers.Count} paper(s), {legacyQuestions.Count} legacy question(s), " +
+                $"{mockTests.Count} mock test(s), {practiceTemplates.Count} practice template(s), " +
+                $"{sourceMappings.Count} PYQ mapping(s) and {sourcePrefs.Count} student preference(s) carried over or deduplicated");
+
+            var targetOrgName = target.OrganizationId.HasValue
+                ? await _db.Organizations.Where(o => o.Id == target.OrganizationId).Select(o => o.Name).FirstOrDefaultAsync()
+                : null;
+
+            return Ok(new ExamResponseDto
+            {
+                Id = target.Id,
+                Name = target.Name,
+                LogoUrl = target.LogoUrl,
+                IsBlocked = target.IsBlocked,
+                QuestionCount = await GetCombinedQuestionCountAsync(_db, targetId),
+                CreatedAt = target.CreatedAt,
+                OrganizationId = target.OrganizationId,
+                OrganizationName = targetOrgName
             });
         }
 
