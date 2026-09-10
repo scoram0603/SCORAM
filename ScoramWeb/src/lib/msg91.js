@@ -56,7 +56,12 @@ export function verifyPhoneWithOtp(phoneNumber) {
         window.initSendOTP({
           widgetId: WIDGET_ID,
           tokenAuth: TOKEN_AUTH,
-          identifier: phoneNumber,
+          // "+91" is required here -- passed bare (no country code), MSG91's popup tries to guess
+          // one from the leading digits of the number itself, which for e.g. a number starting
+          // "63..." gets misread as the Philippines' own +63 code, silently dropping those two
+          // digits and leaving the rest flagged invalid. This app is India-only (see
+          // Msg91Service.cs's identical assumption server-side), so the code is never ambiguous.
+          identifier: `+91${phoneNumber}`,
           exposeMethods: false, // MSG91's own popup UI handles everything; we only need its final callback
           success: (data) => {
             // MSG91's own docs/SDKs are inconsistent about whether this is the bare token string or
