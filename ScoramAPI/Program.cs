@@ -45,6 +45,7 @@ builder.Services.AddScoped<IAdminPermissionService, AdminPermissionService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPushNotificationService, PushNotificationService>();
+builder.Services.AddScoped<IMsg91Service, Msg91Service>();
 builder.Services.AddScoped<IBulkImportService, BulkImportService>();
 builder.Services.AddScoped<IBulkPaperImportService, BulkPaperImportService>();
 builder.Services.AddScoped<IQuestionBankImportService, QuestionBankImportService>(); // SCORAM_QUESTION_BANK

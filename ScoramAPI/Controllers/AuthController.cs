@@ -19,19 +19,32 @@ namespace ScoramAPI.Controllers
         private readonly ITokenService _tokenService;
         private readonly IFileStorageService _fileStorage;
         private readonly IGamificationService _gamification;
+        private readonly IMsg91Service _msg91;
 
-        public AuthController(ScoramDbContext db, ITokenService tokenService, IFileStorageService fileStorage, IGamificationService gamification)
+        public AuthController(ScoramDbContext db, ITokenService tokenService, IFileStorageService fileStorage, IGamificationService gamification, IMsg91Service msg91)
         {
             _db = db;
             _tokenService = tokenService;
             _fileStorage = fileStorage;
             _gamification = gamification;
+            _msg91 = msg91;
         }
 
         [HttpPost("register")]
         [EnableRateLimiting("register")]
         public async Task<ActionResult<AuthResponseDto>> Register(RegisterDto dto)
         {
+            // MSG91 OTP -- verified server-side before anything else here, and the number IT confirms
+            // (not dto.PhoneNumber as typed into the form) is what actually gets stored below. See
+            // Msg91Service's own comment on why the widget's client-side success callback alone can't
+            // be trusted, and RegisterDto.OtpAccessToken's comment on the cross-check.
+            var verify = await _msg91.VerifyAccessTokenAsync(dto.OtpAccessToken);
+            if (!verify.Success) return BadRequest(new { message = verify.ErrorMessage ?? "Phone verification failed." });
+
+            var verifiedPhoneNumber = verify.PhoneNumber!;
+            if (verifiedPhoneNumber != dto.PhoneNumber.Trim())
+                return BadRequest(new { message = "The verified phone number doesn't match what you entered. Please try again." });
+
             var username = dto.Username.Trim().ToLowerInvariant();
 
             if (await _db.Users.AnyAsync(u => u.Username == username))
@@ -40,7 +53,7 @@ namespace ScoramAPI.Controllers
             if (await _db.Users.AnyAsync(u => u.Email == dto.Email))
                 return Conflict(new { message = "An account with this email already exists." });
 
-            if (await _db.Users.AnyAsync(u => u.PhoneNumber == dto.PhoneNumber))
+            if (await _db.Users.AnyAsync(u => u.PhoneNumber == verifiedPhoneNumber))
                 return Conflict(new { message = "An account with this phone number already exists." });
 
             var user = new User
@@ -49,7 +62,8 @@ namespace ScoramAPI.Controllers
                 FullName = dto.FullName,
                 Email = dto.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-                PhoneNumber = dto.PhoneNumber,
+                PhoneNumber = verifiedPhoneNumber,
+                PhoneVerified = true,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -97,6 +111,7 @@ namespace ScoramAPI.Controllers
                 FullName = user.FullName,
                 Email = user.Email,
                 PhoneNumber = user.PhoneNumber,
+                PhoneVerified = user.PhoneVerified,
                 PhotoUrl = user.PhotoUrl,
                 NotifyOnGroupMessages = user.NotifyOnGroupMessages,
                 NotifyOnDirectMessages = user.NotifyOnDirectMessages
@@ -133,6 +148,48 @@ namespace ScoramAPI.Controllers
                 FullName = user.FullName,
                 Email = user.Email,
                 PhoneNumber = user.PhoneNumber,
+                PhoneVerified = user.PhoneVerified,
+                PhotoUrl = user.PhotoUrl,
+                NotifyOnGroupMessages = user.NotifyOnGroupMessages,
+                NotifyOnDirectMessages = user.NotifyOnDirectMessages
+            });
+        }
+
+        // POST /api/auth/login-otp -- passwordless login for an EXISTING account: the person proves
+        // they own a phone number via the MSG91 widget, and if that number matches a real account
+        // (necessarily PhoneVerified -- see User.PhoneVerified's own comment on the only two ways it
+        // ever becomes true), that's accepted as login. Deliberately does NOT create an account for
+        // an unrecognized number -- registration still needs Username/FullName/Email/Password, none
+        // of which OTP alone can supply, so this fails with a clear "no account" message instead of
+        // silently doing something surprising.
+        [HttpPost("login-otp")]
+        [EnableRateLimiting("login")]
+        public async Task<ActionResult<AuthResponseDto>> LoginWithOtp(LoginOtpDto dto)
+        {
+            var verify = await _msg91.VerifyAccessTokenAsync(dto.AccessToken);
+            if (!verify.Success) return BadRequest(new { message = verify.ErrorMessage ?? "Phone verification failed." });
+
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.PhoneNumber == verify.PhoneNumber);
+            if (user == null)
+                return Unauthorized(new { message = "No account found with this phone number. Please create an account first." });
+
+            if (!user.IsActive)
+                return Unauthorized(new { message = "This account has been deactivated." });
+
+            var (token, expiresAt) = _tokenService.GenerateToken(user);
+            user.LastActiveAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            return Ok(new AuthResponseDto
+            {
+                Token = token,
+                ExpiresAt = expiresAt,
+                UserId = user.Id,
+                Username = user.Username,
+                FullName = user.FullName,
+                Email = user.Email,
+                PhoneNumber = user.PhoneNumber,
+                PhoneVerified = user.PhoneVerified,
                 PhotoUrl = user.PhotoUrl,
                 NotifyOnGroupMessages = user.NotifyOnGroupMessages,
                 NotifyOnDirectMessages = user.NotifyOnDirectMessages
@@ -155,6 +212,7 @@ namespace ScoramAPI.Controllers
                 FullName = user.FullName,
                 Email = user.Email,
                 PhoneNumber = user.PhoneNumber,
+                PhoneVerified = user.PhoneVerified,
                 PhotoUrl = user.PhotoUrl,
                 NotifyOnGroupMessages = user.NotifyOnGroupMessages,
                 NotifyOnDirectMessages = user.NotifyOnDirectMessages
@@ -320,7 +378,9 @@ namespace ScoramAPI.Controllers
             return Ok(new ChangeEmailResponseDto { Email = user.Email });
         }
 
-        // PATCH /api/auth/change-phone -- same current-password gate as ChangeEmail above.
+        // PATCH /api/auth/change-phone -- current password proves account ownership; the MSG91 OTP
+        // on NewPhoneNumber proves ownership of the number being switched to. Both are required --
+        // neither alone is sufficient (see ChangePhoneDto's own comment).
         [Authorize(Roles = "Student")]
         [HttpPatch("change-phone")]
         [EnableRateLimiting("login")]
@@ -332,11 +392,18 @@ namespace ScoramAPI.Controllers
             if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
                 return BadRequest(new { message = "Current password is incorrect." });
 
-            var newPhoneNumber = dto.NewPhoneNumber.Trim();
-            if (await _db.Users.AnyAsync(u => u.Id != user.Id && u.PhoneNumber == newPhoneNumber))
+            var verify = await _msg91.VerifyAccessTokenAsync(dto.OtpAccessToken);
+            if (!verify.Success) return BadRequest(new { message = verify.ErrorMessage ?? "Phone verification failed." });
+
+            var verifiedPhoneNumber = verify.PhoneNumber!;
+            if (verifiedPhoneNumber != dto.NewPhoneNumber.Trim())
+                return BadRequest(new { message = "The verified phone number doesn't match what you entered. Please try again." });
+
+            if (await _db.Users.AnyAsync(u => u.Id != user.Id && u.PhoneNumber == verifiedPhoneNumber))
                 return Conflict(new { message = "An account with this phone number already exists." });
 
-            user.PhoneNumber = newPhoneNumber;
+            user.PhoneNumber = verifiedPhoneNumber;
+            user.PhoneVerified = true;
             await _db.SaveChangesAsync();
 
             return Ok(new ChangePhoneResponseDto { PhoneNumber = user.PhoneNumber });

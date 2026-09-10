@@ -1,7 +1,10 @@
 import { apiFetch, apiFetchForm } from "./client";
 
-// POST /api/auth/register — see ScoramAPI/Controllers/AuthController.cs
-export function register({ username, fullName, email, password, phoneNumber, referralCode }) {
+// POST /api/auth/register — see ScoramAPI/Controllers/AuthController.cs. otpAccessToken is the
+// MSG91 widget's own access-token from having just OTP-verified phoneNumber (see msg91.js) --
+// the backend re-verifies it server-side and cross-checks it against phoneNumber before creating
+// the account.
+export function register({ username, fullName, email, password, phoneNumber, otpAccessToken, referralCode }) {
   return apiFetch("/api/auth/register", {
     method: "POST",
     body: {
@@ -10,6 +13,7 @@ export function register({ username, fullName, email, password, phoneNumber, ref
       email,
       password,
       phoneNumber,
+      otpAccessToken,
       referralCode: referralCode || null,
     },
   });
@@ -20,6 +24,17 @@ export function login({ identifier, password }) {
   return apiFetch("/api/auth/login", {
     method: "POST",
     body: { identifier, password },
+  });
+}
+
+// POST /api/auth/login-otp -- passwordless login for an existing account, once accessToken (from
+// the MSG91 widget having just OTP-verified some phone number -- see msg91.js) is re-verified
+// server-side. Fails with a clear "no account" message if the verified number isn't registered --
+// see AuthController.LoginWithOtp's own comment on why this never falls back to creating one.
+export function loginWithOtp({ accessToken }) {
+  return apiFetch("/api/auth/login-otp", {
+    method: "POST",
+    body: { accessToken },
   });
 }
 
@@ -84,11 +99,14 @@ export function changeEmail({ currentPassword, newEmail }) {
   });
 }
 
-// PATCH /api/auth/change-phone
-export function changePhone({ currentPassword, newPhoneNumber }) {
+// PATCH /api/auth/change-phone -- otpAccessToken is the MSG91 widget's access-token from having
+// just OTP-verified newPhoneNumber (see msg91.js); currentPassword proves account ownership, the
+// OTP proves ownership of the number being switched to -- both are required, see ChangePhoneDto's
+// own comment on the backend.
+export function changePhone({ currentPassword, newPhoneNumber, otpAccessToken }) {
   return apiFetch("/api/auth/change-phone", {
     method: "PATCH",
     auth: true,
-    body: { currentPassword, newPhoneNumber },
+    body: { currentPassword, newPhoneNumber, otpAccessToken },
   });
 }

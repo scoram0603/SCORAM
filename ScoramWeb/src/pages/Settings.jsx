@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Lock, Mail, Phone, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, FileText, Shield } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { verifyPhoneWithOtp } from "../lib/msg91";
 
 export default function Settings() {
   return (
@@ -246,8 +247,11 @@ function ChangePhoneCard() {
     setSuccess(null);
     setSaving(true);
     try {
-      await updatePhoneNumber({ currentPassword, newPhoneNumber });
-      setSuccess("Phone number updated successfully.");
+      // The new number has to actually be OTP-verified (MSG91's own popup) before change-phone is
+      // even called -- see ChangePhoneDto.OtpAccessToken's own comment on the backend for why.
+      const otpAccessToken = await verifyPhoneWithOtp(newPhoneNumber.trim());
+      await updatePhoneNumber({ currentPassword, newPhoneNumber, otpAccessToken });
+      setSuccess("Phone number updated and verified successfully.");
       setNewPhoneNumber("");
       setCurrentPassword("");
     } catch (err) {
@@ -257,8 +261,12 @@ function ChangePhoneCard() {
     }
   }
 
+  const currentPhoneDescription = user.phoneNumber
+    ? `Current: ${user.phoneNumber}${user.phoneVerified ? " (verified)" : " (not verified)"}`
+    : undefined;
+
   return (
-    <SettingsCard icon={Phone} title="Change Phone Number" description={user.phoneNumber ? `Current: ${user.phoneNumber}` : undefined}>
+    <SettingsCard icon={Phone} title="Change Phone Number" description={currentPhoneDescription}>
       <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-3">
         <Field icon={Phone} label="New phone number">
           <input
@@ -273,6 +281,7 @@ function ChangePhoneCard() {
         <Field icon={Lock} label="Current password">
           <PasswordInput value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Confirm it's you" autoComplete="current-password" />
         </Field>
+        <p className="-mt-1 pl-1 text-xs text-ink-400">We'll send an OTP to the new number to verify it before saving.</p>
         <FeedbackMessage error={error} success={success} />
         <SaveButton saving={saving} />
       </form>

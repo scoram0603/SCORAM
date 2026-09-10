@@ -24,6 +24,15 @@ namespace ScoramAPI.DTOs
         [Required, MaxLength(20)]
         public string PhoneNumber { get; set; } = string.Empty;
 
+        // MSG91 OTP -- the access-token the MSG91 widget's success(data) callback returned after
+        // this PhoneNumber was actually OTP-verified client-side. AuthController.Register re-verifies
+        // this server-side (see Msg91Service's own comment on why the client-side callback alone
+        // can't be trusted) and cross-checks the number MSG91 confirms against PhoneNumber above --
+        // registration fails if they don't match, rather than silently trusting whichever one the
+        // form happened to submit.
+        [Required]
+        public string OtpAccessToken { get; set; } = string.Empty;
+
         // Optional: referral code of the user who invited this student
         public string? ReferralCode { get; set; }
     }
@@ -36,6 +45,17 @@ namespace ScoramAPI.DTOs
 
         [Required]
         public string Password { get; set; } = string.Empty;
+    }
+
+    // POST /api/auth/login-otp -- passwordless login for an EXISTING account, once its phone number
+    // has been OTP-verified client-side via the MSG91 widget. Deliberately doesn't accept an email/
+    // username alongside AccessToken -- see AuthController.LoginWithOtp's own comment on why the
+    // verified phone number alone is what looks the account up, and why an unrecognized number
+    // doesn't fall back to creating one.
+    public class LoginOtpDto
+    {
+        [Required]
+        public string AccessToken { get; set; } = string.Empty;
     }
 
     public class UsernameAvailabilityDto
@@ -55,6 +75,7 @@ namespace ScoramAPI.DTOs
         // Was never returned here before -- Profile/Settings need it to display + let the student
         // change their own number (see ChangePhoneDto below), same reason PhotoUrl is on this DTO.
         public string PhoneNumber { get; set; } = string.Empty;
+        public bool PhoneVerified { get; set; }
         public string? PhotoUrl { get; set; }
         public bool NotifyOnGroupMessages { get; set; } = true;
         public bool NotifyOnDirectMessages { get; set; } = true;
@@ -72,11 +93,11 @@ namespace ScoramAPI.DTOs
     }
 
     // ---------- Settings: Account & Security ----------
-    // All three require the current password as confirmation before making the change -- same
-    // "prove you're still you" gate a bank/email provider uses for this kind of sensitive edit.
-    // No OTP step yet (MSG91 integration is still pending -- see the OTP-registration discussion
-    // earlier); once that's in place, ChangeEmail/ChangePhone can add an OTP-verify step here
-    // without touching ChangePassword.
+    // ChangePassword/ChangeEmail below require the current password as confirmation before making
+    // the change -- same "prove you're still you" gate a bank/email provider uses for this kind of
+    // sensitive edit. ChangePhone (further down) additionally requires OTP-verifying the NEW number
+    // via MSG91 -- current password alone proves account ownership, not ownership of the new phone
+    // being switched to. ChangeEmail has no equivalent OTP step (no email-OTP provider is wired up).
 
     public class ChangePasswordDto
     {
@@ -108,6 +129,12 @@ namespace ScoramAPI.DTOs
 
         [Required, MaxLength(20)]
         public string NewPhoneNumber { get; set; } = string.Empty;
+
+        // MSG91 OTP -- same idea as RegisterDto.OtpAccessToken: the access-token from the widget
+        // having just OTP-verified NewPhoneNumber. AuthController.ChangePhone re-verifies it
+        // server-side and cross-checks it matches NewPhoneNumber before accepting the change.
+        [Required]
+        public string OtpAccessToken { get; set; } = string.Empty;
     }
 
     public class ChangePhoneResponseDto
@@ -152,6 +179,7 @@ namespace ScoramAPI.DTOs
         public string FullName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string PhoneNumber { get; set; } = string.Empty;
+        public bool PhoneVerified { get; set; }
         public string? PhotoUrl { get; set; }
         public bool NotifyOnGroupMessages { get; set; }
         public bool NotifyOnDirectMessages { get; set; }

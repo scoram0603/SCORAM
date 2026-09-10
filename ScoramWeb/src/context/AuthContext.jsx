@@ -81,6 +81,7 @@ export function AuthProvider({ children }) {
       fullName: res.fullName,
       email: res.email,
       phoneNumber: res.phoneNumber,
+      phoneVerified: res.phoneVerified,
       photoUrl: res.photoUrl ?? null,
       notifyOnGroupMessages: res.notifyOnGroupMessages,
       notifyOnDirectMessages: res.notifyOnDirectMessages,
@@ -93,6 +94,27 @@ export function AuthProvider({ children }) {
       setError(null);
       try {
         const res = await authApi.login(credentials);
+        applyAuthResponse(res);
+        return res;
+      } catch (err) {
+        setError(err.message);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [applyAuthResponse]
+  );
+
+  // Passwordless login via the MSG91 widget -- see Login.jsx's own OTP tab and api/auth.js's
+  // loginWithOtp for how accessToken gets here. Shares applyAuthResponse/isLoading/error with the
+  // password login above since the resulting session is identical either way.
+  const loginWithOtp = useCallback(
+    async (accessToken) => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await authApi.loginWithOtp({ accessToken });
         applyAuthResponse(res);
         return res;
       } catch (err) {
@@ -168,7 +190,7 @@ export function AuthProvider({ children }) {
 
   const updatePhoneNumber = useCallback(async (payload) => {
     const res = await authApi.changePhone(payload);
-    setUser((prev) => (prev ? { ...prev, phoneNumber: res.phoneNumber } : prev));
+    setUser((prev) => (prev ? { ...prev, phoneNumber: res.phoneNumber, phoneVerified: true } : prev));
     return res;
   }, []);
 
@@ -181,6 +203,7 @@ export function AuthProvider({ children }) {
       error,
       sessionExpired,
       login,
+      loginWithOtp,
       register,
       logout,
       updateNotificationPreferences,
@@ -193,7 +216,7 @@ export function AuthProvider({ children }) {
       clearError: () => setError(null),
     }),
     [
-      user, token, isLoading, error, sessionExpired, login, register, logout,
+      user, token, isLoading, error, sessionExpired, login, loginWithOtp, register, logout,
       updateNotificationPreferences, updateProfilePhoto, removeProfilePhoto, updateBasicProfile,
       updatePassword, updateEmail, updatePhoneNumber,
     ]

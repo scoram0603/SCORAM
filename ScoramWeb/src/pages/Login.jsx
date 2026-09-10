@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Mail, Lock, User as UserIcon, Phone, AtSign, ArrowRight, Loader2,
-  AlertCircle, CheckCircle2, XCircle, Eye, EyeOff,
+  AlertCircle, CheckCircle2, XCircle, Eye, EyeOff, ShieldCheck,
 } from "lucide-react";
 import logo from "../assets/scoram-logo-horizontal.png";
 import { useAuth } from "../context/AuthContext";
 import { checkUsername } from "../api/auth";
+import { verifyPhoneWithOtp } from "../lib/msg91";
 
 const USERNAME_PATTERN = /^[a-z0-9._]+$/;
 
@@ -17,7 +18,12 @@ export default function Login() {
   // "login" | "register" -- defaults to "login" exactly as before; the landing page's Sign Up CTAs
   // link to /login?mode=register to open straight into the registration form.
   const [mode, setMode] = useState(() => (searchParams.get("mode") === "register" ? "register" : "login"));
-  const { login, register, isLoading, error, clearError, sessionExpired } = useAuth();
+  const { login, loginWithOtp, register, isLoading, error, clearError, sessionExpired } = useAuth();
+
+  // "password" | "otp" -- login-mode only. Register always goes through OTP now (see handleSubmit),
+  // so there's nothing to toggle there.
+  const [loginMethod, setLoginMethod] = useState("password");
+  const [otpPhoneNumber, setOtpPhoneNumber] = useState(""); // login-OTP-mode only
 
   const [form, setForm] = useState({
     username: "",
@@ -35,6 +41,15 @@ export default function Login() {
   const [usernameStatus, setUsernameStatus] = useState(null); // null | "checking" | "available" | "taken"
   const [usernameReason, setUsernameReason] = useState(null);
   const usernameCheckRef = useRef(null);
+
+  // Covers the "MSG91's own popup is open, waiting on the person to enter/verify their OTP" phase --
+  // separate from AuthContext's own isLoading, which only covers the actual register/login/
+  // loginWithOtp network call that happens AFTER the widget resolves. otpError is likewise separate
+  // from AuthContext's own error: verifyPhoneWithOtp is a plain widget call, not one of AuthContext's
+  // own API methods, so nothing else sets this for us.
+  const [otpPending, setOtpPending] = useState(false);
+  const [otpError, setOtpError] = useState(null);
+  const formError = otpError || error;
 
   function updateField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -79,6 +94,7 @@ export default function Login() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    setOtpError(null);
 
     if (mode === "register") {
       if (form.password !== form.confirmPassword) {
@@ -91,13 +107,30 @@ export default function Login() {
 
     try {
       if (mode === "login") {
-        await login({ identifier, password: form.password });
+        if (loginMethod === "otp") {
+          setOtpPending(true);
+          const accessToken = await verifyPhoneWithOtp(otpPhoneNumber.trim());
+          setOtpPending(false);
+          await loginWithOtp(accessToken);
+        } else {
+          await login({ identifier, password: form.password });
+        }
       } else {
-        await register({ ...form, username: form.username.trim().toLowerCase() });
+        // Registration: the phone number typed into the form has to actually be OTP-verified
+        // (MSG91's own popup) before Register is even called -- see RegisterDto.OtpAccessToken's
+        // own comment on why the backend re-checks this rather than trusting the callback alone.
+        setOtpPending(true);
+        const accessToken = await verifyPhoneWithOtp(form.phoneNumber.trim());
+        setOtpPending(false);
+        await register({ ...form, username: form.username.trim().toLowerCase(), otpAccessToken: accessToken });
       }
       navigate(redirectTo, { replace: true });
-    } catch {
-      // error is already captured in AuthContext state and rendered below
+    } catch (err) {
+      setOtpPending(false);
+      // login/loginWithOtp/register already set AuthContext's own `error` state on failure (they're
+      // ApiError instances -- see client.js) -- only a plain Error (verifyPhoneWithOtp's own
+      // rejection, which nothing else captures) needs surfacing here.
+      if (err.name !== "ApiError") setOtpError(err.message);
     }
   }
 
@@ -124,6 +157,30 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-3">
           {mode === "login" && (
+            <div className="mb-1 flex gap-1 rounded-xl2 bg-primary-50 p-1">
+              {[
+                { key: "password", label: "Password" },
+                { key: "otp", label: "OTP" },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => {
+                    clearError();
+                    setOtpError(null);
+                    setLoginMethod(opt.key);
+                  }}
+                  className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-colors ${
+                    loginMethod === opt.key ? "bg-white text-primary-600 shadow-sm" : "text-ink-400"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {mode === "login" && loginMethod === "password" && (
             <Field icon={AtSign} label="Email or Username">
               <input
                 type="text"
@@ -134,6 +191,23 @@ export default function Login() {
                   setIdentifier(e.target.value);
                 }}
                 placeholder="you@example.com or username"
+                className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
+              />
+            </Field>
+          )}
+
+          {mode === "login" && loginMethod === "otp" && (
+            <Field icon={Phone} label="Phone number">
+              <input
+                type="tel"
+                required
+                value={otpPhoneNumber}
+                onChange={(e) => {
+                  clearError();
+                  setOtpError(null);
+                  setOtpPhoneNumber(e.target.value);
+                }}
+                placeholder="98765 43210"
                 className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
               />
             </Field>
@@ -192,28 +266,34 @@ export default function Login() {
                   className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
                 />
               </Field>
+              <p className="-mt-2 flex items-center gap-1.5 pl-1 text-xs text-ink-400">
+                <ShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+                We'll send an OTP to this number to verify it before creating your account.
+              </p>
             </>
           )}
 
-          <Field icon={Lock} label="Password">
-            <input
-              type={showPassword ? "text" : "password"}
-              required
-              minLength={6}
-              value={form.password}
-              onChange={(e) => updateField("password", e.target.value)}
-              placeholder="At least 6 characters"
-              className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((s) => !s)}
-              className="text-ink-400 hover:text-ink-600"
-              tabIndex={-1}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={2} /> : <Eye className="h-4 w-4" strokeWidth={2} />}
-            </button>
-          </Field>
+          {!(mode === "login" && loginMethod === "otp") && (
+            <Field icon={Lock} label="Password">
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={6}
+                value={form.password}
+                onChange={(e) => updateField("password", e.target.value)}
+                placeholder="At least 6 characters"
+                className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((s) => !s)}
+                className="text-ink-400 hover:text-ink-600"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={2} /> : <Eye className="h-4 w-4" strokeWidth={2} />}
+              </button>
+            </Field>
+          )}
 
           {mode === "register" && (
             <>
@@ -245,10 +325,10 @@ export default function Login() {
             </>
           )}
 
-          {error && (
+          {formError && (
             <div className="flex items-start gap-2 rounded-xl2 bg-red-50 p-3 text-xs font-medium text-red-600">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.25} />
-              <span>{error}</span>
+              <span>{formError}</span>
             </div>
           )}
 
@@ -268,14 +348,17 @@ export default function Login() {
 
           <button
             type="submit"
-            disabled={isLoading || (mode === "register" && usernameStatus !== "available")}
+            disabled={isLoading || otpPending || (mode === "register" && usernameStatus !== "available")}
             className="mt-2 flex items-center justify-center gap-1.5 rounded-xl2 bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-60"
           >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.5} />
+            {isLoading || otpPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.5} />
+                {otpPending ? "Verifying phone number…" : "Please wait…"}
+              </>
             ) : (
               <>
-                {mode === "login" ? "Log In" : "Create Account"}
+                {mode === "login" ? (loginMethod === "otp" ? "Send OTP & Log In" : "Log In") : "Verify Phone & Create Account"}
                 <ArrowRight className="h-4 w-4" strokeWidth={2.5} />
               </>
             )}
@@ -288,6 +371,7 @@ export default function Login() {
             type="button"
             onClick={() => {
               clearError();
+              setOtpError(null);
               setMode(mode === "login" ? "register" : "login");
             }}
             className="font-semibold text-secondary-500 hover:underline"

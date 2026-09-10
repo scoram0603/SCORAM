@@ -125,6 +125,12 @@ namespace ScoramAPI.Data
             modelBuilder.Entity<User>().Property(u => u.NotifyOnGroupMessages).HasDefaultValue(true);
             modelBuilder.Entity<User>().Property(u => u.NotifyOnDirectMessages).HasDefaultValue(true);
 
+            // Same "explicit beats relying on the C# initializer" reasoning as the two lines above --
+            // false happens to already be bool's own CLR default, but this still backfills every
+            // pre-existing row to false explicitly when the migration runs, rather than leaving that
+            // to EF's own inference of what a new NOT NULL column's default should be.
+            modelBuilder.Entity<User>().Property(u => u.PhoneVerified).HasDefaultValue(false);
+
             modelBuilder.Entity<Admin>()
                 .HasIndex(a => a.Email)
                 .IsUnique();

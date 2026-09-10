@@ -21,6 +21,14 @@ namespace ScoramAPI.Models
         [Required, MaxLength(20)]
         public string PhoneNumber { get; set; } = string.Empty;
 
+        // MSG91 OTP integration -- true once this phone number has actually been proven via an
+        // MSG91-verified OTP (see Msg91Service), not just typed into a form. Register/ChangePhone are
+        // the only two places this ever flips to true (both require a verified access-token before
+        // touching PhoneNumber at all -- see AuthController). Defaults false so every account that
+        // existed before this feature shipped is correctly treated as unverified rather than silently
+        // grandfathered in as verified.
+        public bool PhoneVerified { get; set; } = false;
+
         public string? PhotoUrl { get; set; }
 
         public bool IsActive { get; set; } = true;
