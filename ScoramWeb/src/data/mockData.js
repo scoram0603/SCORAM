@@ -87,55 +87,45 @@ export const heroStats = [
   { label: "Students", value: "100K+", icon: "Trophy" },
 ];
 
-// Quick Access grid on Home (QuickAccess.jsx). Renamed per the redesign brief so each card's
-// purpose is unambiguous (previously "PYQ Questions"/"Mock Tests"/"Quizzes"/"Test" overlapped
-// confusingly in name only -- the underlying pages were already distinct, see Section 14 of the
-// brief and PreviousYearPapers.jsx / QuestionBankSearch.jsx / MockTests.jsx / PracticeTests.jsx /
-// Quizzes.jsx). "My Progress" was dropped from this grid -- it's now its own bottom-nav tab
-// (see bottomNavItems above) so keeping it here too would just be a duplicate entry point;
-// Group Chat took its place instead.
+// Quick Access grid on Home (QuickAccess.jsx). Card copy trimmed to short one-word/two-word names
+// per the latest naming pass. Group Chat card removed -- Messages (Communities + Direct Messages)
+// now has its own bottom-nav tab (see bottomNavItems above), so a Quick Access entry for it would
+// just be a duplicate entry point.
 export const quickAccessItems = [
   {
     key: "pyq",
-    label: "PYP Practice",
+    label: "PYPs",
     description: "Previous year papers, timed",
     icon: "BookOpen",
     tint: "secondary",
   },
   {
     key: "question-bank",
-    label: "Question Bank",
+    label: "PYQs",
     description: "Topic & subject-wise practice",
     icon: "Layers",
     tint: "violet",
   },
   {
     key: "mock",
-    label: "Full Mock Tests",
+    label: "Mock",
     description: "Full length, negative marking",
     icon: "ClipboardList",
     tint: "mint",
   },
   {
     key: "test",
-    label: "Practice Tests",
+    label: "Tests",
     description: "Short topic & subject tests",
     icon: "ClipboardCheck",
     tint: "accent",
   },
   {
     key: "quizzes",
-    label: "Daily Quizzes",
+    label: "Quizzes",
     description: "Quick daily practice & streaks",
     icon: "HelpCircle",
     tint: "teal",
-  },
-  {
-    key: "chat",
-    label: "Group Chat",
-    description: "Discuss with your exam group",
-    icon: "MessageCircle",
-    tint: "secondary",
   },
 ];
 

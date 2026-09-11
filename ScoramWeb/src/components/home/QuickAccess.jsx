@@ -1,8 +1,8 @@
-import { BookOpen, Layers, ClipboardList, HelpCircle, ClipboardCheck, MessageCircle, ChevronRight } from "lucide-react";
+import { BookOpen, Layers, ClipboardList, HelpCircle, ClipboardCheck, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { quickAccessItems } from "../../data/mockData";
 
-const ICONS = { BookOpen, Layers, ClipboardList, HelpCircle, ClipboardCheck, MessageCircle };
+const ICONS = { BookOpen, Layers, ClipboardList, HelpCircle, ClipboardCheck };
 
 const TINTS = {
   secondary: "bg-secondary-50 text-secondary-500",
@@ -24,13 +24,12 @@ const ROUTE_FOR_KEY = {
   mock: "/tests/mock",
   test: "/tests/practice",
   quizzes: "/quizzes",
-  chat: "/chat",
 };
 
 export default function QuickAccess() {
   return (
-    <section className="px-4 pb-6 sm:px-6 lg:px-8">
-      <div className="mb-3 flex items-center justify-between sm:mb-4">
+    <section className="pb-6">
+      <div className="mb-3 flex items-center justify-between px-4 sm:mb-4 sm:px-6 lg:px-8">
         <h3 className="text-[17px] font-bold text-ink-900 sm:text-lg">Quick Access</h3>
         <Link to="/tests" className="flex items-center gap-0.5 text-sm font-semibold text-secondary-500">
           View All
@@ -38,23 +37,33 @@ export default function QuickAccess() {
         </Link>
       </div>
 
-      {/* Compact 2-up grid (3-up from sm) -- each card is a small icon + short title + one-line
-          subtitle, sized so 6 cards fit in far less vertical space than the old 72px-icon cards. */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
+      {/* Slidable row (matches Popular Exams' pattern) so it never has to wrap into extra rows on
+          a narrow screen -- just swipe. Each card has a fixed width, which is what actually fixes
+          the desktop text-overlap bug: the old grid used `lg:items-start`, which let flex children
+          size to their own content instead of stretching to the card's width, so `truncate` had
+          nothing to clip against and the subtitle rendered past the card edge into the next one.
+          A fixed-width card sidesteps that ambiguity entirely.
+          Mobile: icon + name only, no subtitle (compact, swipeable icon row).
+          Desktop (lg+): icon + name + one-line subtitle, as before -- just no longer overlapping. */}
+      <div className="no-scrollbar flex gap-2.5 overflow-x-auto px-4 pb-1 sm:gap-3 sm:px-6 lg:px-8">
         {quickAccessItems.map((item) => {
           const Icon = ICONS[item.icon];
           return (
             <Link
               key={item.key}
               to={ROUTE_FOR_KEY[item.key] ?? `/${item.key}`}
-              className="group flex items-center gap-2.5 rounded-xl2 border border-primary-100 bg-white p-3 text-left shadow-card transition-all hover:-translate-y-0.5 hover:shadow-cardHover lg:flex-col lg:items-start lg:gap-2"
+              className="flex w-[88px] shrink-0 flex-col items-center gap-2 rounded-xl2 border border-primary-100 bg-white p-3 text-center shadow-card transition-all hover:-translate-y-0.5 hover:shadow-cardHover lg:w-[212px] lg:flex-row lg:items-center lg:gap-3 lg:p-4 lg:text-left"
             >
               <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${TINTS[item.tint]}`}>
                 <Icon className="h-[18px] w-[18px]" strokeWidth={2.25} />
               </span>
-              <span className="min-w-0">
-                <span className="block truncate text-[13px] font-bold leading-tight text-ink-900">{item.label}</span>
-                <span className="mt-0.5 block truncate text-[11px] leading-snug text-ink-400">{item.description}</span>
+              <span className="w-full min-w-0 lg:w-auto lg:flex-1">
+                <span className="block truncate text-[12px] font-bold leading-tight text-ink-900 lg:text-[13px]">
+                  {item.label}
+                </span>
+                <span className="mt-0.5 hidden truncate text-[11px] leading-snug text-ink-400 lg:block">
+                  {item.description}
+                </span>
               </span>
             </Link>
           );

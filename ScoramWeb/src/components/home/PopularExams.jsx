@@ -64,9 +64,6 @@ export default function PopularExams() {
             )}
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-bold leading-tight text-ink-900 sm:text-base">{exam.name}</span>
-              <span className="mt-0.5 block text-xs text-ink-400 sm:text-sm">
-                {exam.questionCount.toLocaleString("en-IN")} Questions
-              </span>
             </span>
             <ChevronRight className="h-4 w-4 shrink-0 text-ink-400" strokeWidth={2} />
           </Link>

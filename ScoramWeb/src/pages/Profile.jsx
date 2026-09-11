@@ -10,6 +10,7 @@ import { checkUsername } from "../api/auth";
 import { enablePushNotifications, disablePushNotifications, getPushSubscriptionStatus, isPushSupported } from "../utils/push";
 import { API_BASE_URL } from "../api/client";
 import ImageCropModal from "../components/profile/ImageCropModal";
+import PreparingFor from "../components/home/PreparingFor";
 
 const USERNAME_PATTERN = /^[a-z0-9._]+$/;
 
@@ -41,6 +42,8 @@ export default function Profile() {
       <NotificationSettings />
 
       <GamificationSnapshot />
+
+      <PreparingFor />
 
       <button
         type="button"
