@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import Header from "../components/layout/Header";
 import Sidebar from "../components/layout/Sidebar";
 import BottomNav from "../components/layout/BottomNav";
@@ -14,7 +14,6 @@ import { sidebarNavItems, bottomNavItems } from "../data/mockData";
 export default function AppLayout() {
   const { isAuthenticated, user, logout } = useAuth();
   const { hasLoaded, hasConfigured, skipped } = useMyExams();
-  const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [hasUnseenChat, setHasUnseenChat] = useState(false);
@@ -108,10 +107,7 @@ export default function AppLayout() {
 
         <Footer />
 
-        <BottomNav
-          items={bottomNavItems}
-          onAskClick={() => navigate(isAuthenticated ? "/discussions" : "/login?redirect=/discussions")}
-        />
+        <BottomNav items={bottomNavItems} />
       </div>
     </div>
   );

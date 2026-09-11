@@ -444,7 +444,11 @@ function RoomChatView({ room, currentUser, onBack }) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)] flex-col lg:h-full">
+    // dvh (dynamic viewport height), not vh -- vh is the full layout viewport and on mobile
+    // Safari/Chrome does NOT shrink when the on-screen keyboard opens, which was pushing the
+    // Composer below the fold, behind the keyboard, until the user scrolled to find it. dvh tracks
+    // the actual visible viewport, so the composer stays on-screen with the keyboard open.
+    <div className="flex h-[calc(100dvh-64px)] flex-col lg:h-full">
       <div className="flex items-center gap-3 border-b border-primary-100 bg-white px-4 py-3">
         <button type="button" onClick={onBack} className="text-ink-400 hover:text-ink-600">
           <ArrowLeft className="h-5 w-5" strokeWidth={2.25} />
@@ -735,6 +739,16 @@ function Composer({ roomId }) {
   const [mentionQuery, setMentionQuery] = useState(null); // string being typed after "@", or null
   const [mentionResults, setMentionResults] = useState([]);
   const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  // Auto-grow the textarea as the student types a longer message, capped at ~5 lines so the
+  // composer itself can never eat the whole screen -- it scrolls internally past that.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [text]);
 
   useEffect(() => {
     if (mentionQuery === null) { setMentionResults([]); return; }
@@ -754,13 +768,14 @@ function Composer({ roomId }) {
     setMentionQuery(null);
   }
 
-  async function handleSend(e) {
-    e.preventDefault();
+  async function submit() {
     if (!text.trim() && !attachment) return;
     setSending(true);
     setError(null);
     try {
       await sendChatMessage(roomId, { messageText: text.trim() || undefined, attachment });
+      // Only clear the input (and error) once the send actually succeeds -- a failed message
+      // stays in the box with its error shown below, instead of silently vanishing.
       setText("");
       setAttachment(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -768,6 +783,19 @@ function Composer({ roomId }) {
       setError(err.message);
     } finally {
       setSending(false);
+    }
+  }
+
+  function handleSend(e) {
+    e.preventDefault();
+    submit();
+  }
+
+  function handleKeyDown(e) {
+    // Enter sends; Shift+Enter (or any IME composition, e.g. typing Hindi) inserts a newline.
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      submit();
     }
   }
 
@@ -801,8 +829,8 @@ function Composer({ roomId }) {
       )}
       {error && <p className="mb-2 text-xs font-medium text-red-600">{error}</p>}
 
-      <div className="flex items-center gap-2">
-        <label className="cursor-pointer text-ink-400 hover:text-ink-600">
+      <div className="flex items-end gap-2">
+        <label className="flex h-10 shrink-0 items-center text-ink-400 hover:text-ink-600 cursor-pointer">
           <Paperclip className="h-5 w-5" strokeWidth={2} />
           <input
             ref={fileInputRef}
@@ -812,11 +840,14 @@ function Composer({ roomId }) {
             onChange={(e) => setAttachment(e.target.files?.[0] || null)}
           />
         </label>
-        <input
+        <textarea
+          ref={textareaRef}
+          rows={1}
           value={text}
           onChange={(e) => handleTextChange(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Message... use @ to mention someone"
-          className="h-10 min-w-0 flex-1 rounded-xl2 border border-primary-100 px-3 text-sm text-ink-900 placeholder:text-ink-400 focus:border-secondary-500"
+          className="max-h-[120px] min-h-10 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl2 border border-primary-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-secondary-500"
         />
         <button
           type="submit"

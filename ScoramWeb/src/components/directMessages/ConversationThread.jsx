@@ -131,7 +131,9 @@ export default function ConversationThread({ conversation, onBack, onMessageSent
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)] flex-col lg:h-full">
+    // dvh, not vh -- see the matching comment in GroupChat.jsx's RoomChatView. vh doesn't shrink
+    // for the on-screen keyboard on mobile, which was hiding the composer behind it.
+    <div className="flex h-[calc(100dvh-64px)] flex-col lg:h-full">
       <div className="flex items-center gap-3 border-b border-primary-100 bg-white px-4 py-3">
         <button type="button" onClick={onBack} className="text-ink-400 hover:text-ink-600">
           <ArrowLeft className="h-5 w-5" strokeWidth={2.25} />
@@ -300,14 +302,24 @@ function Composer({ conversationId, onSent }) {
   const [error, setError] = useState(null);
   const [recording, setRecording] = useState(false);
   const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
 
-  async function handleSend(e) {
-    e.preventDefault();
+  // Auto-grow up to ~5 lines, same as GroupChat's Composer.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [text]);
+
+  async function submit() {
     if (!text.trim() && !attachment) return;
     setSending(true);
     setError(null);
     try {
       const msg = await sendDirectMessage(conversationId, { messageText: text.trim() || undefined, attachment });
+      // Only clear on a confirmed successful send -- a failed message stays put with its error,
+      // instead of silently disappearing.
       setText("");
       setAttachment(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -316,6 +328,18 @@ function Composer({ conversationId, onSent }) {
       setError(err.message);
     } finally {
       setSending(false);
+    }
+  }
+
+  function handleSend(e) {
+    e.preventDefault();
+    submit();
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      submit();
     }
   }
 
@@ -352,8 +376,8 @@ function Composer({ conversationId, onSent }) {
       )}
       {error && <p className="mb-2 text-xs font-medium text-red-600">{error}</p>}
 
-      <div className="flex items-center gap-2">
-        <label className="cursor-pointer text-ink-400 hover:text-ink-600">
+      <div className="flex items-end gap-2">
+        <label className="flex h-10 shrink-0 items-center text-ink-400 hover:text-ink-600 cursor-pointer">
           <Paperclip className="h-5 w-5" strokeWidth={2} />
           <input
             ref={fileInputRef}
@@ -363,11 +387,14 @@ function Composer({ conversationId, onSent }) {
             onChange={(e) => setAttachment(e.target.files?.[0] || null)}
           />
         </label>
-        <input
+        <textarea
+          ref={textareaRef}
+          rows={1}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Message..."
-          className="h-10 min-w-0 flex-1 rounded-xl2 border border-primary-100 px-3 text-sm text-ink-900 placeholder:text-ink-400 focus:border-secondary-500"
+          className="max-h-[120px] min-h-10 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl2 border border-primary-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-secondary-500"
         />
         {text.trim() || attachment ? (
           <button

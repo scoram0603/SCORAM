@@ -7,6 +7,18 @@ import { timeAgo, isRecent } from "../../utils/format";
 
 // Live — wired to GET /api/discussions (DiscussionsController). Replaced the
 // earlier mock data now that this endpoint exists.
+//
+// QUALITY FILTER (redesign brief, section 16) -- the backend returns whatever's most recent, which
+// can include a low-effort one-word reply with zero engagement ("ok" / 0 Upvotes / 0 Comments).
+// Rather than inventing fake discussions to pad the list, this filters those specific low-quality
+// items out client-side and falls back to the "start a discussion" empty state if nothing
+// meaningful is left -- it never fabricates content, only hides noise from real API data.
+function isLowQuality(discussion) {
+  const textLength = (discussion.commentText || "").trim().length;
+  const hasEngagement = discussion.upvoteCount > 0 || discussion.replyCount > 0;
+  return textLength < 12 && !hasEngagement;
+}
+
 export default function TopDiscussions() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -16,9 +28,9 @@ export default function TopDiscussions() {
   useEffect(() => {
     const controller = new AbortController();
     setStatus("loading");
-    getTopDiscussions({ page: 1, pageSize: 3 }, { signal: controller.signal })
+    getTopDiscussions({ page: 1, pageSize: 6 }, { signal: controller.signal })
       .then((res) => {
-        setItems(res.items);
+        setItems(res.items.filter((d) => !isLowQuality(d)).slice(0, 3));
         setStatus("success");
       })
       .catch((err) => {
@@ -64,9 +76,15 @@ export default function TopDiscussions() {
       )}
 
       {status === "success" && items.length === 0 && (
-        <p className="rounded-xl2 border border-primary-100 bg-white p-4 text-sm text-ink-400">
-          No discussions yet — be the first to start one.
-        </p>
+        <div className="flex flex-col items-center gap-2 rounded-xl2 border border-primary-100 bg-white p-5 text-center">
+          <p className="text-sm text-ink-600">Start a discussion with fellow aspirants</p>
+          <Link
+            to="/discussions"
+            className="mt-1 rounded-lg bg-primary-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-primary-700"
+          >
+            Explore Discussions
+          </Link>
+        </div>
       )}
 
       {status === "success" && items.length > 0 && (

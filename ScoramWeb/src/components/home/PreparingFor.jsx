@@ -1,15 +1,37 @@
-import { Star } from "lucide-react";
+import { Star, Target } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useMyExams } from "../../context/MyExamsContext";
 
 // "MY EXAMS" -- Home screen context indicator (spec section 11): shows what the student's
 // preparation is currently defaulted to, with a one-tap way out to change it. Renders nothing for
-// a signed-out visitor, a student who hasn't configured My Exams yet (AppLayout already routes
-// them to onboarding before they'd ever see Home in that state), or while still loading.
+// a signed-out visitor or while still loading. A student who explicitly skipped onboarding
+// (MyExamsContext's `skipped`) lands here with hasLoaded=true and zero exams -- rather than
+// showing nothing, prompt them to personalize, same as a fresh visitor would see on /select-exams.
 export default function PreparingFor() {
   const { exams, hasLoaded } = useMyExams();
 
-  if (!hasLoaded || exams.length === 0) return null;
+  if (!hasLoaded) return null;
+
+  if (exams.length === 0) {
+    return (
+      <section className="px-4 pb-4 sm:px-0">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl2 border border-dashed border-primary-200 bg-primary-50/40 p-3.5 shadow-card sm:p-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-600">
+            <Target className="h-[18px] w-[18px]" strokeWidth={2.25} />
+          </span>
+          <p className="min-w-0 flex-1 text-sm font-medium text-ink-600">
+            Choose your target exams to personalize SCORAM
+          </p>
+          <Link
+            to="/select-exams"
+            className="shrink-0 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-700"
+          >
+            Select Exams
+          </Link>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="px-4 pb-4 sm:px-0">

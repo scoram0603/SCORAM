@@ -64,11 +64,19 @@ export const sidebarNavItems = [
   },
 ];
 
+// Bottom nav (mobile only, see BottomNav.jsx) -- "Ask" (a floating CTA that jumped to
+// /discussions) was removed per the redesign brief; Progress takes its place as a regular tab
+// pointing at the existing My Progress page (/progress, pages/Progress.jsx) -- no new screen.
+// "Tests" was later swapped for "Messages" -- routes to the existing Chat hub (/chat,
+// pages/GroupChat.jsx), which already contains both the Communities (Group Chat) tab and the
+// Direct Messages tab side by side -- no new screen needed here either. Tests/Mock Tests/Practice
+// Tests remain fully reachable via the sidebar, Home's Quick Access cards, and the Tests hub
+// itself -- nothing was removed, only this tab's bottom-nav slot changed.
 export const bottomNavItems = [
   { to: "/", label: "Home", icon: "Home" },
   { to: "/search", label: "Search", icon: "Search" },
-  { key: "ask", label: "Ask", icon: "HelpCircle", isCta: true },
-  { to: "/tests", label: "Tests", icon: "ClipboardCheck" },
+  { to: "/progress", label: "Progress", icon: "BarChart3" },
+  { to: "/chat", label: "Messages", icon: "MessageCircle" },
   { to: "/profile", label: "Profile", icon: "User" },
 ];
 
@@ -79,41 +87,55 @@ export const heroStats = [
   { label: "Students", value: "100K+", icon: "Trophy" },
 ];
 
+// Quick Access grid on Home (QuickAccess.jsx). Renamed per the redesign brief so each card's
+// purpose is unambiguous (previously "PYQ Questions"/"Mock Tests"/"Quizzes"/"Test" overlapped
+// confusingly in name only -- the underlying pages were already distinct, see Section 14 of the
+// brief and PreviousYearPapers.jsx / QuestionBankSearch.jsx / MockTests.jsx / PracticeTests.jsx /
+// Quizzes.jsx). "My Progress" was dropped from this grid -- it's now its own bottom-nav tab
+// (see bottomNavItems above) so keeping it here too would just be a duplicate entry point;
+// Group Chat took its place instead.
 export const quickAccessItems = [
   {
     key: "pyq",
-    label: "PYQ Questions",
-    description: "Practice previous year questions",
+    label: "PYP Practice",
+    description: "Previous year papers, timed",
     icon: "BookOpen",
     tint: "secondary",
   },
   {
+    key: "question-bank",
+    label: "Question Bank",
+    description: "Topic & subject-wise practice",
+    icon: "Layers",
+    tint: "violet",
+  },
+  {
     key: "mock",
-    label: "Mock Tests",
-    description: "Full length & chapter wise tests",
+    label: "Full Mock Tests",
+    description: "Full length, negative marking",
     icon: "ClipboardList",
     tint: "mint",
   },
   {
-    key: "quizzes",
-    label: "Quizzes",
-    description: "Topic-wise quizzes & daily challenges",
-    icon: "HelpCircle",
-    tint: "violet",
-  },
-  {
     key: "test",
-    label: "Test",
-    description: "Timed exam-wise practice tests",
+    label: "Practice Tests",
+    description: "Short topic & subject tests",
     icon: "ClipboardCheck",
     tint: "accent",
   },
   {
-    key: "progress",
-    label: "My Progress",
-    description: "Track performance & improve daily",
-    icon: "TrendingUp",
+    key: "quizzes",
+    label: "Daily Quizzes",
+    description: "Quick daily practice & streaks",
+    icon: "HelpCircle",
     tint: "teal",
+  },
+  {
+    key: "chat",
+    label: "Group Chat",
+    description: "Discuss with your exam group",
+    icon: "MessageCircle",
+    tint: "secondary",
   },
 ];
 
@@ -134,5 +156,3 @@ export const todaysChallenge = {
   comments: 45,
   methods: 3,
 };
-
-
