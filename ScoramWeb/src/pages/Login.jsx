@@ -7,9 +7,13 @@ import {
 import logo from "../assets/scoram-logo-horizontal.png";
 import { useAuth } from "../context/AuthContext";
 import { checkUsername } from "../api/auth";
-import { verifyPhoneWithOtp } from "../lib/msg91";
+import OtpEntryBox from "../components/auth/OtpEntryBox";
 
 const USERNAME_PATTERN = /^[a-z0-9._]+$/;
+
+function isValidPhone(value) {
+  return /^\d{10}$/.test(value.trim());
+}
 
 export default function Login() {
   const navigate = useNavigate();
@@ -20,8 +24,8 @@ export default function Login() {
   const [mode, setMode] = useState(() => (searchParams.get("mode") === "register" ? "register" : "login"));
   const { login, loginWithOtp, register, isLoading, error, clearError, sessionExpired } = useAuth();
 
-  // "password" | "otp" -- login-mode only. Register always goes through OTP now (see handleSubmit),
-  // so there's nothing to toggle there.
+  // "password" | "otp" -- login-mode only. Register always goes through OTP now (see the Phone
+  // number field below), so there's nothing to toggle there.
   const [loginMethod, setLoginMethod] = useState("password");
   const [otpPhoneNumber, setOtpPhoneNumber] = useState(""); // login-OTP-mode only
 
@@ -42,14 +46,11 @@ export default function Login() {
   const [usernameReason, setUsernameReason] = useState(null);
   const usernameCheckRef = useRef(null);
 
-  // Covers the "MSG91's own popup is open, waiting on the person to enter/verify their OTP" phase --
-  // separate from AuthContext's own isLoading, which only covers the actual register/login/
-  // loginWithOtp network call that happens AFTER the widget resolves. otpError is likewise separate
-  // from AuthContext's own error: verifyPhoneWithOtp is a plain widget call, not one of AuthContext's
-  // own API methods, so nothing else sets this for us.
-  const [otpPending, setOtpPending] = useState(false);
-  const [otpError, setOtpError] = useState(null);
-  const formError = otpError || error;
+  // Register-mode only: the OTP access-token OtpEntryBox hands back once form.phoneNumber has been
+  // verified (see OtpEntryBox.jsx / lib/msg91.js). Registration can't submit without one -- see
+  // RegisterDto.OtpAccessToken's own comment on why the backend re-checks this rather than trusting
+  // the callback alone. Cleared automatically if the person edits the phone number afterward.
+  const [registerOtpAccessToken, setRegisterOtpAccessToken] = useState(null);
 
   function updateField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -92,45 +93,40 @@ export default function Login() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.username, mode]);
 
+  // Login-OTP mode: OtpEntryBox already verified the phone number by the time this fires, so all
+  // that's left is exchanging the access-token for a session -- no separate submit step needed.
+  async function handleLoginOtpVerified(accessToken) {
+    try {
+      await loginWithOtp(accessToken);
+      navigate(redirectTo, { replace: true });
+    } catch {
+      // loginWithOtp already set AuthContext's own `error` state (it's an ApiError -- see
+      // client.js) -- nothing else to do here.
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
-    setOtpError(null);
 
     if (mode === "register") {
       if (form.password !== form.confirmPassword) {
         setConfirmMismatch(true);
         return;
       }
-      if (usernameStatus !== "available") return;
+      if (usernameStatus !== "available" || !registerOtpAccessToken) return;
     }
     setConfirmMismatch(false);
 
     try {
       if (mode === "login") {
-        if (loginMethod === "otp") {
-          setOtpPending(true);
-          const accessToken = await verifyPhoneWithOtp(otpPhoneNumber.trim());
-          setOtpPending(false);
-          await loginWithOtp(accessToken);
-        } else {
-          await login({ identifier, password: form.password });
-        }
+        await login({ identifier, password: form.password });
       } else {
-        // Registration: the phone number typed into the form has to actually be OTP-verified
-        // (MSG91's own popup) before Register is even called -- see RegisterDto.OtpAccessToken's
-        // own comment on why the backend re-checks this rather than trusting the callback alone.
-        setOtpPending(true);
-        const accessToken = await verifyPhoneWithOtp(form.phoneNumber.trim());
-        setOtpPending(false);
-        await register({ ...form, username: form.username.trim().toLowerCase(), otpAccessToken: accessToken });
+        await register({ ...form, username: form.username.trim().toLowerCase(), otpAccessToken: registerOtpAccessToken });
       }
       navigate(redirectTo, { replace: true });
-    } catch (err) {
-      setOtpPending(false);
-      // login/loginWithOtp/register already set AuthContext's own `error` state on failure (they're
-      // ApiError instances -- see client.js) -- only a plain Error (verifyPhoneWithOtp's own
-      // rejection, which nothing else captures) needs surfacing here.
-      if (err.name !== "ApiError") setOtpError(err.message);
+    } catch {
+      // login/register already set AuthContext's own `error` state (they're ApiError instances --
+      // see client.js) -- nothing else to do here.
     }
   }
 
@@ -167,7 +163,6 @@ export default function Login() {
                   type="button"
                   onClick={() => {
                     clearError();
-                    setOtpError(null);
                     setLoginMethod(opt.key);
                   }}
                   className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-colors ${
@@ -197,20 +192,30 @@ export default function Login() {
           )}
 
           {mode === "login" && loginMethod === "otp" && (
-            <Field icon={Phone} label="Phone number">
-              <input
-                type="tel"
-                required
-                value={otpPhoneNumber}
-                onChange={(e) => {
-                  clearError();
-                  setOtpError(null);
-                  setOtpPhoneNumber(e.target.value);
-                }}
-                placeholder="98765 43210"
-                className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
-              />
-            </Field>
+            <>
+              <Field icon={Phone} label="Phone number">
+                <input
+                  type="tel"
+                  required
+                  maxLength={10}
+                  inputMode="numeric"
+                  value={otpPhoneNumber}
+                  onChange={(e) => {
+                    clearError();
+                    setOtpPhoneNumber(e.target.value.replace(/\D/g, ""));
+                  }}
+                  placeholder="98765 43210"
+                  className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
+                />
+              </Field>
+              {isValidPhone(otpPhoneNumber) && (
+                <OtpEntryBox
+                  key={otpPhoneNumber.trim()}
+                  phoneNumber={otpPhoneNumber.trim()}
+                  onVerified={handleLoginOtpVerified}
+                />
+              )}
+            </>
           )}
 
           {mode === "register" && (
@@ -260,16 +265,42 @@ export default function Login() {
                 <input
                   type="tel"
                   required
+                  maxLength={10}
+                  inputMode="numeric"
+                  readOnly={Boolean(registerOtpAccessToken)}
                   value={form.phoneNumber}
-                  onChange={(e) => updateField("phoneNumber", e.target.value)}
+                  onChange={(e) => updateField("phoneNumber", e.target.value.replace(/\D/g, ""))}
                   placeholder="98765 43210"
-                  className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
+                  className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none disabled:opacity-60"
                 />
+                {registerOtpAccessToken && (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-mint-500" strokeWidth={2.25} />
+                    <button
+                      type="button"
+                      onClick={() => setRegisterOtpAccessToken(null)}
+                      className="shrink-0 text-xs font-semibold text-secondary-500 hover:underline"
+                      tabIndex={-1}
+                    >
+                      Change
+                    </button>
+                  </>
+                )}
               </Field>
-              <p className="-mt-2 flex items-center gap-1.5 pl-1 text-xs text-ink-400">
-                <ShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-                We'll send an OTP to this number to verify it before creating your account.
-              </p>
+
+              {isValidPhone(form.phoneNumber) && !registerOtpAccessToken && (
+                <OtpEntryBox
+                  key={form.phoneNumber.trim()}
+                  phoneNumber={form.phoneNumber.trim()}
+                  onVerified={(accessToken) => setRegisterOtpAccessToken(accessToken)}
+                />
+              )}
+              {!isValidPhone(form.phoneNumber) && !registerOtpAccessToken && (
+                <p className="-mt-2 flex items-center gap-1.5 pl-1 text-xs text-ink-400">
+                  <ShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+                  We'll send an OTP to this number to verify it before creating your account.
+                </p>
+              )}
             </>
           )}
 
@@ -325,10 +356,10 @@ export default function Login() {
             </>
           )}
 
-          {formError && (
+          {error && (
             <div className="flex items-start gap-2 rounded-xl2 bg-red-50 p-3 text-xs font-medium text-red-600">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.25} />
-              <span>{formError}</span>
+              <span>{error}</span>
             </div>
           )}
 
@@ -346,23 +377,25 @@ export default function Login() {
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={isLoading || otpPending || (mode === "register" && usernameStatus !== "available")}
-            className="mt-2 flex items-center justify-center gap-1.5 rounded-xl2 bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-60"
-          >
-            {isLoading || otpPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.5} />
-                {otpPending ? "Verifying phone number…" : "Please wait…"}
-              </>
-            ) : (
-              <>
-                {mode === "login" ? (loginMethod === "otp" ? "Send OTP & Log In" : "Log In") : "Verify Phone & Create Account"}
-                <ArrowRight className="h-4 w-4" strokeWidth={2.5} />
-              </>
-            )}
-          </button>
+          {!(mode === "login" && loginMethod === "otp") && (
+            <button
+              type="submit"
+              disabled={isLoading || (mode === "register" && (usernameStatus !== "available" || !registerOtpAccessToken))}
+              className="mt-2 flex items-center justify-center gap-1.5 rounded-xl2 bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-60"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.5} />
+                  Please wait…
+                </>
+              ) : (
+                <>
+                  {mode === "login" ? "Log In" : registerOtpAccessToken ? "Create Account" : "Verify phone number first"}
+                  <ArrowRight className="h-4 w-4" strokeWidth={2.5} />
+                </>
+              )}
+            </button>
+          )}
         </form>
 
         <p className="mt-5 text-center text-sm text-ink-400">
@@ -371,7 +404,6 @@ export default function Login() {
             type="button"
             onClick={() => {
               clearError();
-              setOtpError(null);
               setMode(mode === "login" ? "register" : "login");
             }}
             className="font-semibold text-secondary-500 hover:underline"

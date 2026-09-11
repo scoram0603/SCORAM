@@ -2,7 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Lock, Mail, Phone, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, FileText, Shield } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { verifyPhoneWithOtp } from "../lib/msg91";
+import OtpEntryBox from "../components/auth/OtpEntryBox";
+
+function isValidPhone(value) {
+  return /^\d{10}$/.test(value.trim());
+}
 
 export default function Settings() {
   return (
@@ -120,15 +124,17 @@ function FeedbackMessage({ error, success }) {
   return null;
 }
 
-function SaveButton({ saving }) {
+// `disabled`/`label` are optional -- ChangePasswordCard/ChangeEmailCard don't pass them and keep
+// behaving exactly as before; ChangePhoneCard uses them to gate saving on OTP verification below.
+function SaveButton({ saving, disabled = false, label = "Save" }) {
   return (
     <button
       type="submit"
-      disabled={saving}
+      disabled={saving || disabled}
       className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl2 bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-60"
     >
       {saving && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.5} />}
-      Save
+      {label}
     </button>
   );
 }
@@ -237,6 +243,10 @@ function ChangePhoneCard() {
   const { user, updatePhoneNumber } = useAuth();
   const [newPhoneNumber, setNewPhoneNumber] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
+  // The OTP access-token OtpEntryBox hands back once newPhoneNumber has been verified (see
+  // OtpEntryBox.jsx / lib/msg91.js). Saving is disabled until this is set -- see
+  // ChangePhoneDto.OtpAccessToken's own comment on the backend for why it's re-checked there too.
+  const [otpAccessToken, setOtpAccessToken] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -245,15 +255,17 @@ function ChangePhoneCard() {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    if (!otpAccessToken) {
+      setError("Please verify the new phone number first.");
+      return;
+    }
     setSaving(true);
     try {
-      // The new number has to actually be OTP-verified (MSG91's own popup) before change-phone is
-      // even called -- see ChangePhoneDto.OtpAccessToken's own comment on the backend for why.
-      const otpAccessToken = await verifyPhoneWithOtp(newPhoneNumber.trim());
       await updatePhoneNumber({ currentPassword, newPhoneNumber, otpAccessToken });
       setSuccess("Phone number updated and verified successfully.");
       setNewPhoneNumber("");
       setCurrentPassword("");
+      setOtpAccessToken(null);
     } catch (err) {
       setError(err.message || "Couldn't update your phone number. Please try again.");
     } finally {
@@ -272,18 +284,45 @@ function ChangePhoneCard() {
           <input
             type="tel"
             required
+            maxLength={10}
+            inputMode="numeric"
+            readOnly={Boolean(otpAccessToken)}
             value={newPhoneNumber}
-            onChange={(e) => setNewPhoneNumber(e.target.value)}
+            onChange={(e) => setNewPhoneNumber(e.target.value.replace(/\D/g, ""))}
             placeholder="98765 43210"
-            className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
+            className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none disabled:opacity-60"
           />
+          {otpAccessToken && (
+            <>
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-mint-500" strokeWidth={2.25} />
+              <button
+                type="button"
+                onClick={() => setOtpAccessToken(null)}
+                className="shrink-0 text-xs font-semibold text-secondary-500 hover:underline"
+                tabIndex={-1}
+              >
+                Change
+              </button>
+            </>
+          )}
         </Field>
+
+        {isValidPhone(newPhoneNumber) && !otpAccessToken && (
+          <OtpEntryBox
+            key={newPhoneNumber.trim()}
+            phoneNumber={newPhoneNumber.trim()}
+            onVerified={(accessToken) => setOtpAccessToken(accessToken)}
+          />
+        )}
+
         <Field icon={Lock} label="Current password">
           <PasswordInput value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Confirm it's you" autoComplete="current-password" />
         </Field>
-        <p className="-mt-1 pl-1 text-xs text-ink-400">We'll send an OTP to the new number to verify it before saving.</p>
+        {!isValidPhone(newPhoneNumber) && !otpAccessToken && (
+          <p className="-mt-1 pl-1 text-xs text-ink-400">We'll send an OTP to the new number to verify it before saving.</p>
+        )}
         <FeedbackMessage error={error} success={success} />
-        <SaveButton saving={saving} />
+        <SaveButton saving={saving} disabled={!otpAccessToken} label={otpAccessToken ? "Save" : "Verify phone number first"} />
       </form>
     </SettingsCard>
   );
