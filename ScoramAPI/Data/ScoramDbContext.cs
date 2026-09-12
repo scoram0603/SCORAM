@@ -56,6 +56,7 @@ namespace ScoramAPI.Data
         public DbSet<DirectMessage> DirectMessages => Set<DirectMessage>();
         public DbSet<Notification> Notifications => Set<Notification>();
         public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+        public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
         public DbSet<BannedWord> BannedWords => Set<BannedWord>();
         public DbSet<MockTest> MockTests => Set<MockTest>();
         public DbSet<MockTestQuestion> MockTestQuestions => Set<MockTestQuestion>();

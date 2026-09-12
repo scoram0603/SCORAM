@@ -293,6 +293,77 @@ namespace ScoramAPI.Controllers
             await _hub.Clients.Group($"room-{id}").SendAsync("ReceiveMessage", responseDto);
             return Ok(responseDto);
         }
+
+        // GENERALIZED SHARE -- PYP Paper / Practice Test / Mock Test re-shared into the room.
+        // Mirrors ShareQuestion's own "resilient snapshot" pattern (Title/Subtitle captured
+        // server-side at share time from the real row, not client-supplied) but keeps
+        // SharedContentTitle/Subtitle as flat text instead of a live FK+Include per content type --
+        // three more join tables here would be a lot of plumbing for what's fundamentally the same
+        // "show a card, deep-link on tap" need QuestionShare already covers. One trade-off worth
+        // flagging: unlike QuestionShare's QuestionExists, there's no live "does this still exist"
+        // check on read for these three types -- a deleted paper/test/mock test's shared card stays
+        // visually clickable; tapping it just 404s from the target screen. Fine for a v1.
+        [HttpPost("rooms/{id:guid}/share-content")]
+        public async Task<ActionResult<ChatMessageResponseDto>> ShareContent(Guid id, ShareContentDto dto)
+        {
+            var userId = User.GetUserId();
+            var room = await _db.ChatRooms.FindAsync(id);
+            if (room == null) return NotFound(new { message = "Room not found." });
+            if (room.IsChatDisabled) return BadRequest(new { message = "This chat has been disabled by an admin." });
+            if (!await IsActiveMember(id, userId)) return Forbid();
+            if (room.PostPermission == ChatRoomPostPermission.AdminOnly)
+                return BadRequest(new { message = "Only admins can post in this room." });
+
+            var (title, subtitle, found) = await ResolveSharedContentAsync(dto.ContentType, dto.ContentId);
+            if (!found) return NotFound(new { message = "That item doesn't exist or was removed." });
+
+            var message = new ChatMessage
+            {
+                ChatRoomId = id,
+                UserId = userId,
+                MessageType = ChatMessageType.ContentShare,
+                MessageText = title,
+                SharedContentType = dto.ContentType,
+                SharedContentId = dto.ContentId,
+                SharedContentTitle = title,
+                SharedContentSubtitle = subtitle,
+                SentAt = DateTime.UtcNow
+            };
+            _db.ChatMessages.Add(message);
+            await _db.SaveChangesAsync();
+
+            var saved = await _db.ChatMessages.Include(m => m.User).FirstAsync(m => m.Id == message.Id);
+            var responseDto = MapMessage(saved, userId);
+
+            await _hub.Clients.Group($"room-{id}").SendAsync("ReceiveMessage", responseDto);
+            return Ok(responseDto);
+        }
+
+        // Looks up the real row for a ShareContent request and builds the same flat
+        // Title/Subtitle snapshot ShareContent stores on the message -- (found:false) when the id
+        // doesn't resolve to a real, existing row of that type.
+        private async Task<(string Title, string? Subtitle, bool Found)> ResolveSharedContentAsync(
+            SharedContentType type, Guid contentId)
+        {
+            switch (type)
+            {
+                case SharedContentType.PypPaper:
+                    var paper = await _db.Papers.Include(p => p.Exam)
+                        .FirstOrDefaultAsync(p => p.Id == contentId);
+                    if (paper == null) return ("", null, false);
+                    return ($"{paper.Exam?.Name ?? "Exam"} {paper.Year} Paper", paper.Tier, true);
+                case SharedContentType.Test:
+                    var template = await _db.PracticeTestTemplates.FirstOrDefaultAsync(t => t.Id == contentId);
+                    if (template == null) return ("", null, false);
+                    return (template.Title, "Practice Test", true);
+                case SharedContentType.MockTest:
+                    var mockTest = await _db.MockTests.FirstOrDefaultAsync(t => t.Id == contentId);
+                    if (mockTest == null) return ("", null, false);
+                    return (mockTest.Title, mockTest.ExamName, true);
+                default:
+                    return ("", null, false);
+            }
+        }
         [HttpDelete("messages/{id:guid}")]
         public async Task<IActionResult> DeleteOwnMessage(Guid id)
         {
@@ -479,6 +550,10 @@ namespace ScoramAPI.Controllers
             SharedQuestionId = m.SharedQuestionBankQuestionId,
             SharedQuestionExamName = m.IsDeleted ? null : m.SharedQuestionExamName,
             QuestionExists = m.SharedQuestionBankQuestion != null && m.SharedQuestionBankQuestion.IsActive,
+            SharedContentType = m.SharedContentType?.ToString(),
+            SharedContentId = m.SharedContentId,
+            SharedContentTitle = m.IsDeleted ? null : m.SharedContentTitle,
+            SharedContentSubtitle = m.IsDeleted ? null : m.SharedContentSubtitle,
             IsDeleted = m.IsDeleted,
             IsReported = m.IsReported,
             MentionedUsernames = m.Mentions?.Select(mn => mn.MentionedUser?.Username ?? "").Where(u => u != "").ToList() ?? new List<string>(),

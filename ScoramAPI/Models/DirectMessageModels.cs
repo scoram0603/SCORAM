@@ -61,6 +61,16 @@ namespace ScoramAPI.Models
         [MaxLength(100)]
         public string? SharedQuestionExamName { get; set; }
 
+        // GROUP CHAT / DM -- set only when MessageType == ContentShare: a student re-sharing a PYP
+        // Paper / Practice Test / Mock Test into the DM. Same flat-snapshot-not-live-FK reasoning
+        // as ChatMessage's own SharedContentType/SharedContentId — see that model's comment.
+        public SharedContentType? SharedContentType { get; set; }
+        public Guid? SharedContentId { get; set; }
+        [MaxLength(200)]
+        public string? SharedContentTitle { get; set; }
+        [MaxLength(150)]
+        public string? SharedContentSubtitle { get; set; }
+
         public bool IsRead { get; set; } = false;
 
         public bool IsDeleted { get; set; } = false;

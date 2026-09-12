@@ -20,20 +20,46 @@ namespace ScoramAPI.Controllers
         private readonly IFileStorageService _fileStorage;
         private readonly IGamificationService _gamification;
         private readonly IMsg91Service _msg91;
+        private readonly ICaptchaService _captcha;
+        private readonly IConfiguration _config;
 
-        public AuthController(ScoramDbContext db, ITokenService tokenService, IFileStorageService fileStorage, IGamificationService gamification, IMsg91Service msg91)
+        public AuthController(ScoramDbContext db, ITokenService tokenService, IFileStorageService fileStorage, IGamificationService gamification, IMsg91Service msg91, ICaptchaService captcha, IConfiguration config)
         {
             _db = db;
             _tokenService = tokenService;
             _fileStorage = fileStorage;
             _gamification = gamification;
             _msg91 = msg91;
+            _captcha = captcha;
+            _config = config;
+        }
+
+        // GET /api/auth/otp-widget-config -- public by design, same reasoning as
+        // GET /api/push/vapid-public-key: WidgetId/TokenAuth are the OTP widget's own client-facing
+        // credentials (see appsettings.json's own comment on why these -- unlike Msg91:AuthKey --
+        // are fine to hand out), fetched once by the mobile app before it initializes MSG91's
+        // Flutter SDK (OTPWidget.initializeWidget) rather than hardcoding them in the built app, so
+        // rotating them server-side doesn't require an app store release.
+        [HttpGet("otp-widget-config")]
+        public ActionResult<OtpWidgetConfigDto> GetOtpWidgetConfig()
+        {
+            var widgetId = _config["Msg91:WidgetId"];
+            var tokenAuth = _config["Msg91:TokenAuth"];
+            if (string.IsNullOrWhiteSpace(widgetId) || string.IsNullOrWhiteSpace(tokenAuth))
+                return NotFound(new { message = "Phone verification isn't configured on the server yet." });
+
+            return Ok(new OtpWidgetConfigDto { WidgetId = widgetId, TokenAuth = tokenAuth });
         }
 
         [HttpPost("register")]
         [EnableRateLimiting("register")]
         public async Task<ActionResult<AuthResponseDto>> Register(RegisterDto dto)
         {
+            // Cheapest check first -- reject obvious bot/script submissions before spending an MSG91
+            // API call verifying the phone OTP token below.
+            if (!_captcha.Verify(dto.CaptchaId, dto.CaptchaAnswer))
+                return BadRequest(new { message = "That captcha answer wasn't right. Please try again." });
+
             // MSG91 OTP -- verified server-side before anything else here, and the number IT confirms
             // (not dto.PhoneNumber as typed into the form) is what actually gets stored below. See
             // Msg91Service's own comment on why the widget's client-side success callback alone can't
@@ -122,6 +148,9 @@ namespace ScoramAPI.Controllers
         [EnableRateLimiting("login")]
         public async Task<ActionResult<AuthResponseDto>> Login(LoginDto dto)
         {
+            if (!_captcha.Verify(dto.CaptchaId, dto.CaptchaAnswer))
+                return BadRequest(new { message = "That captcha answer wasn't right. Please try again." });
+
             // Identifier is either an email or a username -- try both. Usernames are always stored
             // lowercase, so normalize before comparing; email lookups stay exact per how Register stores it.
             var identifier = dto.Identifier.Trim();

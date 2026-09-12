@@ -33,6 +33,13 @@ namespace ScoramAPI.DTOs
         [Required]
         public string OtpAccessToken { get; set; } = string.Empty;
 
+        // See CaptchaController/CaptchaService -- CaptchaId comes from GET /api/captcha/generate,
+        // CaptchaAnswer is whatever the student typed for that challenge's question.
+        [Required]
+        public string CaptchaId { get; set; } = string.Empty;
+        [Required]
+        public int CaptchaAnswer { get; set; }
+
         // Optional: referral code of the user who invited this student
         public string? ReferralCode { get; set; }
     }
@@ -45,6 +52,14 @@ namespace ScoramAPI.DTOs
 
         [Required]
         public string Password { get; set; } = string.Empty;
+
+        // See RegisterDto's own comment -- same captcha challenge/answer shape. Login-with-OTP
+        // (LoginOtpDto below) does NOT need this: a real SMS OTP round-trip is already a much
+        // stronger (and MSG91-rate-limited) proof-of-not-a-bot than this captcha is.
+        [Required]
+        public string CaptchaId { get; set; } = string.Empty;
+        [Required]
+        public int CaptchaAnswer { get; set; }
     }
 
     // POST /api/auth/login-otp -- passwordless login for an EXISTING account, once its phone number
@@ -62,6 +77,13 @@ namespace ScoramAPI.DTOs
     {
         public bool Available { get; set; }
         public string? Reason { get; set; } // set when Available is false and it's not simply "taken" (e.g. invalid format)
+    }
+
+    // GET /api/auth/otp-widget-config -- see AuthController.GetOtpWidgetConfig's own comment.
+    public class OtpWidgetConfigDto
+    {
+        public string WidgetId { get; set; } = string.Empty;
+        public string TokenAuth { get; set; } = string.Empty;
     }
 
     public class AuthResponseDto

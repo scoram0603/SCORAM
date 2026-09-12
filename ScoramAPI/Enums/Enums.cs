@@ -230,7 +230,13 @@ namespace ScoramAPI.Enums
         Notice,   // admin-posted announcement, shown highlighted/pinned in the room
         // A student re-sharing a Scoram Question Bank question into the room. See
         // ChatMessage.SharedQuestionBankQuestionId.
-        QuestionShare
+        QuestionShare,
+        // A student re-sharing a PYP Paper / Practice Test / Mock Test into the room. See
+        // ChatMessage.SharedContentType/SharedContentId and ChatController.ShareContent. Kept
+        // separate from QuestionShare (rather than folding Question in here too) so the existing
+        // QuestionShare wiring -- SharedQuestionBankQuestionId's live FK+Include, QuestionExists --
+        // never has to change.
+        ContentShare
     }
 
     // Separate from ChatMessageType on purpose -- direct messages are a different table with no
@@ -243,7 +249,22 @@ namespace ScoramAPI.Enums
         Audio,
         // A student re-sharing a Scoram Question Bank question into the DM. See
         // DirectMessage.SharedQuestionBankQuestionId.
-        QuestionShare
+        QuestionShare,
+        // A student re-sharing a PYP Paper / Practice Test / Mock Test into the DM. See
+        // DirectMessage.SharedContentType/SharedContentId and
+        // DirectMessagesController.ShareContent. Same reasoning as ChatMessageType.ContentShare.
+        ContentShare
+    }
+
+    // What kind of Scoram content a ChatMessage/DirectMessage's SharedContentId points at, when
+    // MessageType/DirectMessageType is ContentShare. Question Bank questions are NOT part of this
+    // enum -- those keep using the older, separate QuestionShare message type and
+    // SharedQuestionBankQuestionId field (a real FK with a live "still exists" check), left as-is.
+    public enum SharedContentType
+    {
+        PypPaper,
+        Test,
+        MockTest
     }
 
     public enum ChatReportStatus

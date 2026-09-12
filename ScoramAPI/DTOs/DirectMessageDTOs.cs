@@ -1,3 +1,4 @@
+using ScoramAPI.Enums;
 using Microsoft.AspNetCore.Http;
 
 namespace ScoramAPI.DTOs
@@ -66,6 +67,13 @@ namespace ScoramAPI.DTOs
         public string? SharedQuestionExamName { get; set; }
         public bool QuestionExists { get; set; }
 
+        // Set only when MessageType == "ContentShare" -- see ChatDTOs.ChatMessageResponseDto's
+        // matching fields, same shape/reasoning (flat snapshot, no live existence check).
+        public string? SharedContentType { get; set; }
+        public Guid? SharedContentId { get; set; }
+        public string? SharedContentTitle { get; set; }
+        public string? SharedContentSubtitle { get; set; }
+
         public bool IsRead { get; set; }
         public bool IsDeleted { get; set; }
 
@@ -76,6 +84,13 @@ namespace ScoramAPI.DTOs
     public class ShareQuestionToDmDto
     {
         public Guid QuestionBankQuestionId { get; set; }
+    }
+
+    // GENERALIZED SHARE -- mirrors ChatDTOs.ShareContentDto exactly. See that DTO's own comment.
+    public class ShareContentToDmDto
+    {
+        public SharedContentType ContentType { get; set; }
+        public Guid ContentId { get; set; }
     }
 
     public class StartConversationDto

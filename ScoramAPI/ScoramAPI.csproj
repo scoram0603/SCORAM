@@ -12,6 +12,10 @@
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="ClosedXML" Version="0.104.1" />
     <PackageReference Include="CsvHelper" Version="33.0.1" />
+    <!-- Mobile push (Firebase Cloud Messaging): see Services/PushNotificationService.cs. Version
+         confirmed against nuget.org as the latest at time of writing (3.6.0) — check
+         nuget.org/packages/FirebaseAdmin for anything newer when you add it. -->
+    <PackageReference Include="FirebaseAdmin" Version="3.6.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.8">
       <PrivateAssets>all</PrivateAssets>

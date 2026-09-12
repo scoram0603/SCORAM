@@ -30,6 +30,19 @@ namespace ScoramAPI.DTOs
         public string Endpoint { get; set; } = string.Empty;
     }
 
+    // MOBILE PUSH -- see Models.DeviceToken's own comment on why Token (not UserId+Platform) is the
+    // key this registers/re-points by.
+    public class RegisterDeviceDto
+    {
+        public string Token { get; set; } = string.Empty;
+        public string Platform { get; set; } = string.Empty; // "Android" | "iOS"
+    }
+
+    public class UnregisterDeviceDto
+    {
+        public string Token { get; set; } = string.Empty;
+    }
+
     public class VapidPublicKeyDto
     {
         public string PublicKey { get; set; } = string.Empty;

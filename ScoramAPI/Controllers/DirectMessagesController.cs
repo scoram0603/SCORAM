@@ -276,6 +276,61 @@ namespace ScoramAPI.Controllers
             return Ok(responseDto);
         }
 
+        // GENERALIZED SHARE -- PYP Paper / Practice Test / Mock Test into a DM. Mirrors
+        // ShareQuestion above exactly, and ChatController.ShareContent for the room-chat side --
+        // see that method's own comment on the Title/Subtitle snapshot and the "no live exists
+        // check for these three types" trade-off.
+        [HttpPost("conversations/{id:guid}/share-content")]
+        public async Task<ActionResult<DirectMessageResponseDto>> ShareContent(Guid id, ShareContentToDmDto dto)
+        {
+            var userId = User.GetUserId();
+            var conversation = await _db.DirectConversations.FindAsync(id);
+            if (conversation == null) return NotFound(new { message = "Conversation not found." });
+            if (!IsParticipant(conversation, userId)) return Forbid();
+
+            var (title, subtitle, found) = await ResolveSharedContentAsync(dto.ContentType, dto.ContentId);
+            if (!found) return NotFound(new { message = "That item doesn't exist or was removed." });
+
+            var message = new DirectMessage
+            {
+                ConversationId = id,
+                SenderId = userId,
+                MessageType = DirectMessageType.ContentShare,
+                MessageText = title,
+                SharedContentType = dto.ContentType,
+                SharedContentId = dto.ContentId,
+                SharedContentTitle = title,
+                SharedContentSubtitle = subtitle,
+                SentAt = DateTime.UtcNow
+            };
+            _db.DirectMessages.Add(message);
+            conversation.LastMessageAt = message.SentAt;
+            await _db.SaveChangesAsync();
+
+            var saved2 = await _db.DirectMessages.Include(m => m.Sender).FirstAsync(m => m.Id == message.Id);
+            var responseDto2 = MapMessage(saved2);
+
+            var otherUserId2 = conversation.UserAId == userId ? conversation.UserBId : conversation.UserAId;
+            try
+            {
+                await _hub.Clients.Groups(new[] { $"user-{userId}", $"user-{otherUserId2}" }).SendAsync("ReceiveDirectMessage", responseDto2);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[DirectMessagesController] SignalR push failed for conversation {id}: {ex}");
+            }
+
+            await _notifications.CreateAsync(
+                otherUserId2,
+                NotificationType.DirectMessage,
+                responseDto2.SenderFullName,
+                PreviewFor(saved2) ?? string.Empty,
+                "/chat?tab=messages"
+            );
+
+            return Ok(responseDto2);
+        }
+
         // DELETE /api/directmessages/messages/{id} -- "unsend": sender-only, soft delete (keeps the
         // row so the thread doesn't have a gap, but wipes the content -- mirrors ChatController's
         // DeleteOwnMessage for room chat, same UX as WhatsApp/Instagram "delete for everyone").
@@ -349,6 +404,7 @@ namespace ScoramAPI.Controllers
                 DirectMessageType.Document => string.IsNullOrWhiteSpace(m.MessageText) ? "📄 Document" : m.MessageText,
                 DirectMessageType.Audio => "🎤 Voice message",
                 DirectMessageType.QuestionShare => "🔗 Shared a question",
+                DirectMessageType.ContentShare => $"🔗 Shared {m.SharedContentTitle ?? "an item"}",
                 _ => m.MessageText
             };
         }
@@ -367,9 +423,39 @@ namespace ScoramAPI.Controllers
             SharedQuestionId = m.SharedQuestionBankQuestionId,
             SharedQuestionExamName = m.IsDeleted ? null : m.SharedQuestionExamName,
             QuestionExists = m.SharedQuestionBankQuestion != null && m.SharedQuestionBankQuestion.IsActive,
+            SharedContentType = m.SharedContentType?.ToString(),
+            SharedContentId = m.SharedContentId,
+            SharedContentTitle = m.IsDeleted ? null : m.SharedContentTitle,
+            SharedContentSubtitle = m.IsDeleted ? null : m.SharedContentSubtitle,
             IsRead = m.IsRead,
             IsDeleted = m.IsDeleted,
             SentAt = m.SentAt
         };
+
+        // Mirrors ChatController.ResolveSharedContentAsync exactly (same three content types, same
+        // flat Title/Subtitle snapshot) -- a small deliberate duplication rather than a new shared
+        // service for three three-line queries, same call as that method's own comment.
+        private async Task<(string Title, string? Subtitle, bool Found)> ResolveSharedContentAsync(
+            SharedContentType type, Guid contentId)
+        {
+            switch (type)
+            {
+                case SharedContentType.PypPaper:
+                    var paper = await _db.Papers.Include(p => p.Exam)
+                        .FirstOrDefaultAsync(p => p.Id == contentId);
+                    if (paper == null) return ("", null, false);
+                    return ($"{paper.Exam?.Name ?? "Exam"} {paper.Year} Paper", paper.Tier, true);
+                case SharedContentType.Test:
+                    var template = await _db.PracticeTestTemplates.FirstOrDefaultAsync(t => t.Id == contentId);
+                    if (template == null) return ("", null, false);
+                    return (template.Title, "Practice Test", true);
+                case SharedContentType.MockTest:
+                    var mockTest = await _db.MockTests.FirstOrDefaultAsync(t => t.Id == contentId);
+                    if (mockTest == null) return ("", null, false);
+                    return (mockTest.Title, mockTest.ExamName, true);
+                default:
+                    return ("", null, false);
+            }
+        }
     }
 }

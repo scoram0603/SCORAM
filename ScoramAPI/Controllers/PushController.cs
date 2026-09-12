@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using ScoramAPI.Data;
 using ScoramAPI.DTOs;
 using ScoramAPI.Extensions;
+using ScoramAPI.Models;
 
 namespace ScoramAPI.Controllers
 {
@@ -72,6 +73,53 @@ namespace ScoramAPI.Controllers
             if (existing != null)
             {
                 _db.PushSubscriptions.Remove(existing);
+                await _db.SaveChangesAsync();
+            }
+            return NoContent();
+        }
+
+        // MOBILE PUSH (Firebase Cloud Messaging) -- the app calls this once it has a real FCM token
+        // (after Firebase.initializeApp + requesting notification permission), and again whenever
+        // FCM hands it a refreshed token (FirebaseMessaging.onTokenRefresh). Mirrors
+        // Subscribe/Unsubscribe above exactly, just keyed by Token instead of Endpoint -- see
+        // Models.DeviceToken's own comment.
+        [Authorize(Roles = "Student")]
+        [HttpPost("register-device")]
+        public async Task<IActionResult> RegisterDevice(RegisterDeviceDto dto)
+        {
+            var userId = User.GetUserId();
+
+            var existing = await _db.DeviceTokens.FirstOrDefaultAsync(d => d.Token == dto.Token);
+            if (existing != null)
+            {
+                existing.UserId = userId;
+                existing.Platform = dto.Platform;
+            }
+            else
+            {
+                _db.DeviceTokens.Add(new DeviceToken
+                {
+                    UserId = userId,
+                    Token = dto.Token,
+                    Platform = dto.Platform
+                });
+            }
+
+            await _db.SaveChangesAsync();
+            return NoContent();
+        }
+
+        // Called on explicit logout so a shared/reused device stops getting pushes meant for the
+        // account that just signed out.
+        [Authorize(Roles = "Student")]
+        [HttpPost("unregister-device")]
+        public async Task<IActionResult> UnregisterDevice(UnregisterDeviceDto dto)
+        {
+            var userId = User.GetUserId();
+            var existing = await _db.DeviceTokens.FirstOrDefaultAsync(d => d.Token == dto.Token && d.UserId == userId);
+            if (existing != null)
+            {
+                _db.DeviceTokens.Remove(existing);
                 await _db.SaveChangesAsync();
             }
             return NoContent();

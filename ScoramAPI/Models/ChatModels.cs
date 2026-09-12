@@ -120,6 +120,20 @@ namespace ScoramAPI.Models
         [MaxLength(100)]
         public string? SharedQuestionExamName { get; set; }
 
+        // GROUP CHAT -- set only when MessageType == ContentShare: a student re-sharing a PYP
+        // Paper / Practice Test / Mock Test into the room (see ChatController.ShareContent). No
+        // live FK/navigation property on purpose (unlike SharedQuestionBankQuestionId above) --
+        // Title/Subtitle are a flat snapshot captured server-side at share time, same "resilient
+        // snapshot" idea as SharedQuestionExamName, just without a per-type join table to include.
+        // One consequence: there's no live "still exists" check for these three types the way
+        // QuestionExists gives QuestionShare -- see ShareContent's own comment.
+        public SharedContentType? SharedContentType { get; set; }
+        public Guid? SharedContentId { get; set; }
+        [MaxLength(200)]
+        public string? SharedContentTitle { get; set; }
+        [MaxLength(150)]
+        public string? SharedContentSubtitle { get; set; }
+
         public bool IsDeleted { get; set; } = false;
 
         // Denormalized convenience flag (fast "has this got any reports" check without a join) --

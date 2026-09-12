@@ -1,3 +1,4 @@
+using ScoramAPI.Enums;
 using Microsoft.AspNetCore.Http;
 
 namespace ScoramAPI.DTOs
@@ -60,6 +61,15 @@ namespace ScoramAPI.DTOs
         public Guid QuestionBankQuestionId { get; set; }
     }
 
+    // GENERALIZED SHARE -- PYP Paper / Practice Test / Mock Test. Title/Subtitle are NOT accepted
+    // here from the client; ShareContent resolves them server-side from the real row (same
+    // "don't trust the client for the snapshot text" reasoning ShareQuestion already follows).
+    public class ShareContentDto
+    {
+        public SharedContentType ContentType { get; set; }
+        public Guid ContentId { get; set; }
+    }
+
     public class ChatMessageResponseDto
     {
         public Guid Id { get; set; }
@@ -89,6 +99,14 @@ namespace ScoramAPI.DTOs
         public Guid? SharedQuestionId { get; set; }
         public string? SharedQuestionExamName { get; set; }
         public bool QuestionExists { get; set; }
+
+        // Set only when MessageType == "ContentShare" (see ShareContentDto/ChatController.ShareContent).
+        // "PypPaper" | "Test" | "MockTest". No ContentExists flag here — see ChatMessage's own
+        // SharedContentType comment on why these three skip the live existence check.
+        public string? SharedContentType { get; set; }
+        public Guid? SharedContentId { get; set; }
+        public string? SharedContentTitle { get; set; }
+        public string? SharedContentSubtitle { get; set; }
 
         public bool IsDeleted { get; set; }
         public bool IsReported { get; set; }
