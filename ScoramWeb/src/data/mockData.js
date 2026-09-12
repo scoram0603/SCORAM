@@ -43,7 +43,7 @@ export const sidebarNavItems = [
   {
     section: "Community",
     items: [
-      { to: "/chat", label: "Group Chat", icon: "MessageCircle", highlight: "accent" },
+      { to: "/chat", label: "Messages", icon: "MessageCircle", highlight: "accent" },
       { to: "/discussions", label: "Discussions", icon: "MessageSquare" },
       { to: "/leaderboard", label: "Leaderboard", icon: "Trophy" },
     ],
