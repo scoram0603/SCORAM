@@ -96,12 +96,18 @@ export default function AppLayout() {
         hasUnseenChat={hasUnseenChat}
       />
 
-      <div className="flex min-h-screen flex-1 flex-col">
+      {/* min-w-0 on both flex items below is the actual fix for the page-wide horizontal-scroll
+          bug: a flex item's default min-width is "auto", which means it won't shrink below its
+          widest descendant's content size. Without min-w-0 here, a horizontally-scrolling row
+          deeper in the tree (Quick Access, Popular Exams, etc.) could force this whole column --
+          and with it the sticky sidebar and the entire page -- wider than the viewport, instead of
+          just scrolling internally the way it's meant to. */}
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         {/* NotificationBell (inside Header) fetches its own real unread count now --
             no more hardcoded placeholder. */}
         <Header onMenuClick={() => setDrawerOpen(true)} isAuthenticated={isAuthenticated} />
 
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <Outlet />
         </div>
 
