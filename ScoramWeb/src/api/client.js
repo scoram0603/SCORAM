@@ -161,6 +161,13 @@ export function resetSessionExpiredGuard(isAdminToken) {
   else studentExpiredEventFired = false;
 }
 
+// Same "dead token" cleanup as a REST 401 above, for SignalR's own negotiate/connection failures
+// -- those never go through apiFetch, so parseApiResponse's 401 handling above never sees them.
+// See ChatConnectionContext.jsx's own comment on exactly when this fires.
+export function notifyStudentSessionExpired() {
+  notifyExpiredToken(false);
+}
+
 async function parseApiResponse(response, resolvedToken, isAdminToken) {
   if (response.status === 204) return null;
 

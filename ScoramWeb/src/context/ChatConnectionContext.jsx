@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import * as signalR from "@microsoft/signalr";
 import { useAuth } from "./AuthContext";
-import { getStoredToken, API_BASE_URL } from "../api/client";
+import { getStoredToken, API_BASE_URL, notifyStudentSessionExpired } from "../api/client";
 
 const ChatConnectionContext = createContext(null);
 
@@ -40,9 +40,21 @@ export function ChatConnectionProvider({ children }) {
       .then(() => {
         if (!cancelled) setConnection(conn);
       })
-      .catch(() => {
-        // Silent -- chat simply won't be real-time until reconnected; withAutomaticReconnect handles
-        // transient drops, and REST endpoints (join/send/etc.) don't depend on this connection at all.
+      .catch((err) => {
+        // A dead/expired token never goes through apiFetch (SignalR's own negotiate call bypasses
+        // it entirely), so parseApiResponse's 401 handling in api/client.js never sees this one --
+        // without this check, an expired token just silently fails to connect forever, and the
+        // stale session in localStorage never gets cleared. This IS reachable on the Login page
+        // itself: a token from a previous, since-expired session is enough for `isAuthenticated`
+        // above to read true until some OTHER authenticated call happens to hit the real 401
+        // first. Anything else (offline, backend down, CORS) is left alone -- withAutomaticReconnect
+        // already covers a connection dropping AFTER it connects, and a transient failure here
+        // shouldn't log anyone out.
+        const isAuthFailure =
+          err?.statusCode === 401 ||
+          err?.statusCode === 403 ||
+          /unauthorized|status code '?40[13]'?/i.test(String(err?.message ?? ""));
+        if (isAuthFailure) notifyStudentSessionExpired();
       });
 
     return () => {

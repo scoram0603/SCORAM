@@ -34,19 +34,39 @@ namespace ScoramAPI.Controllers
             _config = config;
         }
 
-        // GET /api/auth/otp-widget-config -- public by design, same reasoning as
-        // GET /api/push/vapid-public-key: WidgetId/TokenAuth are the OTP widget's own client-facing
-        // credentials (see appsettings.json's own comment on why these -- unlike Msg91:AuthKey --
-        // are fine to hand out), fetched once by the mobile app before it initializes MSG91's
-        // Flutter SDK (OTPWidget.initializeWidget) rather than hardcoding them in the built app, so
-        // rotating them server-side doesn't require an app store release.
+        // GET /api/auth/otp-widget-config?platform=web|mobile -- public by design, same reasoning
+        // as GET /api/push/vapid-public-key: WidgetId/TokenAuth are the OTP widget's own
+        // client-facing credentials (see appsettings.json's own comment on why these -- unlike
+        // Msg91:AuthKey -- are fine to hand out). MSG91 restricts a single widget to ONE
+        // integration type (Web OR Mobile), so Scoram runs two separate widgets on the same MSG91
+        // account -- this hands back whichever one's credentials match the caller's platform.
+        // Today only the Flutter app actually calls this (ScoramWeb's own browser widget reads its
+        // Web widget credentials from a build-time Vite env var instead -- see
+        // ScoramWeb/src/lib/msg91.js -- so nothing there needs to change), but both platform
+        // values are supported here so ScoramWeb could switch to fetching this too later without
+        // another backend change.
         [HttpGet("otp-widget-config")]
-        public ActionResult<OtpWidgetConfigDto> GetOtpWidgetConfig()
+        public ActionResult<OtpWidgetConfigDto> GetOtpWidgetConfig([FromQuery] string? platform)
         {
-            var widgetId = _config["Msg91:WidgetId"];
-            var tokenAuth = _config["Msg91:TokenAuth"];
+            string? widgetId;
+            string? tokenAuth;
+
+            switch (platform?.Trim().ToLowerInvariant())
+            {
+                case "web":
+                    widgetId = _config["Msg91:WebWidgetId"];
+                    tokenAuth = _config["Msg91:WebTokenAuth"];
+                    break;
+                case "mobile":
+                    widgetId = _config["Msg91:MobileWidgetId"];
+                    tokenAuth = _config["Msg91:MobileTokenAuth"];
+                    break;
+                default:
+                    return BadRequest(new { message = "Query param 'platform' must be 'web' or 'mobile'." });
+            }
+
             if (string.IsNullOrWhiteSpace(widgetId) || string.IsNullOrWhiteSpace(tokenAuth))
-                return NotFound(new { message = "Phone verification isn't configured on the server yet." });
+                return NotFound(new { message = $"Phone verification isn't configured on the server yet for platform '{platform}'." });
 
             return Ok(new OtpWidgetConfigDto { WidgetId = widgetId, TokenAuth = tokenAuth });
         }
