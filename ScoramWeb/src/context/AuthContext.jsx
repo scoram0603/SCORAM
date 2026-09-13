@@ -63,6 +63,7 @@ export function AuthProvider({ children }) {
   // will never start working again until a real re-login happens.
   useEffect(() => {
     function handleExpired() {
+      setStoredToken(null);
       setToken(null);
       setUser(null);
       setSessionExpired(true);
@@ -74,6 +75,17 @@ export function AuthProvider({ children }) {
   const applyAuthResponse = useCallback((res) => {
     resetSessionExpiredGuard(false);
     setSessionExpired(false);
+    // Written synchronously (not just via the `useEffect` below) because the caller navigates to a
+    // new, already-"authenticated" page immediately after this returns (see Login.jsx's
+    // handleLoginOtpVerified/handleSubmit) -- that next page's own effects (fetching exams,
+    // ChatConnectionProvider's `isAuthenticated`-gated connect, etc.) read the token straight from
+    // localStorage via getStoredToken(), and React fires a child component's effects BEFORE its
+    // parent's -- so relying solely on this component's own `useEffect(() => setStoredToken(token))`
+    // would leave those child effects reading the *previous* (often empty) token for that whole
+    // commit. That's exactly the "log in, get instantly 401'd, get bounced back to /login with
+    // 'session expired'" bug this line fixes -- affects every login method (password or OTP), not
+    // just OTP, since they all funnel through here.
+    setStoredToken(res.token);
     setToken(res.token);
     setUser({
       userId: res.userId,
@@ -146,6 +158,7 @@ export function AuthProvider({ children }) {
   );
 
   const logout = useCallback(() => {
+    setStoredToken(null);
     setToken(null);
     setUser(null);
     setSessionExpired(false);
