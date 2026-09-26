@@ -19,11 +19,21 @@ export function register({ username, fullName, email, password, phoneNumber, otp
   });
 }
 
-// POST /api/auth/login -- identifier is either an email or a username
-export function login({ identifier, password }) {
+// GET /api/captcha/generate -- fetches a fresh math-question captcha challenge. See
+// CaptchaController's own comment: called once when the login (password) screen loads, and again
+// after every attempt, since the backend consumes a CaptchaId on first use regardless of outcome
+// (see CaptchaService.Verify) -- reusing a stale CaptchaId fails even with the right answer.
+export function getCaptcha() {
+  return apiFetch("/api/captcha/generate");
+}
+
+// POST /api/auth/login -- identifier is either an email or a username. captchaId/captchaAnswer
+// come from getCaptcha() above -- AuthController.Login rejects the request before it ever touches
+// the database if these are missing or wrong.
+export function login({ identifier, password, captchaId, captchaAnswer }) {
   return apiFetch("/api/auth/login", {
     method: "POST",
-    body: { identifier, password },
+    body: { identifier, password, captchaId, captchaAnswer },
   });
 }
 

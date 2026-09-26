@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Mail, Lock, User as UserIcon, Phone, AtSign, ArrowRight, Loader2,
-  AlertCircle, CheckCircle2, XCircle, Eye, EyeOff, ShieldCheck,
+  AlertCircle, CheckCircle2, XCircle, Eye, EyeOff, ShieldCheck, RefreshCw,
 } from "lucide-react";
 import logo from "../assets/scoram-logo-horizontal.png";
 import { useAuth } from "../context/AuthContext";
-import { checkUsername } from "../api/auth";
+import { checkUsername, getCaptcha } from "../api/auth";
 import OtpEntryBox from "../components/auth/OtpEntryBox";
 
 const USERNAME_PATTERN = /^[a-z0-9._]+$/;
@@ -28,6 +28,13 @@ export default function Login() {
   // number field below), so there's nothing to toggle there.
   const [loginMethod, setLoginMethod] = useState("password");
   const [otpPhoneNumber, setOtpPhoneNumber] = useState(""); // login-OTP-mode only
+
+  // Login-password-mode only: AuthController.Login requires a CaptchaId/CaptchaAnswer pair on
+  // every attempt (see api/auth.js's getCaptcha/login). captcha holds the current
+  // { captchaId, question } challenge; captchaAnswer is the person's typed answer.
+  const [captcha, setCaptcha] = useState(null);
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
+  const [captchaLoading, setCaptchaLoading] = useState(false);
 
   const [form, setForm] = useState({
     username: "",
@@ -93,6 +100,29 @@ export default function Login() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.username, mode]);
 
+  // Fetches a fresh captcha challenge (see api/auth.js's getCaptcha). Called when the login
+  // (password) screen is first shown, and again after every submit attempt -- the backend
+  // consumes the old CaptchaId regardless of whether that attempt succeeded, so hanging onto it
+  // would just fail the next attempt even with the right answer typed in.
+  async function refreshCaptcha() {
+    setCaptchaLoading(true);
+    setCaptchaAnswer("");
+    try {
+      setCaptcha(await getCaptcha());
+    } catch {
+      setCaptcha(null); // shown as a retry state below; handleSubmit can't proceed without one
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (mode === "login" && loginMethod === "password" && !captcha && !captchaLoading) {
+      refreshCaptcha();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, loginMethod]);
+
   // Login-OTP mode: OtpEntryBox already verified the phone number by the time this fires, so all
   // that's left is exchanging the access-token for a session -- no separate submit step needed.
   async function handleLoginOtpVerified(accessToken) {
@@ -119,14 +149,21 @@ export default function Login() {
 
     try {
       if (mode === "login") {
-        await login({ identifier, password: form.password });
+        await login({
+          identifier,
+          password: form.password,
+          captchaId: captcha?.captchaId,
+          captchaAnswer: Number(captchaAnswer),
+        });
       } else {
         await register({ ...form, username: form.username.trim().toLowerCase(), otpAccessToken: registerOtpAccessToken });
       }
       navigate(redirectTo, { replace: true });
     } catch {
       // login/register already set AuthContext's own `error` state (they're ApiError instances --
-      // see client.js) -- nothing else to do here.
+      // see client.js) -- nothing else to do here. The old CaptchaId is spent either way (see
+      // refreshCaptcha's own comment), so line up a new one for the next attempt.
+      if (mode === "login" && loginMethod === "password") refreshCaptcha();
     }
   }
 
@@ -322,6 +359,32 @@ export default function Login() {
                 tabIndex={-1}
               >
                 {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={2} /> : <Eye className="h-4 w-4" strokeWidth={2} />}
+              </button>
+            </Field>
+          )}
+
+          {mode === "login" && loginMethod === "password" && (
+            <Field icon={ShieldCheck} label="Security check">
+              <span className="flex-1 text-sm text-ink-900">
+                {captcha ? captcha.question : captchaLoading ? "Loading…" : "Couldn't load a question"}
+              </span>
+              <input
+                type="text"
+                required
+                inputMode="numeric"
+                value={captchaAnswer}
+                onChange={(e) => setCaptchaAnswer(e.target.value.replace(/\D/g, ""))}
+                placeholder="Answer"
+                className="w-16 shrink-0 bg-transparent text-right text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={refreshCaptcha}
+                className="text-ink-400 hover:text-ink-600"
+                tabIndex={-1}
+                aria-label="Get a new question"
+              >
+                <RefreshCw className={`h-4 w-4 ${captchaLoading ? "animate-spin" : ""}`} strokeWidth={2} />
               </button>
             </Field>
           )}
