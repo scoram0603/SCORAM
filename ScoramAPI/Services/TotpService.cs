@@ -84,7 +84,7 @@ namespace ScoramAPI.Services
                 // 10 random digits, grouped for readability (e.g. "1234 56789" -> shown as
                 // "12345-67890") -- long enough that guessing one is infeasible (10^10 possibilities),
                 // short enough to type by hand if needed.
-                var codeBytes = RandomNumberGenerator.GetBytes(5);
+                var codeBytes = RandomNumberGenerator.GetBytes(10);
                 var code = string.Concat(codeBytes.Select(b => (b % 10).ToString()));
                 plaintext.Add(code);
                 hashes.Add(HashBackupCode(code));
