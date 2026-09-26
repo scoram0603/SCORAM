@@ -4,3 +4,15 @@ obj/
 .vs/
 appsettings.Production.json
 *.db
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+
+# Serilog file sink output (see Program.cs) -- these are runtime-generated and were being committed
+# (found logs/*.log actually present in the working tree during the security/scalability audit).
+logs/
+
+# Local upload fallback -- uploads now go to Azure Blob (see Program.cs's own comment on the
+# Render-ephemeral-disk migration; nothing in the app reads from or writes to this path anymore),
+# but this folder still had ~13MB of leftover files from before that, being tracked in git.
+wwwroot/uploads/

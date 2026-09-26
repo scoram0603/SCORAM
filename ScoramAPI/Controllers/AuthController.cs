@@ -17,16 +17,20 @@ namespace ScoramAPI.Controllers
     {
         private readonly ScoramDbContext _db;
         private readonly ITokenService _tokenService;
+        private readonly IRefreshTokenService _refreshTokens;
+        private readonly ISecurityStampService _securityStamps;
         private readonly IFileStorageService _fileStorage;
         private readonly IGamificationService _gamification;
         private readonly IMsg91Service _msg91;
         private readonly ICaptchaService _captcha;
         private readonly IConfiguration _config;
 
-        public AuthController(ScoramDbContext db, ITokenService tokenService, IFileStorageService fileStorage, IGamificationService gamification, IMsg91Service msg91, ICaptchaService captcha, IConfiguration config)
+        public AuthController(ScoramDbContext db, ITokenService tokenService, IRefreshTokenService refreshTokens, ISecurityStampService securityStamps, IFileStorageService fileStorage, IGamificationService gamification, IMsg91Service msg91, ICaptchaService captcha, IConfiguration config)
         {
             _db = db;
             _tokenService = tokenService;
+            _refreshTokens = refreshTokens;
+            _securityStamps = securityStamps;
             _fileStorage = fileStorage;
             _gamification = gamification;
             _msg91 = msg91;
@@ -71,7 +75,31 @@ namespace ScoramAPI.Controllers
             return Ok(new OtpWidgetConfigDto { WidgetId = widgetId, TokenAuth = tokenAuth });
         }
 
-        [HttpPost("register")]
+        // Shared by Register/Login/LoginWithOtp -- issues a fresh access token + refresh token pair
+        // and builds the response DTO. Callers are expected to have already set user.LastActiveAt and
+        // saved before calling this (kept separate since Register does a couple more SaveChanges calls
+        // of its own first for the gamification records).
+        private async Task<AuthResponseDto> IssueAuthResponseAsync(User user)
+        {
+            var (token, expiresAt) = _tokenService.GenerateToken(user);
+            var (refreshToken, _) = await _refreshTokens.IssueAsync(user.Id, isAdmin: false, HttpContext.Connection.RemoteIpAddress?.ToString());
+
+            return new AuthResponseDto
+            {
+                Token = token,
+                ExpiresAt = expiresAt,
+                RefreshToken = refreshToken,
+                UserId = user.Id,
+                Username = user.Username,
+                FullName = user.FullName,
+                Email = user.Email,
+                PhoneNumber = user.PhoneNumber,
+                PhoneVerified = user.PhoneVerified,
+                PhotoUrl = user.PhotoUrl,
+                NotifyOnGroupMessages = user.NotifyOnGroupMessages,
+                NotifyOnDirectMessages = user.NotifyOnDirectMessages
+            };
+        }
         [EnableRateLimiting("register")]
         public async Task<ActionResult<AuthResponseDto>> Register(RegisterDto dto)
         {
@@ -144,24 +172,10 @@ namespace ScoramAPI.Controllers
 
             await _db.SaveChangesAsync();
 
-            var (token, expiresAt) = _tokenService.GenerateToken(user);
             user.LastActiveAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
 
-            return Ok(new AuthResponseDto
-            {
-                Token = token,
-                ExpiresAt = expiresAt,
-                UserId = user.Id,
-                Username = user.Username,
-                FullName = user.FullName,
-                Email = user.Email,
-                PhoneNumber = user.PhoneNumber,
-                PhoneVerified = user.PhoneVerified,
-                PhotoUrl = user.PhotoUrl,
-                NotifyOnGroupMessages = user.NotifyOnGroupMessages,
-                NotifyOnDirectMessages = user.NotifyOnDirectMessages
-            });
+            return Ok(await IssueAuthResponseAsync(user));
         }
 
         [HttpPost("login")]
@@ -184,24 +198,10 @@ namespace ScoramAPI.Controllers
             if (!user.IsActive)
                 return Unauthorized(new { message = "This account has been deactivated." });
 
-            var (token, expiresAt) = _tokenService.GenerateToken(user);
             user.LastActiveAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
 
-            return Ok(new AuthResponseDto
-            {
-                Token = token,
-                ExpiresAt = expiresAt,
-                UserId = user.Id,
-                Username = user.Username,
-                FullName = user.FullName,
-                Email = user.Email,
-                PhoneNumber = user.PhoneNumber,
-                PhoneVerified = user.PhoneVerified,
-                PhotoUrl = user.PhotoUrl,
-                NotifyOnGroupMessages = user.NotifyOnGroupMessages,
-                NotifyOnDirectMessages = user.NotifyOnDirectMessages
-            });
+            return Ok(await IssueAuthResponseAsync(user));
         }
 
         // POST /api/auth/login-otp -- passwordless login for an EXISTING account: the person proves
@@ -225,14 +225,69 @@ namespace ScoramAPI.Controllers
             if (!user.IsActive)
                 return Unauthorized(new { message = "This account has been deactivated." });
 
-            var (token, expiresAt) = _tokenService.GenerateToken(user);
             user.LastActiveAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
 
+            return Ok(await IssueAuthResponseAsync(user));
+        }
+
+        // POST /api/auth/refresh -- exchanges a still-valid refresh token for a new access token
+        // (and a new refresh token -- rotation, not reuse). No password needed: possession of a
+        // valid, unexpired, unrevoked refresh token is what's being checked here.
+        //
+        // Reuse detection: if the token presented has ALREADY been rotated (RevokedAt != null), that
+        // means either two clients raced to refresh at once, or -- more concerning -- a stolen refresh
+        // token is being replayed after the legitimate client already moved on to its replacement.
+        // Can't tell those apart from here, so this errs toward the safer read and revokes every
+        // active session for the account rather than just rejecting the one request.
+        [HttpPost("refresh")]
+        [EnableRateLimiting("login")]
+        public async Task<ActionResult<AuthResponseDto>> Refresh(RefreshTokenRequestDto dto)
+        {
+            var stored = await _refreshTokens.FindByRawTokenAsync(dto.RefreshToken, isAdmin: false);
+            if (stored == null)
+                return Unauthorized(new { message = "Invalid refresh token." });
+
+            if (stored.RevokedAt != null)
+            {
+                // Strong signal of a stolen/replayed token (see this method's own comment above) --
+                // treat it as a full compromise, not just a dead refresh token: kill every live access
+                // token for this account too, not only future refresh attempts.
+                await _refreshTokens.RevokeAllAsync(stored.PrincipalId, isAdmin: false);
+                var compromisedUser = await _db.Users.FindAsync(stored.PrincipalId);
+                if (compromisedUser != null)
+                {
+                    compromisedUser.SecurityStamp = Guid.NewGuid();
+                    await _db.SaveChangesAsync();
+                    await _securityStamps.InvalidateAsync(compromisedUser.Id, isAdmin: false);
+                }
+                return Unauthorized(new { message = "This session is no longer valid. Please log in again." });
+            }
+
+            if (stored.ExpiresAt <= DateTime.UtcNow)
+                return Unauthorized(new { message = "This session has expired. Please log in again." });
+
+            var user = await _db.Users.FindAsync(stored.PrincipalId);
+            if (user == null || !user.IsActive)
+                return Unauthorized(new { message = "This account is no longer available." });
+
+            var (newRawToken, newExpiresAt) = _tokenService.GenerateRefreshToken();
+            var replacement = new RefreshToken
+            {
+                PrincipalId = user.Id,
+                IsAdmin = false,
+                TokenHash = _tokenService.HashRefreshToken(newRawToken),
+                ExpiresAt = newExpiresAt,
+                CreatedByIp = HttpContext.Connection.RemoteIpAddress?.ToString()
+            };
+            await _refreshTokens.RotateAsync(stored, replacement);
+
+            var (accessToken, accessExpiresAt) = _tokenService.GenerateToken(user);
             return Ok(new AuthResponseDto
             {
-                Token = token,
-                ExpiresAt = expiresAt,
+                Token = accessToken,
+                ExpiresAt = accessExpiresAt,
+                RefreshToken = newRawToken,
                 UserId = user.Id,
                 Username = user.Username,
                 FullName = user.FullName,
@@ -243,6 +298,26 @@ namespace ScoramAPI.Controllers
                 NotifyOnGroupMessages = user.NotifyOnGroupMessages,
                 NotifyOnDirectMessages = user.NotifyOnDirectMessages
             });
+        }
+
+        // POST /api/auth/logout -- ends every session for this account (not just the one that's
+        // logging out): regenerates SecurityStamp, which also invalidates the still-live access token
+        // making this very request, plus any other access tokens issued before it, and revokes every
+        // refresh token. A per-device-only logout is a reasonable future addition but isn't what was
+        // asked for here.
+        [Authorize(Roles = "Student")]
+        [HttpPost("logout")]
+        public async Task<ActionResult> Logout()
+        {
+            var user = await _db.Users.FindAsync(User.GetUserId());
+            if (user == null) return NotFound();
+
+            user.SecurityStamp = Guid.NewGuid();
+            await _db.SaveChangesAsync();
+            await _securityStamps.InvalidateAsync(user.Id, isAdmin: false);
+            await _refreshTokens.RevokeAllAsync(user.Id, isAdmin: false);
+
+            return Ok(new { message = "Logged out." });
         }
 
         // GET /api/auth/me -- lets the frontend silently refresh its cached user object (see
@@ -399,9 +474,12 @@ namespace ScoramAPI.Controllers
                 return BadRequest(new { message = "Current password is incorrect." });
 
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+            user.SecurityStamp = Guid.NewGuid();
             await _db.SaveChangesAsync();
+            await _securityStamps.InvalidateAsync(user.Id, isAdmin: false);
+            await _refreshTokens.RevokeAllAsync(user.Id, isAdmin: false);
 
-            return Ok(new { message = "Password updated successfully." });
+            return Ok(new { message = "Password updated successfully. Please log in again." });
         }
 
         // PATCH /api/auth/change-email -- no OTP step yet (see the DTO's comment in AuthDTOs.cs),

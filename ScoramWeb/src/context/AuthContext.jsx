@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import * as authApi from "../api/auth";
-import { getStoredToken, setStoredToken, resetSessionExpiredGuard } from "../api/client";
+import { getStoredToken, setStoredToken, setStoredRefreshToken, resetSessionExpiredGuard } from "../api/client";
 
 const USER_STORAGE_KEY = "scoram_user";
 
@@ -64,12 +64,26 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     function handleExpired() {
       setStoredToken(null);
+      setStoredRefreshToken(null);
       setToken(null);
       setUser(null);
       setSessionExpired(true);
     }
     window.addEventListener("scoram:session-expired", handleExpired);
     return () => window.removeEventListener("scoram:session-expired", handleExpired);
+  }, []);
+
+  // See api/client.js: fires whenever a background silent refresh rotates the access token (an
+  // expired-but-not-dead session, caught before the 401 handler above ever runs). apiFetch already
+  // re-reads the latest token from storage on every call, so this only matters for the few things
+  // that read `token` straight from this context instead -- ChatConnectionContext's SignalR setup
+  // is the one today.
+  useEffect(() => {
+    function handleRefreshed(event) {
+      setToken(event.detail);
+    }
+    window.addEventListener("scoram:token-refreshed", handleRefreshed);
+    return () => window.removeEventListener("scoram:token-refreshed", handleRefreshed);
   }, []);
 
   const applyAuthResponse = useCallback((res) => {
@@ -86,6 +100,7 @@ export function AuthProvider({ children }) {
     // 'session expired'" bug this line fixes -- affects every login method (password or OTP), not
     // just OTP, since they all funnel through here.
     setStoredToken(res.token);
+    setStoredRefreshToken(res.refreshToken);
     setToken(res.token);
     setUser({
       userId: res.userId,
@@ -158,7 +173,12 @@ export function AuthProvider({ children }) {
   );
 
   const logout = useCallback(() => {
+    // Best-effort: this revokes the refresh token server-side (see AuthController.Logout), but the
+    // local session is cleared regardless of whether the request even reaches the server -- a
+    // network hiccup on the way out shouldn't trap someone in a logged-in-looking UI.
+    authApi.logout().catch(() => {});
     setStoredToken(null);
+    setStoredRefreshToken(null);
     setToken(null);
     setUser(null);
     setSessionExpired(false);

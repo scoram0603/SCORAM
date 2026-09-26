@@ -7,6 +7,8 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localho
 
 const TOKEN_STORAGE_KEY = "scoram_token";
 const ADMIN_TOKEN_STORAGE_KEY = "scoram_admin_token";
+const REFRESH_TOKEN_STORAGE_KEY = "scoram_refresh_token";
+const ADMIN_REFRESH_TOKEN_STORAGE_KEY = "scoram_admin_refresh_token";
 
 export function getStoredToken() {
   try {
@@ -22,6 +24,44 @@ export function setStoredToken(token) {
     else localStorage.removeItem(TOKEN_STORAGE_KEY);
   } catch {
     // localStorage unavailable (private browsing etc.) — auth simply won't persist across reloads
+  }
+}
+
+// Access tokens are short-lived now (see appsettings.json's Jwt:ExpiryMinutes) -- these are what
+// let a session survive past that without asking for a password again. See refreshStudentSession/
+// refreshAdminSession below for where they're actually used, and RefreshToken.cs's own comment on
+// why the server only ever sees a hash of one, never this raw value.
+export function getStoredRefreshToken() {
+  try {
+    return localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredRefreshToken(token) {
+  try {
+    if (token) localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, token);
+    else localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+  } catch {
+    // ignore — same as above
+  }
+}
+
+export function getStoredAdminRefreshToken() {
+  try {
+    return localStorage.getItem(ADMIN_REFRESH_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredAdminRefreshToken(token) {
+  try {
+    if (token) localStorage.setItem(ADMIN_REFRESH_TOKEN_STORAGE_KEY, token);
+    else localStorage.removeItem(ADMIN_REFRESH_TOKEN_STORAGE_KEY);
+  } catch {
+    // ignore — same as above
   }
 }
 
@@ -45,19 +85,96 @@ export function setStoredAdminToken(token) {
   }
 }
 
+// Fired once a silent refresh succeeds, so AuthContext/AdminAuthContext can update their own React
+// `token` state to match -- without this, everything going through apiFetch/apiFetchForm would
+// keep working fine (they always re-read the latest token from storage), but anything that reads
+// the token straight from context state instead (SignalR's connection setup is the one today --
+// see ChatConnectionContext) would keep using the old, now-dead access token until the next full
+// page load.
+const TOKEN_REFRESHED_EVENT = "scoram:token-refreshed";
+const ADMIN_TOKEN_REFRESHED_EVENT = "scoram:admin-token-refreshed";
+
+// Deduped per session type: a page can easily have several authenticated requests in flight at
+// once (notifications poll, SignalR negotiate, the page's own data fetch), and if the access token
+// expired they'll all come back 401 around the same time -- without this, each one would kick off
+// its own refresh call and race to rotate the same refresh token, and only the first to land would
+// actually work (see RefreshToken's rotation/reuse-detection comment: the others would get treated
+// as replaying an already-used token).
+let studentRefreshPromise = null;
+let adminRefreshPromise = null;
+
+async function refreshStudentSession() {
+  if (!studentRefreshPromise) {
+    studentRefreshPromise = (async () => {
+      const refreshToken = getStoredRefreshToken();
+      if (!refreshToken) return null;
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        setStoredToken(data.token);
+        setStoredRefreshToken(data.refreshToken);
+        window.dispatchEvent(new CustomEvent(TOKEN_REFRESHED_EVENT, { detail: data.token }));
+        return data.token;
+      } catch {
+        return null;
+      } finally {
+        studentRefreshPromise = null;
+      }
+    })();
+  }
+  return studentRefreshPromise;
+}
+
+async function refreshAdminSession() {
+  if (!adminRefreshPromise) {
+    adminRefreshPromise = (async () => {
+      const refreshToken = getStoredAdminRefreshToken();
+      if (!refreshToken) return null;
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        setStoredAdminToken(data.token);
+        setStoredAdminRefreshToken(data.refreshToken);
+        window.dispatchEvent(new CustomEvent(ADMIN_TOKEN_REFRESHED_EVENT, { detail: data.token }));
+        return data.token;
+      } catch {
+        return null;
+      } finally {
+        adminRefreshPromise = null;
+      }
+    })();
+  }
+  return adminRefreshPromise;
+}
+
 /**
  * Thin fetch wrapper for the ScoramAPI backend.
  * - Prefixes API_BASE_URL
  * - Attaches JSON headers + Bearer token (when present)
+ * - On a 401 with a token attached, tries exactly once to silently refresh (see
+ *   refreshStudentSession/refreshAdminSession above) and retry before giving up -- so a merely-
+ *   expired short-lived access token doesn't look like a dead session as long as the refresh token
+ *   is still good.
  * - Throws an Error with a readable message on non-2xx responses
  * - Returns parsed JSON (or null for empty 204 responses)
  *
  * `auth: true` attaches the *student* token via getStoredToken(). Admin API calls pass an explicit
  * `token` (their own admin token) instead -- see src/admin/api/*.js.
  */
-export async function apiFetch(path, { method = "GET", body, auth = false, token, signal } = {}) {
+export async function apiFetch(path, { method = "GET", body, auth = false, token, signal, _isRetry = false } = {}) {
   const headers = { "Content-Type": "application/json" };
 
+  const isAdminCall = token !== undefined && token !== null;
   const resolvedToken = token ?? (auth ? getStoredToken() : null);
   if (resolvedToken) headers.Authorization = `Bearer ${resolvedToken}`;
 
@@ -79,7 +196,21 @@ export async function apiFetch(path, { method = "GET", body, auth = false, token
     );
   }
 
-  return parseApiResponse(response, resolvedToken, token !== undefined && token !== null);
+  if (response.status === 401 && resolvedToken && !_isRetry) {
+    const newToken = isAdminCall ? await refreshAdminSession() : await refreshStudentSession();
+    if (newToken) {
+      return apiFetch(path, {
+        method,
+        body,
+        auth,
+        token: isAdminCall ? newToken : undefined,
+        signal,
+        _isRetry: true,
+      });
+    }
+  }
+
+  return parseApiResponse(response, resolvedToken, isAdminCall);
 }
 
 // Shown when a request is aborted via an AbortController timeout (see withTimeoutSignal below) --
@@ -111,8 +242,9 @@ export function withTimeoutSignal(timeoutMs, existingSignal) {
  * for the one endpoint that takes a file today: POST /api/admin/exams (exam logo upload).
  * Never set a Content-Type header yourself for this one; the browser sets the multipart boundary.
  */
-export async function apiFetchForm(path, { method = "POST", formData, auth = false, token, signal } = {}) {
+export async function apiFetchForm(path, { method = "POST", formData, auth = false, token, signal, _isRetry = false } = {}) {
   const headers = {};
+  const isAdminCall = token !== undefined && token !== null;
   const resolvedToken = token ?? (auth ? getStoredToken() : null);
   if (resolvedToken) headers.Authorization = `Bearer ${resolvedToken}`;
 
@@ -131,7 +263,21 @@ export async function apiFetchForm(path, { method = "POST", formData, auth = fal
     );
   }
 
-  return parseApiResponse(response, resolvedToken, token !== undefined && token !== null);
+  if (response.status === 401 && resolvedToken && !_isRetry) {
+    const newToken = isAdminCall ? await refreshAdminSession() : await refreshStudentSession();
+    if (newToken) {
+      return apiFetchForm(path, {
+        method,
+        formData,
+        auth,
+        token: isAdminCall ? newToken : undefined,
+        signal,
+        _isRetry: true,
+      });
+    }
+  }
+
+  return parseApiResponse(response, resolvedToken, isAdminCall);
 }
 
 // Fired at most once per bad token (see the guard in parseApiResponse below) so a page full of

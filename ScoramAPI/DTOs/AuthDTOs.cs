@@ -2,6 +2,15 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ScoramAPI.DTOs
 {
+    // Used by POST /api/auth/refresh (get a new access token without re-entering a password) and
+    // POST /api/auth/logout (end this one session). Same shape for the admin equivalents in
+    // AdminAuthDTOs.cs.
+    public class RefreshTokenRequestDto
+    {
+        [Required]
+        public string RefreshToken { get; set; } = string.Empty;
+    }
+
     public class RegisterDto
     {
         // Instagram-style handle: lowercase letters, numbers, underscore, dot. Enforced here as a
@@ -90,6 +99,10 @@ namespace ScoramAPI.DTOs
     {
         public string Token { get; set; } = string.Empty;
         public DateTime ExpiresAt { get; set; }
+        // Opaque, single-use-then-rotated -- store it (not the access token) for silent renewal via
+        // POST /api/auth/refresh once Token expires. See RefreshToken model's own comment on why the
+        // server only ever stores a hash of this, never the raw value.
+        public string RefreshToken { get; set; } = string.Empty;
         public Guid UserId { get; set; }
         public string Username { get; set; } = string.Empty;
         public string FullName { get; set; } = string.Empty;

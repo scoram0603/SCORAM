@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, UploadCloud, FileStack, ClipboardCheck, ListChecks, Users, MessageSquare, LogOut,
   ShieldCheck, ShieldAlert, Lightbulb, Flag, Library, ChevronsLeft, ChevronsRight, PenLine, Trophy,
-  GraduationCap, Zap, Building2,
+  GraduationCap, Zap, Building2, KeyRound,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import logoMark from "../../assets/scoram-logo-square.png";
@@ -64,6 +64,7 @@ const NAV_GROUPS = [
     section: "Operations",
     items: [
       { to: "/admin/tasks", label: "Tasks", icon: ListChecks },
+      { to: "/admin/mfa-settings", label: "Two-Factor Auth", icon: KeyRound },
       { to: "/admin/audit-log", label: "Audit Log", icon: ShieldAlert, permission: "Audit" },
       { to: "/admin/admins", label: "Manage Admins", icon: Users, superAdminOnly: true },
     ],

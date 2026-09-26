@@ -298,10 +298,17 @@ namespace ScoramAPI.Enums
 
     public enum ImportJobStatus
     {
-        PendingReview,
-        Committed,
-        RolledBack,
-        Failed
+        PendingReview = 0,
+        Committed = 1,
+        RolledBack = 2,
+        Failed = 3,
+        // Added later, hence out of "logical" order and explicitly numbered -- this enum has no
+        // HasConversion<string>() in ScoramDbContext, so it's stored as a plain int, and inserting a
+        // new member anywhere but the end (or without an explicit value) would silently renumber
+        // Committed/RolledBack/Failed and corrupt every already-committed job's stored status.
+        // Set on a job between Commit's upfront validation and the background worker actually
+        // finishing the write -- see BulkImportCommitService/BulkImportCommitWorker.
+        Processing = 4
     }
 
     // AZURE BLOB STORAGE (Documents) -- which virtual folder inside the private "uploads" container

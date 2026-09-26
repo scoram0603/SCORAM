@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
 using ScoramAPI.Data;
@@ -150,6 +151,7 @@ namespace ScoramAPI.Controllers
 
         // POST /api/questions/{questionId}/comments
         [HttpPost("questions/{questionId:guid}/comments")]
+        [EnableRateLimiting("content-post")]
         [Authorize(Roles = "Student")]
         public async Task<ActionResult<CommentResponseDto>> Create(Guid questionId, CommentCreateDto dto)
         {
@@ -161,6 +163,7 @@ namespace ScoramAPI.Controllers
 
         // POST /api/question-bank/{questionId}/comments
         [HttpPost("question-bank/{questionId:guid}/comments")]
+        [EnableRateLimiting("content-post")]
         [Authorize(Roles = "Student")]
         public async Task<ActionResult<CommentResponseDto>> CreateForQuestionBank(Guid questionId, CommentCreateDto dto)
         {
@@ -199,6 +202,7 @@ namespace ScoramAPI.Controllers
         // that puts it. Works for both legacy and Question Bank threads: it copies whichever of
         // QuestionId/QuestionBankQuestionId the parent has, rather than needing a separate route.
         [HttpPost("comments/{commentId:guid}/replies")]
+        [EnableRateLimiting("content-post")]
         [Authorize(Roles = "Student")]
         public async Task<ActionResult<CommentResponseDto>> Reply(Guid commentId, CommentCreateDto dto)
         {
@@ -294,11 +298,13 @@ namespace ScoramAPI.Controllers
         // same vote again removes it, the opposite vote switches it, no vote yet creates it. Fixes a
         // known prior gap where this was just an unrestricted counter++ anyone could click forever.
         [HttpPost("comments/{commentId:guid}/upvote")]
+        [EnableRateLimiting("vote")]
         [Authorize(Roles = "Student")]
         public async Task<ActionResult<object>> Upvote(Guid commentId) => await ApplyCommentVoteAsync(commentId, isUpvote: true);
 
         // POST /api/comments/{commentId}/downvote -- same toggle, opposite direction.
         [HttpPost("comments/{commentId:guid}/downvote")]
+        [EnableRateLimiting("vote")]
         [Authorize(Roles = "Student")]
         public async Task<ActionResult<object>> Downvote(Guid commentId) => await ApplyCommentVoteAsync(commentId, isUpvote: false);
 
@@ -378,6 +384,7 @@ namespace ScoramAPI.Controllers
 
         // POST /api/comments/{commentId}/report
         [HttpPost("comments/{commentId:guid}/report")]
+        [EnableRateLimiting("report")]
         [Authorize(Roles = "Student")]
         public async Task<IActionResult> Report(Guid commentId, CommentReportCreateDto dto)
         {

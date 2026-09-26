@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using ScoramAPI.Data;
@@ -176,6 +177,7 @@ namespace ScoramAPI.Controllers
 
         // POST /api/chat/rooms/{id}/messages  (multipart/form-data -- Attachment is optional)
         [HttpPost("rooms/{id:guid}/messages")]
+        [EnableRateLimiting("content-post")]
         public async Task<ActionResult<ChatMessageResponseDto>> SendMessage(Guid id, [FromForm] ChatMessageSendDto dto)
         {
             var userId = User.GetUserId();
@@ -256,6 +258,7 @@ namespace ScoramAPI.Controllers
         // question into the room as its own message type (QuestionShare) rather than a plain pasted
         // link, so the frontend can render it as a clickable card with the question snippet.
         [HttpPost("rooms/{id:guid}/share-question")]
+        [EnableRateLimiting("content-post")]
         public async Task<ActionResult<ChatMessageResponseDto>> ShareQuestion(Guid id, ShareQuestionDto dto)
         {
             var userId = User.GetUserId();
@@ -304,6 +307,7 @@ namespace ScoramAPI.Controllers
         // check on read for these three types -- a deleted paper/test/mock test's shared card stays
         // visually clickable; tapping it just 404s from the target screen. Fine for a v1.
         [HttpPost("rooms/{id:guid}/share-content")]
+        [EnableRateLimiting("content-post")]
         public async Task<ActionResult<ChatMessageResponseDto>> ShareContent(Guid id, ShareContentDto dto)
         {
             var userId = User.GetUserId();
@@ -381,6 +385,7 @@ namespace ScoramAPI.Controllers
 
         // POST /api/chat/messages/{id}/report
         [HttpPost("messages/{id:guid}/report")]
+        [EnableRateLimiting("report")]
         public async Task<IActionResult> ReportMessage(Guid id, ChatReportCreateDto dto)
         {
             var userId = User.GetUserId();
@@ -468,6 +473,7 @@ namespace ScoramAPI.Controllers
 
         // POST /api/chat/polls/{id}/vote
         [HttpPost("polls/{id:guid}/vote")]
+        [EnableRateLimiting("vote")]
         public async Task<ActionResult<ChatPollResponseDto>> Vote(Guid id, ChatPollVoteDto dto)
         {
             var userId = User.GetUserId();

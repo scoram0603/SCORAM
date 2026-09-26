@@ -90,6 +90,14 @@ export function changePassword({ currentPassword, newPassword }) {
   });
 }
 
+// POST /api/auth/logout -- ends every session server-side (see AuthController.Logout's comment),
+// not just this browser tab's. Best-effort from the caller's perspective: AuthContext.logout()
+// clears local state regardless of whether this succeeds, since a network hiccup shouldn't trap
+// someone in a logged-in-looking UI.
+export function logout() {
+  return apiFetch("/api/auth/logout", { method: "POST", auth: true });
+}
+
 // PATCH /api/auth/change-email
 export function changeEmail({ currentPassword, newEmail }) {
   return apiFetch("/api/auth/change-email", {

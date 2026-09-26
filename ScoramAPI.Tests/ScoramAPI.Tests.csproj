@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    New test project (no automated tests existed before this). VERIFY THESE PACKAGE VERSIONS before
+    restoring: this sandbox has no nuget.org access to confirm them, same caveat as the Redis packages
+    added earlier in ScoramAPI.csproj -- these are reasonable, well-known versions as of this file's
+    writing, not verified against the registry.
+
+    Uses Microsoft.EntityFrameworkCore.InMemory for tests that need a DbContext (SecurityStampService,
+    RefreshTokenService, StagedDataCache-adjacent logic) rather than a real SQL Server -- this sandbox
+    can't run one, and InMemory is enough to exercise the C# logic under test. It does NOT validate
+    real SQL Server behavior: unique-index enforcement, raw SQL (EF.Functions.Contains/Like), and
+    computed column defaults (NEWID() etc.) all behave differently or not at all under InMemory. Tests
+    here are scoped to logic that doesn't depend on those -- nothing here is a substitute for running
+    the real migrations against a real SQL Server instance at least once before relying on this suite.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Moq" Version="4.20.72" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ScoramAPI\ScoramAPI.csproj" />
+  </ItemGroup>
+
+</Project>

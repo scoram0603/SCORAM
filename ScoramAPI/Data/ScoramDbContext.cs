@@ -31,6 +31,7 @@ namespace ScoramAPI.Data
         // Core
         public DbSet<User> Users => Set<User>();
         public DbSet<Admin> Admins => Set<Admin>();
+        public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
         public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
         public DbSet<Exam> Exams => Set<Exam>();
@@ -806,6 +807,58 @@ namespace ScoramAPI.Data
                 .HasIndex(w => w.Word)
                 .IsUnique();
 
+            // ---------- Refresh tokens ----------
+            // TokenHash uniquely identifies a token for lookup during refresh; the composite index
+            // supports "revoke every session for this principal" (password change, deactivation,
+            // logout-everywhere) without a table scan.
+            modelBuilder.Entity<RefreshToken>()
+                .HasIndex(t => t.TokenHash)
+                .IsUnique();
+
+            modelBuilder.Entity<RefreshToken>()
+                .HasIndex(t => new { t.PrincipalId, t.IsAdmin });
+
+            // ---------- Performance indexes (security/scalability audit) ----------
+            // Added against confirmed, measured 25-48s responses / SQL timeouts on these exact
+            // endpoints -- not speculative. See Migrations/20260916020000_AddPerformanceIndexes.cs
+            // for the full reasoning per index; summarized here:
+
+            // /api/questions (QuestionsController.Search) -- every one of these is an optional
+            // equality filter or the default sort column, all previously unindexed.
+            modelBuilder.Entity<Question>().HasIndex(q => q.Subject);
+            modelBuilder.Entity<Question>().HasIndex(q => q.Topic);
+            modelBuilder.Entity<Question>().HasIndex(q => q.Year);
+            modelBuilder.Entity<Question>().HasIndex(q => q.DifficultyLevel);
+            modelBuilder.Entity<Question>().HasIndex(q => q.ExamName);
+            modelBuilder.Entity<Question>().HasIndex(q => q.CreatedAt);
+
+            // Used in EXISTS-style correlated subqueries in QuestionBankController.VisibleQuestions()
+            // (run once per QuestionBankQuestion row) and ExamsController's bank-count aggregate --
+            // this was an unindexed column driving a per-row table scan in the first case, the single
+            // most likely cause of /api/question-bank/search's measured timeouts.
+            modelBuilder.Entity<Question>().HasIndex(q => q.MirroredToQuestionBankQuestionId);
+
+            // /api/question-bank/search's base "visible questions" filter is always IsActive == true,
+            // and the default sort is always CreatedAt descending -- composite index serves both
+            // together rather than needing two separate lookups reconciled in memory.
+            modelBuilder.Entity<QuestionBankQuestion>().HasIndex(x => new { x.IsActive, x.CreatedAt });
+            modelBuilder.Entity<QuestionBankQuestion>().HasIndex(x => x.Language);
+
+            // NOTE: no new index added for QuestionBankExamMapping's ExamId/Year filters -- both
+            // already have their own individual index plus a composite unique index
+            // (QuestionBankQuestionId, ExamId, Year), confirmed by reading that entity's existing
+            // config. A further (ExamId, Year) index would be redundant write overhead for no real
+            // read benefit.
+
+            // /api/admin/papers/pending -- filters on Status alone.
+            modelBuilder.Entity<Paper>().HasIndex(p => p.Status);
+
+            // /api/admin/solutions/pending -- filters on IsApproved, sorts by CreatedAt. Composite
+            // because this table only grows (approved solutions are never deleted), so an
+            // IsApproved-only index would keep getting less selective over time as the approved
+            // majority grows relative to the always-small pending minority.
+            modelBuilder.Entity<QuestionSolution>().HasIndex(s => new { s.IsApproved, s.CreatedAt });
+
             // ---------- Seed a few default badges & chat rooms so the app is usable immediately ----------
             // NOTE: HasData requires fixed, hardcoded key values (not Guid.NewGuid()) so that EF can compute
             // a stable migration diff -- these are arbitrary fixed GUIDs, not meaningful data.
@@ -816,23 +869,16 @@ namespace ScoramAPI.Data
                 new Badge { Id = Guid.Parse("8f14e45f-ceea-467e-add1-000000000004"), Name = "Verified Solver", Description = "Solution marked verified by admin", CriteriaDescription = "1 admin-verified solution" }
             );
 
-            // ---------- Seed the first Super Admin (bootstrap account) ----------
+            // ---------- First Super Admin is no longer seeded here ----------
             // There's no public admin self-registration by design (SRS: only a Super Admin creates
-            // other admins). Since HasData needs a fixed value, this password hash is a pre-computed
-            // BCrypt hash of "SuperAdmin@123" -- change this password immediately after first login via
-            // a future "change password" endpoint, or update the hash here before your first deployment.
-            modelBuilder.Entity<Admin>().HasData(
-                new Admin
-                {
-                    Id = Guid.Parse("a1b2c3d4-0000-4000-8000-000000000001"),
-                    FullName = "Super Admin",
-                    Email = "superadmin@scoram.com",
-                    PasswordHash = "$2b$10$iHMto/L2wJaon4hjWIC8CeZNXGiQ3Fe4wMpa8tGvi9jybrHnSPqHa",
-                    Role = ScoramAPI.Enums.AdminRole.SuperAdmin,
-                    IsActive = true,
-                    CreatedAt = new DateTime(2026, 7, 1)
-                }
-            );
+            // other admins), so *some* bootstrap path is still needed on a brand-new database. That
+            // used to be a HasData row with a fixed, documented default password -- which meant the
+            // same known credential shipped in source control and the README for every deployment.
+            // It's now handled at startup instead: see SuperAdminBootstrapService, which creates the
+            // first SuperAdmin from the SUPERADMIN_EMAIL/SUPERADMIN_PASSWORD environment variables
+            // (only when no SuperAdmin exists yet) and forces a password change on first login via
+            // Admin.MustChangePassword. Migration 20260916000000_RemoveDefaultSuperAdminSeed handles
+            // any database that already has the old seeded row.
 
             // Chat rooms are now created automatically per-Exam (see ExamsController.Create and the
             // admin "sync rooms" endpoint for backfilling exams that predate this feature) rather than

@@ -17,6 +17,13 @@ export function previewBulkImport(token, paperId, file) {
   return apiFetchForm(`/api/admin/papers/${paperId}/bulk-import/preview`, { formData, token });
 }
 
+// GET /api/admin/bulk-import/{jobId} -- current status of one import job. Used right after Commit
+// when it comes back 202 (queued for background processing -- see commitBulkImport's own comment)
+// to poll until status moves past "Processing" to "Committed" or "Failed".
+export function getImportStatus(token, jobId) {
+  return apiFetch(`/api/admin/bulk-import/${jobId}`, { token });
+}
+
 // POST /api/admin/bulk-import/{jobId}/commit -- rowNumbers omitted = commit every valid row;
 // pass a subset for a partial import. Timeout-guarded the same way as
 // questionBankImport.js's commitQuestionBankImport -- see that file's own comment.

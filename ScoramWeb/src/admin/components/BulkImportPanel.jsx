@@ -4,7 +4,7 @@ import {
   UploadCloud, CheckCircle2, XCircle, Loader2, AlertTriangle, History, Undo2, Download, SquarePen,
   ChevronDown, ChevronRight,
 } from "lucide-react";
-import { previewBulkImport, commitBulkImport, getImportHistory, rollbackImport, updatePreviewRow, updateRowImages, getImportJobQuestions } from "../api/bulkImport";
+import { previewBulkImport, commitBulkImport, getImportStatus, getImportHistory, rollbackImport, updatePreviewRow, updateRowImages, getImportJobQuestions } from "../api/bulkImport";
 import { cleanupEmptyExam } from "../api/exams";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { Card, Button, FormField, TextInput, TextArea, Select, Alert, friendlyError } from "./AdminUI";
@@ -28,6 +28,10 @@ export default function BulkImportPanel({ paperId, token, paperStatus = "Draft",
   const [error, setError] = useState(null);
 
   const [committing, setCommitting] = useState(false);
+  // True only while polling a queued-but-not-yet-finished commit (see handleCommit) -- distinct from
+  // `committing`, which covers the initial POST itself. Kept separate so the UI can say "processing
+  // in the background" rather than implying the initial request is still in flight.
+  const [commitProcessing, setCommitProcessing] = useState(false);
   const [commitResult, setCommitResult] = useState(null);
 
   const [history, setHistory] = useState(null);
@@ -129,15 +133,65 @@ export default function BulkImportPanel({ paperId, token, paperStatus = "Draft",
     });
   }
 
+  // Polls GET /api/admin/bulk-import/{jobId} every 2.5s until Status moves past "Processing", up to
+  // ~2 minutes (matching COMMIT_TIMEOUT_MS in api/bulkImport.js, for the same reasoning: a real
+  // import this large is rare, and the admin should get a definite answer either way rather than a
+  // spinner that never resolves). Only ever reached when the backend has a Redis-backed background
+  // queue configured -- without one, Commit already returns the final result synchronously and this
+  // is never called.
+  async function pollCommitStatus(jobId) {
+    const maxAttempts = 48;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      let status;
+      try {
+        status = await getImportStatus(token, jobId);
+      } catch (err) {
+        // A transient network hiccup while polling isn't the same as the import itself failing --
+        // keep trying rather than giving up on the first blip.
+        continue;
+      }
+
+      if (status.status === "Processing") continue;
+
+      if (status.status === "Committed") {
+        setCommitResult({
+          importedCount: status.importedCount,
+          skippedCount: Math.max(0, (status.totalRows ?? status.importedCount) - status.importedCount),
+        });
+        onImported?.(status.importedCount);
+      } else {
+        // Failed (or any other non-Processing, non-Committed status) -- surfaced as a plain error
+        // rather than a partial commitResult, since there's no per-row detail to show for a
+        // background failure the way a synchronous 400 would have carried.
+        setError(`This import didn't complete successfully (status: ${status.status}). Check "Recent imports" below, or try again.`);
+      }
+      refreshHistory();
+      return;
+    }
+
+    setError("Still processing after 2 minutes -- check \"Recent imports\" below shortly, or refresh this page.");
+    refreshHistory();
+  }
+
   async function handleCommit() {
     if (!preview || checkedRows.size === 0) return;
     setCommitting(true);
     setError(null);
     try {
       const result = await commitBulkImport(token, preview.jobId, Array.from(checkedRows));
-      setCommitResult(result);
-      onImported?.(result.importedCount);
-      refreshHistory();
+      if (result.status === "Processing") {
+        setCommitProcessing(true);
+        try {
+          await pollCommitStatus(preview.jobId);
+        } finally {
+          setCommitProcessing(false);
+        }
+      } else {
+        setCommitResult(result);
+        onImported?.(result.importedCount);
+        refreshHistory();
+      }
     } catch (err) {
       setError(friendlyError(err));
       // See QuestionBankUploadWizard's identical handling -- a timed-out commit may still complete
@@ -154,6 +208,7 @@ export default function BulkImportPanel({ paperId, token, paperStatus = "Draft",
     setSelectedFile(null);
     setPreview(null);
     setCommitResult(null);
+    setCommitProcessing(false);
     setError(null);
     setExpandedRows(new Set());
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -230,7 +285,7 @@ export default function BulkImportPanel({ paperId, token, paperStatus = "Draft",
           </a>
         </div>
 
-        {!commitResult && (
+        {!commitResult && !commitProcessing && (
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <input ref={fileInputRef} type="file" accept={ACCEPTED} onChange={handleFileChange} className="text-sm" />
             <Button onClick={handlePreview} disabled={!selectedFile} isLoading={previewing}>
@@ -246,6 +301,13 @@ export default function BulkImportPanel({ paperId, token, paperStatus = "Draft",
         )}
 
         {error && <div className="mt-3"><Alert>{error}</Alert></div>}
+
+        {commitProcessing && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-ink-400">
+            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
+            Import is processing in the background -- this can take a little while for a large file.
+          </div>
+        )}
 
         {commitResult && (
           <div className="mt-3">
@@ -270,7 +332,7 @@ export default function BulkImportPanel({ paperId, token, paperStatus = "Draft",
           </div>
         )}
 
-        {preview && !commitResult && (
+        {preview && !commitResult && !commitProcessing && (
           <div className="mt-4">
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <span className="flex items-center gap-1 font-semibold text-mint-500">

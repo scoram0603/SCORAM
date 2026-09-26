@@ -44,6 +44,9 @@ namespace ScoramAPI.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("MustChangePassword")
+                        .HasColumnType("bit");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -53,24 +56,24 @@ namespace ScoramAPI.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<Guid>("SecurityStamp")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TotpBackupCodeHashes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("TotpEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("TotpSecret")
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
                         .IsUnique();
 
                     b.ToTable("Admins");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("a1b2c3d4-0000-4000-8000-000000000001"),
-                            CreatedAt = new DateTime(2026, 7, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
-                            Email = "superadmin@scoram.com",
-                            FullName = "Super Admin",
-                            IsActive = true,
-                            PasswordHash = "$2b$10$iHMto/L2wJaon4hjWIC8CeZNXGiQ3Fe4wMpa8tGvi9jybrHnSPqHa",
-                            Role = "SuperAdmin"
-                        });
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.AdminPermissionGrant", b =>
@@ -1319,6 +1322,8 @@ namespace ScoramAPI.Migrations
 
                     b.HasIndex("ExamId", "Year", "Language");
 
+                    b.HasIndex("Status");
+
                     b.ToTable("Papers");
                 });
 
@@ -1619,6 +1624,20 @@ namespace ScoramAPI.Migrations
                         .IsUnique()
                         .HasFilter("[PaperId] IS NOT NULL AND [QuestionNumber] IS NOT NULL");
 
+                    b.HasIndex("Subject");
+
+                    b.HasIndex("Topic");
+
+                    b.HasIndex("Year");
+
+                    b.HasIndex("DifficultyLevel");
+
+                    b.HasIndex("ExamName");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("MirroredToQuestionBankQuestionId");
+
                     b.ToTable("Questions");
                 });
 
@@ -1821,6 +1840,10 @@ namespace ScoramAPI.Migrations
                     b.HasIndex("TopicId");
 
                     b.HasIndex("SubjectId", "TopicId");
+
+                    b.HasIndex("Language");
+
+                    b.HasIndex("IsActive", "CreatedAt");
 
                     b.ToTable("QuestionBankQuestions");
                 });
@@ -2057,6 +2080,8 @@ namespace ScoramAPI.Migrations
 
                     b.HasIndex("SubmittedByUserId");
 
+                    b.HasIndex("IsApproved", "CreatedAt");
+
                     b.ToTable("QuestionSolutions");
                 });
 
@@ -2258,6 +2283,47 @@ namespace ScoramAPI.Migrations
                     b.HasIndex("ReferrerUserId");
 
                     b.ToTable("Referrals");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.RefreshToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsAdmin")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("PrincipalId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ReplacedByTokenId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PrincipalId", "IsAdmin");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("RefreshTokens");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.StudentAnswer", b =>
@@ -2621,6 +2687,9 @@ namespace ScoramAPI.Migrations
                     b.Property<string>("ReferralCode")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("SecurityStamp")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Username")
                         .IsRequired()

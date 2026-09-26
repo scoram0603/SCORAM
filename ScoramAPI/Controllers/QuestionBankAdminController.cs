@@ -2,7 +2,6 @@ using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using ScoramAPI.Data;
 using ScoramAPI.DTOs;
 using ScoramAPI.Enums;
@@ -22,8 +21,9 @@ namespace ScoramAPI.Controllers
     public class QuestionBankAdminController : ControllerBase
     {
         // Bulk-import preview rows live here between preview and commit, same pattern as
-        // BulkImportController's own cache -- see that controller's comment for the tradeoff this
-        // implies (an app restart loses any in-progress review).
+        // BulkImportController's own cache -- see that controller's comment and IStagedDataCache's
+        // own comment for the tradeoff this implies and how it survives landing on a different app
+        // instance between preview and commit.
         private const string CachePrefix = "qb-bulk-import-rows:";
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
 
@@ -31,15 +31,18 @@ namespace ScoramAPI.Controllers
         private readonly IAdminPermissionService _permissions;
         private readonly IQuestionBankImportService _importService;
         private readonly IBulkUploadZipService _zipService;
-        private readonly IMemoryCache _cache;
+        private readonly IStagedDataCache _cache;
         private readonly IAuditLogService _audit;
         private readonly ILogger<QuestionBankAdminController> _logger;
         private readonly IFileStorageService _fileStorage;
+        private readonly IBackgroundJobQueue _jobQueue;
+        private readonly IQuestionBankImportCommitService _commitService;
 
         public QuestionBankAdminController(
             ScoramDbContext db, IAdminPermissionService permissions, IQuestionBankImportService importService,
-            IBulkUploadZipService zipService, IMemoryCache cache, IAuditLogService audit,
-            ILogger<QuestionBankAdminController> logger, IFileStorageService fileStorage)
+            IBulkUploadZipService zipService, IStagedDataCache cache, IAuditLogService audit,
+            ILogger<QuestionBankAdminController> logger, IFileStorageService fileStorage,
+            IBackgroundJobQueue jobQueue, IQuestionBankImportCommitService commitService)
         {
             _db = db;
             _permissions = permissions;
@@ -49,6 +52,8 @@ namespace ScoramAPI.Controllers
             _audit = audit;
             _logger = logger;
             _fileStorage = fileStorage;
+            _jobQueue = jobQueue;
+            _commitService = commitService;
         }
 
         // ======================================================================================
@@ -630,7 +635,7 @@ namespace ScoramAPI.Controllers
             _db.QuestionBankImportJobs.Add(job);
             await _db.SaveChangesAsync();
 
-            _cache.Set(CachePrefix + job.Id, rows, CacheLifetime);
+            await _cache.SetAsync(CachePrefix + job.Id, rows, CacheLifetime);
 
             return Ok(new QuestionBankImportPreviewResponseDto
             {
@@ -670,7 +675,8 @@ namespace ScoramAPI.Controllers
             if (job.Status != ImportJobStatus.PendingReview)
                 return BadRequest(new { message = $"This import is already {job.Status} and its rows can't be edited anymore." });
 
-            if (!_cache.TryGetValue(CachePrefix + jobId, out List<QuestionBankImportRow>? rows) || rows == null)
+            var rows = await _cache.GetAsync<List<QuestionBankImportRow>>(CachePrefix + jobId);
+            if (rows == null)
                 return BadRequest(new { message = "This preview has expired (previews last 30 minutes). Please re-upload the file." });
 
             var row = rows.FirstOrDefault(r => r.RowNumber == rowNumber);
@@ -696,7 +702,7 @@ namespace ScoramAPI.Controllers
             job.ValidRows = rows.Count(r => r.IsValid);
             job.InvalidRows = rows.Count(r => !r.IsValid);
             job.DuplicateRows = rows.Count(r => r.IsDuplicate);
-            _cache.Set(CachePrefix + jobId, rows, CacheLifetime);
+            await _cache.SetAsync(CachePrefix + jobId, rows, CacheLifetime);
             await _db.SaveChangesAsync();
 
             return Ok(row);
@@ -721,7 +727,8 @@ namespace ScoramAPI.Controllers
             if (job.Status != ImportJobStatus.PendingReview)
                 return BadRequest(new { message = $"This import is already {job.Status} and its rows can't be edited anymore." });
 
-            if (!_cache.TryGetValue(CachePrefix + jobId, out List<QuestionBankImportRow>? rows) || rows == null)
+            var rows = await _cache.GetAsync<List<QuestionBankImportRow>>(CachePrefix + jobId);
+            if (rows == null)
                 return BadRequest(new { message = "This preview has expired (previews last 30 minutes). Please re-upload the file." });
 
             var row = rows.FirstOrDefault(r => r.RowNumber == rowNumber);
@@ -752,7 +759,7 @@ namespace ScoramAPI.Controllers
             job.ValidRows = rows.Count(r => r.IsValid);
             job.InvalidRows = rows.Count(r => !r.IsValid);
             job.DuplicateRows = rows.Count(r => r.IsDuplicate);
-            _cache.Set(CachePrefix + jobId, rows, CacheLifetime);
+            await _cache.SetAsync(CachePrefix + jobId, rows, CacheLifetime);
             await _db.SaveChangesAsync();
 
             return Ok(row);
@@ -761,6 +768,13 @@ namespace ScoramAPI.Controllers
         // create a second question -- their exam/year pairs are merged onto the existing question's
         // mapping set instead (section 13: "add the new exam/year mapping instead of creating
         // unnecessary duplicate question records").
+        // POST /api/admin/question-bank/bulk/{jobId}/commit -- upfront validation (job exists, still
+        // PendingReview, preview not expired) always runs here synchronously; only the actual
+        // DB-writing work (QuestionBankImportCommitService.CommitAsync, extracted from what used to
+        // be this method's body) moves to the background queue when one's available. Same validation
+        // repeated inside CommitAsync itself regardless (defense in depth for the queued path) -- see
+        // BulkImportController.Commit's identical comment for the full reasoning, which applies here
+        // unchanged.
         [HttpPost("bulk/{jobId:guid}/commit")]
         public async Task<ActionResult<QuestionBankImportCommitResultDto>> Commit(Guid jobId, QuestionBankImportCommitDto dto)
         {
@@ -772,201 +786,41 @@ namespace ScoramAPI.Controllers
             if (job.Status != ImportJobStatus.PendingReview)
                 return BadRequest(new { message = $"This import is already {job.Status} and can't be committed again." });
 
-            if (!_cache.TryGetValue(CachePrefix + jobId, out List<QuestionBankImportRow>? rows) || rows == null)
+            var hasRows = await _cache.GetAsync<List<QuestionBankImportRow>>(CachePrefix + jobId) != null;
+            if (!hasRows)
                 return BadRequest(new { message = "This preview has expired (previews last 30 minutes). Please re-upload the file." });
 
-            var wanted = dto.RowNumbers != null ? new HashSet<int>(dto.RowNumbers) : null;
-            var toCommit = rows.Where(r => r.IsValid && (wanted == null || wanted.Contains(r.RowNumber))).ToList();
-            var skipped = rows.Count - toCommit.Count;
-
             var adminId = User.GetAdminId();
-            var subjectCache = await _db.QuestionBankSubjects.ToDictionaryAsync(s => s.Name, StringComparer.OrdinalIgnoreCase);
-            var topicCache = await _db.QuestionBankTopics.ToDictionaryAsync(t => (t.SubjectId, t.Name), new TopicKeyComparer());
-            var examCache = await _db.Exams.ToDictionaryAsync(e => e.Name, StringComparer.OrdinalIgnoreCase);
 
-            var importedCount = 0;
-            var mergedCount = 0;
-
-            // Which exams THIS batch has already given content to -- same reasoning as
-            // BulkPaperImportController's examsGivenAPaperThisBatch: a brand-new exam's first mapping
-            // isn't saved to the database until this loop's own SaveChangesAsync calls happen, so a
-            // second row naming that same new exam would otherwise also see "no content yet" via
-            // ExamHasContentAsync and wrongly get added to candidateEmptyExamIds a second time. Only
-            // the row genuinely alone on its exam should get credit for having been the one to fill it.
-            var examsTouchedThisBatch = new HashSet<Guid>();
-            var candidateEmptyExamIds = new List<Guid>();
-
-            // Deliberately does NOT auto-create a missing exam (unlike BulkPaperImportController's
-            // equivalent, which still uses ExamsController.GetOrCreateExamCachedAsync) -- Question
-            // Bank bulk import can only add content to an exam the admin already created via Manage
-            // Exam. Preview/ValidateAsync already rejects any row naming a non-existent exam, so this
-            // should never actually fire in normal use; it's here as defense-in-depth for the rare
-            // race where an exam gets deleted in the ~30 minutes between Preview and Commit. Throwing
-            // is safe here -- nothing in this loop is persisted until the single SaveChangesAsync
-            // after it, so an exception here aborts the whole commit with nothing written.
-            async Task<Exam> ResolveExamAndTrackAsync(string examName)
+            if (_jobQueue.IsAvailable)
             {
-                var name = examName.Trim();
-                if (!examCache.TryGetValue(name, out var exam))
+                job.Status = ImportJobStatus.Processing;
+                await _db.SaveChangesAsync();
+                await _jobQueue.EnqueueQuestionBankImportCommitJobAsync(new QuestionBankImportCommitJob { JobId = jobId, AdminId = adminId, RowNumbers = dto.RowNumbers });
+
+                // 202: accepted, not yet done -- the frontend polls GET bulk/{jobId} (the existing
+                // GetImportStatus endpoint already returns Status/ImportedCount/MergedIntoExistingCount,
+                // same reasoning as BulkImportController.Commit reusing its own GetStatus) until
+                // Status moves past Processing.
+                return Accepted($"/api/admin/question-bank/bulk/{jobId}", new QuestionBankImportCommitResultDto
                 {
-                    exam = await _db.Exams.FirstOrDefaultAsync(e => e.Name == name)
-                        ?? throw new InvalidOperationException(
-                            $"Exam \"{name}\" no longer exists -- it may have been deleted since this file was previewed. Re-upload and try again.");
-                    examCache[name] = exam;
-                }
-                if (!examsTouchedThisBatch.Contains(exam.Id))
-                {
-                    var wasEmpty = !await ExamsController.ExamHasContentAsync(_db, exam.Id, exam.Name);
-                    if (wasEmpty) candidateEmptyExamIds.Add(exam.Id);
-                    examsTouchedThisBatch.Add(exam.Id);
-                }
-                return exam;
+                    JobId = jobId,
+                    Status = ImportJobStatus.Processing.ToString(),
+                    ImportedCount = 0,
+                    MergedIntoExistingCount = 0,
+                    SkippedCount = 0
+                });
             }
 
             try
             {
-            foreach (var row in toCommit)
-            {
-                if (row.IsDuplicate && row.DuplicateOfQuestionId.HasValue)
-                {
-                    // Merge: add any exam/year pairs from this row that the existing question doesn't
-                    // already have, rather than inserting a second copy of the same question. Any
-                    // staged images or ContentBlocks this row carried (ZIP upload only) are discarded
-                    // here, same as Explanation/SourceReference/etc. already were before this
-                    // feature existed -- they're never copied onto the existing question, and get
-                    // swept up by this method's own staging-folder cleanup at the end.
-                    var existingMappings = await _db.QuestionBankExamMappings
-                        .Where(m => m.QuestionBankQuestionId == row.DuplicateOfQuestionId.Value)
-                        .ToListAsync();
-
-                    foreach (var ey in row.ExamYears)
-                    {
-                        var exam = await ResolveExamAndTrackAsync(ey.ExamName!);
-                        var alreadyMapped = existingMappings.Any(m => m.ExamId == exam.Id && m.Year == ey.Year);
-                        if (alreadyMapped) continue;
-
-                        // ImportJobId tagged here (unlike a brand-new question's own mappings below) --
-                        // this mapping is being added to a question that already existed before this
-                        // job, so it's the ONLY trace of what this job actually changed on it. Needed
-                        // for Rollback to find and remove exactly this mapping without touching the
-                        // question itself. See QuestionBankExamMapping.ImportJobId's own comment.
-                        _db.QuestionBankExamMappings.Add(new QuestionBankExamMapping
-                        {
-                            QuestionBankQuestionId = row.DuplicateOfQuestionId.Value,
-                            ExamId = exam.Id,
-                            Year = ey.Year,
-                            ImportJobId = job.Id
-                        });
-                    }
-                    mergedCount++;
-                    continue;
-                }
-
-                // Rows that duplicate ANOTHER ROW IN THIS SAME FILE (not an existing DB question --
-                // see QuestionBankImportService.ValidateAsync) have no DuplicateOfQuestionId; the
-                // first occurrence still gets created normally and later occurrences were already
-                // marked IsDuplicate so they fall into the branch above via a second pass. To keep
-                // this simple and correct, in-batch duplicates whose "original" hasn't been committed
-                // yet in this same loop are skipped (their exam/years are lost) -- rare in practice
-                // since ValidateAsync already flags them for the admin to review before committing.
-                if (row.IsDuplicate) { mergedCount++; continue; }
-
-                var subject = await GetOrCreateSubjectCachedAsync(row.Subject, adminId, subjectCache);
-                var topic = await GetOrCreateTopicCachedAsync(subject.Id, row.Topic, adminId, topicCache);
-
-                var question = new QuestionBankQuestion
-                {
-                    QuestionText = row.QuestionText.Trim(),
-                    NormalizedQuestionText = _importService.NormalizeForDuplicateCheck(row.QuestionText),
-                    OptionA = row.OptionA.Trim(),
-                    OptionB = row.OptionB.Trim(),
-                    OptionC = row.OptionC.Trim(),
-                    OptionD = row.OptionD.Trim(),
-                    CorrectOption = Enum.Parse<OptionLetter>(row.CorrectOption, ignoreCase: true),
-                    Explanation = row.Explanation,
-                    ContentBlocksJson = row.ContentBlocksJson,
-                    SubjectId = subject.Id,
-                    TopicId = topic.Id,
-                    SourceReference = row.SourceReference,
-                    Language = ParseLanguage(row.Language),
-                    CreatedByAdminId = adminId,
-                    ImportJobId = job.Id,
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                // Any images were staged (ZIP upload only -- see Preview) under
-                // "bulk-import-staging/{jobId}"; copy each into the permanent "question-images"
-                // folder, same reasoning as BulkImportController.Commit -- the whole staging folder
-                // gets deleted once this method finishes. CopyImageAsync no-ops to null for a null
-                // source, so safe to call unconditionally for a non-ZIP import too.
-                //
-                // Run all six fields' copies concurrently instead of one-at-a-time -- each is an
-                // independent network call to Azure Blob Storage (the SDK client is safe for
-                // concurrent use), and a big ZIP batch doing this sequentially per row is the main
-                // reason a large commit can take long enough to look "stuck" from the browser.
-                var questionImageTask = _fileStorage.CopyImageAsync(row.QuestionImageUrl, "question-images");
-                var optionAImageTask = _fileStorage.CopyImageAsync(row.OptionAImageUrl, "question-images");
-                var optionBImageTask = _fileStorage.CopyImageAsync(row.OptionBImageUrl, "question-images");
-                var optionCImageTask = _fileStorage.CopyImageAsync(row.OptionCImageUrl, "question-images");
-                var optionDImageTask = _fileStorage.CopyImageAsync(row.OptionDImageUrl, "question-images");
-                var explanationImageTask = _fileStorage.CopyImageAsync(row.ExplanationImageUrl, "question-images");
-                await Task.WhenAll(questionImageTask, optionAImageTask, optionBImageTask, optionCImageTask, optionDImageTask, explanationImageTask);
-                question.QuestionImageUrl = questionImageTask.Result;
-                question.OptionAImageUrl = optionAImageTask.Result;
-                question.OptionBImageUrl = optionBImageTask.Result;
-                question.OptionCImageUrl = optionCImageTask.Result;
-                question.OptionDImageUrl = optionDImageTask.Result;
-                question.ExplanationImageUrl = explanationImageTask.Result;
-
-                foreach (var ey in row.ExamYears)
-                {
-                    // Not tagged with ImportJobId -- this mapping belongs to a brand-new question this
-                    // same job is creating, so QuestionBankQuestion.ImportJobId above already
-                    // identifies it, and deleting the question on rollback cascades to this mapping
-                    // automatically (see OnModelCreating's Cascade on this FK).
-                    var exam = await ResolveExamAndTrackAsync(ey.ExamName!);
-                    question.ExamMappings.Add(new QuestionBankExamMapping { Exam = exam, Year = ey.Year });
-                }
-
-                _db.QuestionBankQuestions.Add(question);
-                importedCount++;
-            }
+                var result = await _commitService.CommitAsync(jobId, adminId, dto.RowNumbers);
+                return Ok(result);
             }
             catch (InvalidOperationException ex)
             {
-                // Thrown by ResolveExamAndTrackAsync above -- nothing was saved (see that method's own
-                // comment), so it's safe to just report the problem rather than committing anything.
                 return BadRequest(new { message = ex.Message });
             }
-
-            job.Status = ImportJobStatus.Committed;
-            job.ImportedCount = importedCount;
-            job.MergedIntoExistingCount = mergedCount;
-            job.CommittedAt = DateTime.UtcNow;
-            job.CandidateEmptyExamIds = candidateEmptyExamIds.Count > 0
-                ? string.Join(",", candidateEmptyExamIds.Distinct())
-                : null;
-
-            await _db.SaveChangesAsync();
-
-            // Whatever was staged for this job (used by a committed question above, discarded by a
-            // merge, or belonging to a row left invalid/skipped) has either already been copied
-            // elsewhere or is no longer needed -- safe to delete the whole staging folder now. A
-            // no-op for a non-ZIP import.
-            await _fileStorage.DeleteFolderAsync($"bulk-import-staging/{job.Id}");
-
-            _cache.Remove(CachePrefix + jobId);
-            await _audit.LogAsync(adminId, "QuestionBank.BulkImport.Commit", "QuestionBankImportJob", job.Id,
-                $"{importedCount} new, {mergedCount} merged, from {job.FileName}");
-
-            return Ok(new QuestionBankImportCommitResultDto
-            {
-                JobId = job.Id,
-                Status = job.Status.ToString(),
-                ImportedCount = importedCount,
-                MergedIntoExistingCount = mergedCount,
-                SkippedCount = skipped
-            });
         }
 
         // POST /api/admin/question-bank/bulk/{jobId}/rollback -- undoes exactly what this job's

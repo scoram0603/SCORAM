@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, UploadCloud, Download, CheckCircle2, XCircle, Copy, AlertTriangle, History, ChevronDown, ChevronRight, Undo2,
+  ArrowLeft, UploadCloud, Download, CheckCircle2, XCircle, Copy, AlertTriangle, History, ChevronDown, ChevronRight, Undo2, Loader2,
 } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import {
-  previewQuestionBankImport, commitQuestionBankImport, getQuestionBankImportHistory, rollbackQuestionBankImport,
+  previewQuestionBankImport, commitQuestionBankImport, getQuestionBankImportStatus, getQuestionBankImportHistory, rollbackQuestionBankImport,
   updatePreviewRow, updateRowImages, downloadExcelTemplate, downloadJsonTemplate,
 } from "../api/questionBankImport";
 import { cleanupEmptyExam } from "../api/exams";
@@ -44,6 +44,9 @@ export default function QuestionBankUploadWizard() {
   const [error, setError] = useState(null);
 
   const [committing, setCommitting] = useState(false);
+  // True only while polling a queued-but-not-yet-finished commit -- see handleCommit. Mirrors
+  // BulkImportPanel.jsx's identical state/reasoning (the PYP-side equivalent of this wizard).
+  const [commitProcessing, setCommitProcessing] = useState(false);
   const [commitResult, setCommitResult] = useState(null);
 
   const [history, setHistory] = useState(null);
@@ -165,14 +168,57 @@ export default function QuestionBankUploadWizard() {
     });
   }
 
+  // Polls GET /api/admin/question-bank/bulk/{jobId} every 2.5s until Status moves past
+  // "Processing" -- see BulkImportPanel.jsx's identical pollCommitStatus for the full reasoning
+  // (timeout, transient-error handling). Only ever reached when the backend has a Redis-backed
+  // background queue configured.
+  async function pollCommitStatus(jobId) {
+    const maxAttempts = 48;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      let status;
+      try {
+        status = await getQuestionBankImportStatus(token, jobId);
+      } catch {
+        continue; // transient network hiccup while polling -- keep trying
+      }
+
+      if (status.status === "Processing") continue;
+
+      if (status.status === "Committed") {
+        setCommitResult({
+          importedCount: status.importedCount,
+          mergedIntoExistingCount: status.mergedIntoExistingCount,
+          skippedCount: Math.max(0, status.totalRows - status.importedCount - status.mergedIntoExistingCount),
+        });
+      } else {
+        setError(`This import didn't complete successfully (status: ${status.status}). Check "Recent imports" below, or try again.`);
+      }
+      refreshHistory();
+      return;
+    }
+
+    setError("Still processing after 2 minutes -- check \"Recent imports\" below shortly, or refresh this page.");
+    refreshHistory();
+  }
+
   async function handleCommit() {
     if (!preview || checkedRows.size === 0) return;
     setCommitting(true);
     setError(null);
     try {
       const result = await commitQuestionBankImport(token, preview.jobId, Array.from(checkedRows));
-      setCommitResult(result);
-      refreshHistory();
+      if (result.status === "Processing") {
+        setCommitProcessing(true);
+        try {
+          await pollCommitStatus(preview.jobId);
+        } finally {
+          setCommitProcessing(false);
+        }
+      } else {
+        setCommitResult(result);
+        refreshHistory();
+      }
     } catch (err) {
       setError(friendlyError(err));
       // A timed-out commit (see commitQuestionBankImport's own comment) may still complete on the
@@ -193,6 +239,7 @@ export default function QuestionBankUploadWizard() {
     setSelectedFile(null);
     setPreview(null);
     setCommitResult(null);
+    setCommitProcessing(false);
     setError(null);
     setExpandedRows(new Set());
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -258,7 +305,7 @@ export default function QuestionBankUploadWizard() {
             </button>
           </div>
 
-          {!commitResult && (
+          {!commitResult && !commitProcessing && (
             <>
               <div className="mt-3 flex gap-2">
                 {FORMATS.map((f) => (
@@ -306,6 +353,13 @@ export default function QuestionBankUploadWizard() {
 
           {error && <div className="mt-3"><Alert>{error}</Alert></div>}
 
+          {commitProcessing && (
+            <div className="mt-3 flex items-center gap-2 text-sm text-ink-400">
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
+              Import is processing in the background -- this can take a little while for a large file.
+            </div>
+          )}
+
           {commitResult && (
             <div className="mt-3">
               <Alert type="success">
@@ -320,7 +374,7 @@ export default function QuestionBankUploadWizard() {
             </div>
           )}
 
-          {preview && !commitResult && (
+          {preview && !commitResult && !commitProcessing && (
             <div className="mt-4">
               <div className="flex flex-wrap items-center gap-3 text-xs">
                 <span>Total: {preview.totalRows}</span>

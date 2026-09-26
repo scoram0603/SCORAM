@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using ScoramAPI.Data;
@@ -80,6 +81,7 @@ namespace ScoramAPI.Controllers
         // existing thread if these two have already messaged, otherwise creates an empty one so the
         // frontend has a ConversationId to send the first message against.
         [HttpPost("conversations/start")]
+        [EnableRateLimiting("content-post")]
         public async Task<ActionResult<ConversationSummaryDto>> StartConversation(StartConversationDto dto)
         {
             var userId = User.GetUserId();
@@ -143,6 +145,7 @@ namespace ScoramAPI.Controllers
         // POST /api/directmessages/conversations/{id}/messages  (multipart/form-data -- Attachment
         // and AttachmentDurationSeconds are optional; the latter only applies to voice notes)
         [HttpPost("conversations/{id:guid}/messages")]
+        [EnableRateLimiting("content-post")]
         public async Task<ActionResult<DirectMessageResponseDto>> SendMessage(Guid id, [FromForm] DirectMessageSendDto dto)
         {
             var userId = User.GetUserId();
@@ -223,6 +226,7 @@ namespace ScoramAPI.Controllers
         // (same QuestionShare concept, same "resilient snapshot" reasoning) -- see that method's
         // comment for the full rationale.
         [HttpPost("conversations/{id:guid}/share-question")]
+        [EnableRateLimiting("content-post")]
         public async Task<ActionResult<DirectMessageResponseDto>> ShareQuestion(Guid id, ShareQuestionToDmDto dto)
         {
             var userId = User.GetUserId();
@@ -281,6 +285,7 @@ namespace ScoramAPI.Controllers
         // see that method's own comment on the Title/Subtitle snapshot and the "no live exists
         // check for these three types" trade-off.
         [HttpPost("conversations/{id:guid}/share-content")]
+        [EnableRateLimiting("content-post")]
         public async Task<ActionResult<DirectMessageResponseDto>> ShareContent(Guid id, ShareContentToDmDto dto)
         {
             var userId = User.GetUserId();

@@ -13,11 +13,22 @@ export function previewBulkPapers(token, file) {
 
 // POST /api/admin/bulk-papers/{jobId}/commit  (UploadPaper permission) -- creates a Draft Paper
 // for every valid, not-already-existing row (or just the given rowNumbers, if provided). Returns
-// { createdCount, skippedExistingCount, createdPapers }.
+// { createdCount, skippedExistingCount, createdPapers } directly, OR (when the backend has a
+// Redis-backed background queue configured) a 202 with an empty/placeholder body -- in that case,
+// poll getBulkPapersCommitStatus(jobId) below until its status moves past "Processing".
 export function commitBulkPapers(token, jobId, rowNumbers) {
   return apiFetch(`/api/admin/bulk-papers/${jobId}/commit`, {
     method: "POST",
     token,
     body: rowNumbers ? { rowNumbers } : {}
   });
+}
+
+// GET /api/admin/bulk-papers/{jobId}/commit-status -- only meaningful after a 202 from Commit
+// above. Returns { status: "Processing"|"Committed"|"Failed", result, errorMessage }. Unlike
+// BulkImportController's GetStatus, this is a purpose-built endpoint rather than reusing an
+// existing job-status one -- BulkPaperImportController has no DB job row to poll (see
+// BulkPaperImportCommitJob's own backend comment on why).
+export function getBulkPapersCommitStatus(token, jobId) {
+  return apiFetch(`/api/admin/bulk-papers/${jobId}/commit-status`, { token });
 }

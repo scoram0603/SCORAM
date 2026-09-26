@@ -1,15 +1,22 @@
 -- ============================================================================
--- OPTIONAL: SQL Server Full-Text Search setup for the fallback search path.
+-- OPTIONAL: SQL Server Full-Text Search setup for the fallback search paths on
+-- both Questions (the PYQ/paper flow) and QuestionBankQuestions (the standalone
+-- Question Bank -- see QuestionBankController.Search).
 -- ============================================================================
--- The app only reaches this fallback when Meilisearch itself is unreachable
+-- Questions' fallback only kicks in when Meilisearch itself is unreachable
 -- (see Services/FallbackSearchService.cs) -- Meilisearch remains the primary
--- search engine for normal operation. You do NOT need to run this script for
--- the app to work: without it, the fallback automatically uses a plain LIKE
--- '%term%' search instead, which is slower and unranked but always available.
+-- search engine there for normal operation. QuestionBankQuestions has no
+-- Meilisearch tier at all (a smaller, deliberate scope decision -- see that
+-- controller's own comment), so for it this Full-Text index IS the primary
+-- upgrade over LIKE, not just a during-an-outage fallback.
+--
+-- You do NOT need to run this script for the app to work: without it, both
+-- endpoints automatically use a plain LIKE '%term%' search instead, which is
+-- slower and unranked but always available.
 --
 -- What running this buys you: word-form-aware matching (e.g. "running" also
--- matches "run") and relevance ranking, on the rare occasions Meilisearch is
--- down. Safe to run multiple times -- every step is guarded with IF NOT EXISTS.
+-- matches "run") and relevance ranking. Safe to run multiple times -- every
+-- step is guarded with IF NOT EXISTS.
 --
 -- Requires the SQL Server Full-Text Search feature to be installed. Most
 -- SQL Server / SQL Server Express installations include it, but it's an
@@ -56,5 +63,31 @@ END
 ELSE
 BEGIN
     PRINT 'Full-text index on dbo.Questions already exists -- nothing to do.';
+END
+GO
+
+-- Same as above, for the Question Bank's own search (QuestionBankController.Search / section
+-- 15-16), which had no Full-Text or Meilisearch tier at all before this -- just a plain LIKE
+-- '%term%' scan. Only QuestionText goes in this one: unlike Questions.Subject/Topic (plain text
+-- columns), QuestionBankQuestion.SubjectId/TopicId are FK lookups into separate
+-- QuestionBankSubjects/QuestionBankTopics tables, not free text to index here.
+-- KEY INDEX needs QuestionBankQuestions' PK index name -- PK_QuestionBankQuestions by EF Core's
+-- default convention; look it up the same way as noted above (substituting the table name) if yours
+-- differs.
+IF NOT EXISTS (SELECT 1 FROM sys.fulltext_indexes WHERE object_id = OBJECT_ID('dbo.QuestionBankQuestions'))
+BEGIN
+    CREATE FULLTEXT INDEX ON dbo.QuestionBankQuestions
+    (
+        QuestionText LANGUAGE 1033
+    )
+    KEY INDEX PK_QuestionBankQuestions
+    ON ScoramFullTextCatalog
+    WITH CHANGE_TRACKING AUTO;
+
+    PRINT 'Created full-text index on dbo.QuestionBankQuestions (QuestionText).';
+END
+ELSE
+BEGIN
+    PRINT 'Full-text index on dbo.QuestionBankQuestions already exists -- nothing to do.';
 END
 GO

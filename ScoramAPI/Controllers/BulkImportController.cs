@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using ScoramAPI.Data;
 using ScoramAPI.DTOs;
 using ScoramAPI.Enums;
@@ -26,10 +25,12 @@ namespace ScoramAPI.Controllers
     {
         // Preview rows live here between preview and commit, keyed by ImportJob.Id -- see the
         // "deliberate simplicity tradeoff" note on Models/ImportJob.cs for what this does and doesn't
-        // survive (an app restart loses any in-progress review). A ZIP upload's staged images live in
-        // Azure Blob Storage under "bulk-import-staging/{jobId}/" for the same window -- cleaned up
-        // explicitly at the end of Commit(), and by BulkImportStagingCleanupService for anything
-        // abandoned past that window.
+        // survive. Backed by IStagedDataCache (see that file's own comment) rather than IMemoryCache
+        // directly, so a preview staged on one app instance is still found by a commit that lands on
+        // a different one, as long as Redis is configured (Program.cs) -- without Redis this is
+        // unchanged from before. A ZIP upload's staged images live in Azure Blob Storage under
+        // "bulk-import-staging/{jobId}/" for the same window -- cleaned up explicitly at the end of
+        // Commit(), and by BulkImportStagingCleanupService for anything abandoned past that window.
         private const string CachePrefix = "bulk-import-rows:";
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
 
@@ -38,17 +39,19 @@ namespace ScoramAPI.Controllers
         private readonly IBulkImportService _importService;
         private readonly IBulkUploadZipService _zipService;
         private readonly IFileStorageService _fileStorage;
-        private readonly IMemoryCache _cache;
+        private readonly IStagedDataCache _cache;
         private readonly IAuditLogService _audit;
         private readonly ILogger<BulkImportController> _logger;
-        private readonly IQuestionBankMirrorService _mirror;
         private readonly IInstantSearchService _instantSearch;
+        private readonly IBackgroundJobQueue _jobQueue;
+        private readonly IBulkImportCommitService _commitService;
 
         public BulkImportController(
             ScoramDbContext db, IAdminPermissionService permissions, IBulkImportService importService,
             IBulkUploadZipService zipService, IFileStorageService fileStorage,
-            IMemoryCache cache, IAuditLogService audit, ILogger<BulkImportController> logger,
-            IQuestionBankMirrorService mirror, IInstantSearchService instantSearch)
+            IStagedDataCache cache, IAuditLogService audit, ILogger<BulkImportController> logger,
+            IInstantSearchService instantSearch,
+            IBackgroundJobQueue jobQueue, IBulkImportCommitService commitService)
         {
             _db = db;
             _permissions = permissions;
@@ -58,8 +61,9 @@ namespace ScoramAPI.Controllers
             _cache = cache;
             _audit = audit;
             _logger = logger;
-            _mirror = mirror;
             _instantSearch = instantSearch;
+            _jobQueue = jobQueue;
+            _commitService = commitService;
         }
 
         // POST /api/admin/papers/{paperId}/bulk-import/preview  (multipart/form-data, field name "file")
@@ -135,7 +139,7 @@ namespace ScoramAPI.Controllers
             _db.ImportJobs.Add(job);
             await _db.SaveChangesAsync();
 
-            _cache.Set(CachePrefix + job.Id, rows, CacheLifetime);
+            await _cache.SetAsync(CachePrefix + job.Id, rows, CacheLifetime);
 
             return Ok(new BulkImportPreviewResponseDto
             {
@@ -168,7 +172,8 @@ namespace ScoramAPI.Controllers
             if (job.Paper == null || job.Paper.Status != PaperStatus.Draft)
                 return BadRequest(new { message = "The paper is no longer in Draft." });
 
-            if (!_cache.TryGetValue(CachePrefix + jobId, out List<ImportedQuestionRow>? rows) || rows == null)
+            var rows = await _cache.GetAsync<List<ImportedQuestionRow>>(CachePrefix + jobId);
+            if (rows == null)
                 return BadRequest(new { message = "This preview has expired (previews last 30 minutes). Please re-upload the file." });
 
             var row = rows.FirstOrDefault(r => r.RowNumber == rowNumber);
@@ -194,7 +199,7 @@ namespace ScoramAPI.Controllers
 
             job.ValidRows = rows.Count(r => r.IsValid);
             job.InvalidRows = rows.Count(r => !r.IsValid);
-            _cache.Set(CachePrefix + jobId, rows, CacheLifetime);
+            await _cache.SetAsync(CachePrefix + jobId, rows, CacheLifetime);
             await _db.SaveChangesAsync();
 
             return Ok(row);
@@ -222,7 +227,8 @@ namespace ScoramAPI.Controllers
             if (job.Paper == null || job.Paper.Status != PaperStatus.Draft)
                 return BadRequest(new { message = "The paper is no longer in Draft." });
 
-            if (!_cache.TryGetValue(CachePrefix + jobId, out List<ImportedQuestionRow>? rows) || rows == null)
+            var rows = await _cache.GetAsync<List<ImportedQuestionRow>>(CachePrefix + jobId);
+            if (rows == null)
                 return BadRequest(new { message = "This preview has expired (previews last 30 minutes). Please re-upload the file." });
 
             var row = rows.FirstOrDefault(r => r.RowNumber == rowNumber);
@@ -255,7 +261,7 @@ namespace ScoramAPI.Controllers
 
             job.ValidRows = rows.Count(r => r.IsValid);
             job.InvalidRows = rows.Count(r => !r.IsValid);
-            _cache.Set(CachePrefix + jobId, rows, CacheLifetime);
+            await _cache.SetAsync(CachePrefix + jobId, rows, CacheLifetime);
             await _db.SaveChangesAsync();
 
             return Ok(row);
@@ -301,6 +307,14 @@ namespace ScoramAPI.Controllers
         }
 
         // POST /api/admin/bulk-import/{jobId}/commit
+        // Upfront validation (job exists, still PendingReview, paper still Draft, preview not
+        // expired) always runs here synchronously, so a mistaken re-commit or an expired preview
+        // still gets an immediate 400 either way -- only the actual DB-writing work (BulkImportCommitService.CommitAsync,
+        // extracted from what used to be this method's body) is what moves to the background queue
+        // when one's available. Same validation is repeated inside CommitAsync itself regardless
+        // (defense in depth for the queued path, where minutes may pass between this check and the
+        // worker actually running it), so this upfront check is a fast-feedback optimization, not the
+        // only place it's enforced.
         [HttpPost("bulk-import/{jobId:guid}/commit")]
         public async Task<ActionResult<BulkImportCommitResultDto>> Commit(Guid jobId, BulkImportCommitDto dto)
         {
@@ -314,100 +328,43 @@ namespace ScoramAPI.Controllers
             if (job.Paper == null || job.Paper.Status != PaperStatus.Draft)
                 return BadRequest(new { message = "The paper is no longer in Draft -- can't commit into it." });
 
-            if (!_cache.TryGetValue(CachePrefix + jobId, out List<ImportedQuestionRow>? rows) || rows == null)
+            var hasRows = await _cache.GetAsync<List<ImportedQuestionRow>>(CachePrefix + jobId) != null;
+            if (!hasRows)
                 return BadRequest(new { message = "This preview has expired (previews last 30 minutes). Please re-upload the file." });
 
-            var wanted = dto.RowNumbers != null ? new HashSet<int>(dto.RowNumbers) : null;
-            var toCommit = rows.Where(r => r.IsValid && (wanted == null || wanted.Contains(r.RowNumber))).ToList();
-            var skipped = rows.Count - toCommit.Count;
-
             var adminId = User.GetAdminId();
-            var createdQuestions = new List<Question>();
-            foreach (var row in toCommit)
+
+            if (_jobQueue.IsAvailable)
             {
-                var question = new Question
+                job.Status = ImportJobStatus.Processing;
+                await _db.SaveChangesAsync();
+                await _jobQueue.EnqueueBulkImportCommitJobAsync(new BulkImportCommitJob { JobId = jobId, AdminId = adminId, RowNumbers = dto.RowNumbers });
+
+                // 202: accepted, not yet done -- the frontend polls GET /api/admin/bulk-import/{jobId}
+                // (ImportJobResponseDto already carries Status and ImportedCount, so no separate
+                // "commit result" endpoint/shape is needed -- see that DTO) until Status moves past
+                // Processing to Committed or Failed.
+                return Accepted($"/api/admin/bulk-import/{jobId}", new BulkImportCommitResultDto
                 {
-                    PaperId = job.PaperId,
-                    QuestionNumber = row.QuestionNumber,
-                    Subject = row.Subject,
-                    Topic = row.Topic,
-                    DifficultyLevel = Enum.Parse<DifficultyLevel>(row.DifficultyLevel, ignoreCase: true),
-                    QuestionText = row.QuestionText,
-                    OptionA = row.OptionA,
-                    OptionB = row.OptionB,
-                    OptionC = row.OptionC,
-                    OptionD = row.OptionD,
-                    CorrectOption = Enum.Parse<OptionLetter>(row.CorrectOption, ignoreCase: true),
-                    Explanation = row.Explanation,
-                    SourceReference = row.SourceReference,
-                    ContentBlocksJson = row.ContentBlocksJson,
-                    CreatedByAdminId = adminId,
-                    ImportJobId = job.Id,
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                // Any images were staged (ZIP upload only -- see Preview) under
-                // "bulk-import-staging/{jobId}"; copy each one into the permanent "question-images"
-                // folder rather than pointing the question straight at the staging blob, since the
-                // whole staging folder gets deleted below once this loop finishes. CopyImageAsync
-                // (already used by QuestionBankMirrorService for the same "needs its own independent
-                // copy" reason) no-ops to null for a null source, so this is safe to call
-                // unconditionally even for a non-ZIP import where these are all null.
-                // Concurrent instead of sequential -- see the identical comment in
-                // QuestionBankAdminController.Commit for why (this was the same slow pattern there).
-                var questionImageTask = _fileStorage.CopyImageAsync(row.QuestionImageUrl, "question-images");
-                var optionAImageTask = _fileStorage.CopyImageAsync(row.OptionAImageUrl, "question-images");
-                var optionBImageTask = _fileStorage.CopyImageAsync(row.OptionBImageUrl, "question-images");
-                var optionCImageTask = _fileStorage.CopyImageAsync(row.OptionCImageUrl, "question-images");
-                var optionDImageTask = _fileStorage.CopyImageAsync(row.OptionDImageUrl, "question-images");
-                var explanationImageTask = _fileStorage.CopyImageAsync(row.ExplanationImageUrl, "question-images");
-                await Task.WhenAll(questionImageTask, optionAImageTask, optionBImageTask, optionCImageTask, optionDImageTask, explanationImageTask);
-                question.QuestionImageUrl = questionImageTask.Result;
-                question.OptionAImageUrl = optionAImageTask.Result;
-                question.OptionBImageUrl = optionBImageTask.Result;
-                question.OptionCImageUrl = optionCImageTask.Result;
-                question.OptionDImageUrl = optionDImageTask.Result;
-                question.ExplanationImageUrl = explanationImageTask.Result;
-
-                _db.Questions.Add(question);
-                createdQuestions.Add(question);
+                    JobId = jobId,
+                    Status = ImportJobStatus.Processing.ToString(),
+                    ImportedCount = 0,
+                    SkippedCount = 0
+                });
             }
 
-            job.Status = ImportJobStatus.Committed;
-            job.ImportedCount = toCommit.Count;
-            job.CommittedAt = DateTime.UtcNow;
-
-            await _db.SaveChangesAsync();
-
-            // Auto-mirror every newly-imported PYQ question into the Question Bank (see
-            // IQuestionBankMirrorService) -- same reasoning as QuestionsController.Create: a bulk
-            // import is just as much "a PYQ upload" as the one-by-one form. Now that bulk-imported
-            // questions CAN have images (ZIP upload) and ContentBlocks, MirrorFromPyqAsync/
-            // SyncMirrorAsync carry both across -- see that service's own comments on what is and
-            // isn't re-copied.
-            foreach (var question in createdQuestions)
+            try
             {
-                var mirrorId = await _mirror.MirrorFromPyqAsync(_db, question, job.Paper.ExamId, job.Paper.Year, adminId);
-                if (mirrorId.HasValue) question.MirroredToQuestionBankQuestionId = mirrorId;
+                var result = await _commitService.CommitAsync(jobId, adminId, dto.RowNumbers);
+                return Ok(result);
             }
-            try { await _db.SaveChangesAsync(); } catch { /* non-critical, see MirrorFromPyqAsync's own comment */ }
-
-            // Whatever was staged for this job (whether it made it into a committed question above,
-            // or belonged to a row that got skipped/left invalid) has either already been copied
-            // elsewhere or is no longer needed -- safe to delete the whole staging folder now. A
-            // no-op for a non-ZIP import (nothing was ever staged under this job's id).
-            await _fileStorage.DeleteFolderAsync($"bulk-import-staging/{job.Id}");
-
-            _cache.Remove(CachePrefix + jobId);
-            await _audit.LogAsync(adminId, "BulkImport.Commit", "Paper", job.PaperId, $"{toCommit.Count} question(s) imported from {job.FileName}");
-
-            return Ok(new BulkImportCommitResultDto
+            catch (InvalidOperationException ex)
             {
-                JobId = job.Id,
-                Status = job.Status.ToString(),
-                ImportedCount = toCommit.Count,
-                SkippedCount = skipped
-            });
+                // CommitAsync's validation-failure messages are all already user-facing text (see
+                // that method's own comment) -- safe to surface directly rather than needing to
+                // re-derive them here.
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // GET /api/admin/bulk-import/{jobId}

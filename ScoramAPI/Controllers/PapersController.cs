@@ -24,17 +24,19 @@ namespace ScoramAPI.Controllers
         private readonly IAdminPermissionService _permissions;
         private readonly IFileStorageService _fileStorage;
         private readonly IInstantSearchService _instantSearch;
+        private readonly IBackgroundJobQueue _jobQueue;
         private readonly ILogger<PapersController> _logger;
         private readonly IAuditLogService _audit;
 
         public PapersController(
             ScoramDbContext db, IAdminPermissionService permissions, IFileStorageService fileStorage,
-            IInstantSearchService instantSearch, ILogger<PapersController> logger, IAuditLogService audit)
+            IInstantSearchService instantSearch, IBackgroundJobQueue jobQueue, ILogger<PapersController> logger, IAuditLogService audit)
         {
             _db = db;
             _permissions = permissions;
             _fileStorage = fileStorage;
             _instantSearch = instantSearch;
+            _jobQueue = jobQueue;
             _logger = logger;
             _audit = audit;
         }
@@ -679,10 +681,23 @@ namespace ScoramAPI.Controllers
 
         // ---------- Meilisearch sync helpers ----------
         // A search-index hiccup (Meilisearch down/misconfigured) should never fail the underlying
-        // Publish/Unpublish/Delete operation -- these swallow and log instead of throwing.
+        // Publish/Unpublish/Delete operation -- when running inline (no background queue available),
+        // that's still enforced the same way as before: swallow and log instead of throwing. When the
+        // queue IS available, this is moot for these three call sites specifically, since the queue
+        // hands off and returns immediately -- a failure surfaces inside SearchIndexWorker instead,
+        // long after this HTTP response has already gone out.
 
         private async Task IndexPaperQuestionsAsync(Guid paperId)
         {
+            if (_jobQueue.IsAvailable)
+            {
+                // No need to fetch the paper's questions here at all -- the worker re-fetches
+                // whatever's current when it actually processes the job. See SearchIndexJobType's
+                // own comment on why that's the right call, not a shortcut.
+                await _jobQueue.EnqueueSearchIndexJobAsync(new SearchIndexJob { JobType = SearchIndexJobType.IndexPaper, PaperId = paperId });
+                return;
+            }
+
             try
             {
                 var docs = await _db.Questions
@@ -706,6 +721,15 @@ namespace ScoramAPI.Controllers
 
         private async Task RemoveQuestionsFromIndexAsync(List<Guid> questionIds)
         {
+            if (_jobQueue.IsAvailable)
+            {
+                // The IDs themselves DO need to be captured now, unlike IndexPaper above -- by the
+                // time a worker picks this job up, a Delete may have already removed these rows
+                // entirely, leaving nothing left to re-derive them from.
+                await _jobQueue.EnqueueSearchIndexJobAsync(new SearchIndexJob { JobType = SearchIndexJobType.RemoveQuestions, QuestionIds = questionIds });
+                return;
+            }
+
             try
             {
                 await _instantSearch.RemoveQuestionsAsync(questionIds);

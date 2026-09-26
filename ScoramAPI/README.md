@@ -144,21 +144,27 @@ Section 12 (Admin Task Management) had a database table but no endpoints.
 ### Admin login — `Controllers/AdminAuthController.cs`
 
 There's intentionally **no public admin self-registration** — per SRS Section 3, only a Super Admin
-creates other admin accounts. To make a fresh database usable immediately, one Super Admin is seeded via
-`ScoramDbContext`'s `HasData()`:
+creates other admin accounts. To make a fresh database usable, the first Super Admin is created
+automatically at startup by `SuperAdminBootstrapService` — set these two environment variables before
+first run:
 
 ```
-Email:    superadmin@scoram.com
-Password: SuperAdmin@123
+SUPERADMIN_EMAIL=you@yourorg.com
+SUPERADMIN_PASSWORD=<a real password, 12+ characters>
 ```
 
-**Change this password before any real deployment** — either log in and use a future "change password"
-endpoint once one exists, or replace the pre-computed BCrypt hash in `ScoramDbContext.cs` with your own
-before running migrations on a production database.
+The account is created with `MustChangePassword = true`, so the first login is forced straight to
+`PATCH /api/admin/auth/change-password` before anything else in the admin API is reachable — see
+`MustChangePasswordFilter`. If a database already has the old seeded `superadmin@scoram.com` /
+`SuperAdmin@123` account from before this change, migration `RemoveDefaultSuperAdminSeed` flags it the
+same way (only if its password hasn't already been changed) rather than deleting it.
 
 | Method | Route | Auth | What it does |
 |---|---|---|---|
-| POST | `/api/admin/auth/login` | — | Admin login, returns a JWT with a `Role` claim of `Admin` or `SuperAdmin` |
+| POST | `/api/admin/auth/login` | — | Admin login, returns a JWT + refresh token; `Role` claim is `Admin` or `SuperAdmin` |
+| POST | `/api/admin/auth/refresh` | — | Exchange a valid refresh token for a new access + refresh token pair |
+| POST | `/api/admin/auth/logout` | Admin, SuperAdmin | End every session for this account (regenerates SecurityStamp, revokes all refresh tokens) |
+| PATCH | `/api/admin/auth/change-password` | Admin, SuperAdmin | Change own password; reachable even mid-forced-change (see `MustChangePasswordFilter`) |
 | GET | `/api/admin/admins` | SuperAdmin | List all admin accounts |
 | POST | `/api/admin/admins` | SuperAdmin | Create a new Admin (or SuperAdmin) account |
 | PATCH | `/api/admin/admins/{id}/status` | SuperAdmin | Activate/deactivate an admin account (can't deactivate yourself) |

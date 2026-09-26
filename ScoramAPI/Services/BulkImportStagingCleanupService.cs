@@ -9,19 +9,21 @@ namespace ScoramAPI.Services
 {
     // Deletes the staged images left behind by an abandoned bulk-import preview -- one that was
     // parsed (and, if it used a ZIP, had its images uploaded to a temp "bulk-import-staging/{jobId}"
-    // blob folder) but never committed before its 30-minute IMemoryCache entry expired. A committed
-    // job already cleans up its own staging folder at the end of Commit() -- see
+    // blob folder) but never committed before its 30-minute IStagedDataCache entry expired. A
+    // committed job already cleans up its own staging folder at the end of Commit() -- see
     // BulkImportController.Commit / QuestionBankAdminController.Commit -- so this service only ever
     // finds abandoned/expired jobs left over.
     //
-    // Runs as a plain timer-based sweep rather than an IMemoryCache eviction callback -- the
-    // eviction-callback approach would need to spin up its own DI scope from inside a
-    // cache-internal callback (the controller's own request-scoped services are long gone by the
-    // time an entry actually expires), which is exactly the kind of infrastructure spec section 53
-    // warns against for what is, underneath it, a straightforward "clean up anything older than 30
-    // minutes" sweep. Re-checking (and re-attempting a no-op delete on) an already-cleaned job every
-    // sweep is a deliberate simplicity tradeoff -- cheap for an admin tool's realistic volume of
-    // bulk-import attempts, and avoids adding a "staging already cleaned" column just to skip it.
+    // Runs as a plain timer-based sweep rather than a cache eviction callback -- the eviction-callback
+    // approach would need to spin up its own DI scope from inside a cache-internal callback (the
+    // controller's own request-scoped services are long gone by the time an entry actually expires),
+    // which is exactly the kind of infrastructure spec section 53 warns against for what is,
+    // underneath it, a straightforward "clean up anything older than 30 minutes" sweep -- and
+    // IDistributedCache (which IStagedDataCache is built on, see that file) has no eviction-callback
+    // mechanism to begin with, unlike IMemoryCache. Re-checking (and re-attempting a no-op delete on)
+    // an already-cleaned job every sweep is a deliberate simplicity tradeoff -- cheap for an admin
+    // tool's realistic volume of bulk-import attempts, and avoids adding a "staging already cleaned"
+    // column just to skip it.
     public class BulkImportStagingCleanupService : BackgroundService
     {
         private static readonly TimeSpan SweepInterval = TimeSpan.FromMinutes(10);

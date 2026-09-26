@@ -58,6 +58,12 @@ namespace ScoramAPI.DTOs
 
     public class BulkPaperImportCommitResultDto
     {
+        // "Processing" on the 202 placeholder returned when the commit was queued (see
+        // BulkPaperImportController.Commit), "Committed" once actually done. Added specifically so
+        // the frontend can tell those two apart -- CreatedCount/SkippedExistingCount are both 0 in
+        // the Processing case too, and apiFetch's success path doesn't expose the raw HTTP status
+        // code (202 vs 200) to callers, only the parsed body.
+        public string Status { get; set; } = string.Empty;
         public int CreatedCount { get; set; }
         public int SkippedExistingCount { get; set; }
         public List<PaperResponseDto> CreatedPapers { get; set; } = new();

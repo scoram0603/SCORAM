@@ -106,9 +106,15 @@ namespace ScoramAPI.Controllers
         }
 
         // GET /api/bookmarks?type=all|questions|discussions|papers|mocktests&page=1&pageSize=20
-        // Unified, most-recent-first list across every type this student has saved. Client-side
-        // paging happens after the union because each type needs a different join/projection --
-        // cheap here given a single student's bookmark count is always small.
+        // Unified, most-recent-first list across every type this student has saved. Combined and
+        // paged in memory after five separate per-type queries (each needs its own join/projection,
+        // so one single SQL query across all five isn't practical) -- but each of those queries is
+        // capped to the top page*pageSize most-recent rows of its own type (see each branch's
+        // .Take(page * pageSize) below), not the type's entire history: no single type can ever
+        // contribute more than page*pageSize items to the true combined top-page*pageSize, so this
+        // cap can't exclude anything the requested page actually needs, regardless of how deep the
+        // pagination goes or how many bookmarks a long-time user has accumulated. TotalCount is a
+        // separate COUNT query rather than derived from these capped lists -- see its own comment.
         [HttpGet("bookmarks")]
         public async Task<ActionResult<PagedResult<BookmarkListItemDto>>> List(string type = "all", int page = 1, int pageSize = 20)
         {
@@ -132,6 +138,8 @@ namespace ScoramAPI.Controllers
                         QuestionText = b.Question!.QuestionText,
                         Subject = b.Question!.Subject
                     })
+                    .OrderByDescending(b => b.CreatedAt)
+                    .Take(page * pageSize)
                     .ToListAsync();
                 items.AddRange(legacy);
 
@@ -147,6 +155,8 @@ namespace ScoramAPI.Controllers
                         QuestionText = b.QuestionBankQuestion!.QuestionText,
                         Subject = b.QuestionBankQuestion!.Subject != null ? b.QuestionBankQuestion!.Subject!.Name : null
                     })
+                    .OrderByDescending(b => b.CreatedAt)
+                    .Take(page * pageSize)
                     .ToListAsync();
                 items.AddRange(bankQuestions);
             }
@@ -170,6 +180,8 @@ namespace ScoramAPI.Controllers
                         DiscussionQuestionId = b.Comment!.QuestionId,
                         DiscussionQuestionBankQuestionId = b.Comment!.QuestionBankQuestionId
                     })
+                    .OrderByDescending(b => b.CreatedAt)
+                    .Take(page * pageSize)
                     .ToListAsync();
                 items.AddRange(discussions);
             }
@@ -189,6 +201,8 @@ namespace ScoramAPI.Controllers
                         Year = b.Paper!.Year,
                         PaperCode = b.Paper!.PaperCode
                     })
+                    .OrderByDescending(b => b.CreatedAt)
+                    .Take(page * pageSize)
                     .ToListAsync();
                 items.AddRange(papers);
             }
@@ -208,12 +222,30 @@ namespace ScoramAPI.Controllers
                         ExamName = b.MockTest!.ExamName,
                         DurationMinutes = b.MockTest!.DurationMinutes
                     })
+                    .OrderByDescending(b => b.CreatedAt)
+                    .Take(page * pageSize)
                     .ToListAsync();
                 items.AddRange(mockTests);
             }
 
+            // Computed separately from the (now capped, see each branch's .Take(page * pageSize)
+            // above) items list rather than derived from its count -- that cap is what keeps this
+            // endpoint from loading a power user's entire bookmark history into memory just to
+            // answer one page, but it means `items.Count` no longer reflects the true total once
+            // someone has more bookmarks than that. A plain COUNT query, by contrast, stays cheap
+            // regardless of how many bookmarks exist (every Bookmark row belongs to exactly one
+            // target type, per this file's own comment on the filtered unique indexes below, so
+            // "all" needs only one count -- no target-type breakdown required).
+            var totalCount = type switch
+            {
+                "questions" => await _db.Bookmarks.CountAsync(b => b.UserId == userId && (b.QuestionId != null || b.QuestionBankQuestionId != null)),
+                "discussions" => await _db.Bookmarks.CountAsync(b => b.UserId == userId && b.CommentId != null),
+                "papers" => await _db.Bookmarks.CountAsync(b => b.UserId == userId && b.PaperId != null),
+                "mocktests" => await _db.Bookmarks.CountAsync(b => b.UserId == userId && b.MockTestId != null),
+                _ => await _db.Bookmarks.CountAsync(b => b.UserId == userId)
+            };
+
             var ordered = items.OrderByDescending(i => i.CreatedAt).ToList();
-            var totalCount = ordered.Count;
             var pageItems = ordered.Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
             return Ok(new PagedResult<BookmarkListItemDto>

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using ScoramAPI.Data;
 using ScoramAPI.DTOs;
@@ -32,6 +33,7 @@ namespace ScoramAPI.Controllers
         // POST /api/quiz-challenges -- "Challenge a friend" (or several, or a whole Group Chat room)
         // from a completed Quiz result. See QuizChallengeCreateDto for exactly how targets combine.
         [HttpPost]
+        [EnableRateLimiting("content-post")]
         public async Task<ActionResult<QuizChallengeBatchResultDto>> Create(QuizChallengeCreateDto dto)
         {
             var userId = User.GetUserId();

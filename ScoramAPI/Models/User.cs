@@ -33,14 +33,22 @@ namespace ScoramAPI.Models
 
         public bool IsActive { get; set; } = true;
 
+        // Regenerated whenever an active session should be forced to re-authenticate (password
+        // change, logout, or an admin deactivating this account -- see UsersController/AuthController
+        // for exactly where). Baked into every access token as the "stamp" claim at login time and
+        // checked against this column on every authenticated request (see SecurityStampService and
+        // Program.cs's OnTokenValidated) -- a mismatch means the token was issued before whatever
+        // event last changed this value, so it's treated as revoked even though it hasn't expired yet.
+        public Guid SecurityStamp { get; set; } = Guid.NewGuid();
+
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
         // Notification preferences -- default true for both (see ScoramDbContext for the matching
         // HasDefaultValue(true), which also backfills existing rows to "on" when the migration runs).
         // Deliberately just two global switches, not per-room/per-conversation muting -- that's a
         // natural follow-up if it's ever wanted, but isn't what was asked for here.
         public bool NotifyOnGroupMessages { get; set; } = true;
         public bool NotifyOnDirectMessages { get; set; } = true;
-
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // GAMIFICATION -- this student's own permanent, shareable referral code (SRS: "unique
         // referral code and shareable link per student"). Generated lazily on first request rather

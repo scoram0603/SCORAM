@@ -83,6 +83,18 @@ namespace ScoramAPI.Controllers
 
             var ext = Path.GetExtension(fileName).ToLowerInvariant();
             var contentType = ContentTypeByExtension.TryGetValue(ext, out var ct) ? ct : "application/octet-stream";
+
+            if (ext == ".svg")
+            {
+                // Defense in depth: SaveStreamAsync's SanitizeSvg strips script-capable content before
+                // an SVG is ever stored, but this costs nothing extra and covers anything uploaded
+                // before that existed, or anything a sanitizer bug might miss. "sandbox" with no allow-
+                // list blocks script execution, popups, and form submission even if this document is
+                // opened directly (e.g. via a browser's "open image in new tab") rather than rendered
+                // inside an <img> tag (where browsers already refuse to run scripts regardless).
+                Response.Headers["Content-Security-Policy"] = "script-src 'none'; sandbox;";
+            }
+
             return File(stream, contentType);
         }
     }

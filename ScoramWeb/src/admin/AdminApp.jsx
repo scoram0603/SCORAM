@@ -4,6 +4,8 @@ import AdminLayout from "./layouts/AdminLayout";
 import AdminProtectedRoute from "./routes/AdminProtectedRoute";
 import RequireAdminPermission from "./routes/RequireAdminPermission";
 import AdminLogin from "./pages/AdminLogin";
+import AdminChangePassword from "./pages/AdminChangePassword";
+import AdminMfaSettings from "./pages/AdminMfaSettings";
 import AdminDashboard from "./pages/AdminDashboard";
 import PyqUploadWizard from "./pages/PyqUploadWizard";
 import BulkPaperUpload from "./pages/BulkPaperUpload";
@@ -33,6 +35,8 @@ function AdminRoutes() {
       <Route path="login" element={<AdminLogin />} />
 
       <Route element={<AdminProtectedRoute />}>
+        <Route path="change-password" element={<AdminChangePassword />} />
+
         <Route element={<AdminLayout />}>
           <Route index element={<AdminDashboard />} />
           <Route path="upload" element={<PyqUploadWizard />} />
@@ -43,6 +47,7 @@ function AdminRoutes() {
           <Route path="exams" element={<ExamManagement />} />
           <Route path="organizations" element={<OrganizationManagement />} />
           <Route path="tasks" element={<TaskManagement />} />
+          <Route path="mfa-settings" element={<AdminMfaSettings />} />
 
           <Route element={<RequireAdminPermission permission="PublishPaper" />}>
             <Route path="review" element={<ReviewQueue />} />

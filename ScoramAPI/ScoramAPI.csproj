@@ -5,6 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>ScoramAPI</RootNamespace>
+    <!-- Enables `dotnet user-secrets set "VapidKeys:PrivateKey" "..."` etc. for local-dev-only
+         secrets, so real values never need to be committed in appsettings.Development.json. -->
+    <UserSecretsId>scoramapi-local-dev-secrets</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +20,17 @@
          nuget.org/packages/FirebaseAdmin for anything newer when you add it. -->
     <PackageReference Include="FirebaseAdmin" Version="3.6.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" />
+    <!-- Redis backplane for SignalR (multi-instance chat/DM delivery) + IDistributedCache backing
+         (SecurityStampService, CaptchaService, instant-search cache) -- both are no-ops until
+         ConnectionStrings:Redis is actually configured (see Program.cs), so this doesn't change
+         behavior for a single-instance deployment with no Redis. VERIFY THESE VERSIONS: matched to
+         this project's other 8.0.8-pinned AspNetCore/EF packages, but this sandbox has no nuget.org
+         access to confirm 8.0.8 is actually what's published for these two -- check
+         nuget.org/packages/Microsoft.AspNetCore.SignalR.StackExchangeRedis and
+         nuget.org/packages/Microsoft.Extensions.Caching.StackExchangeRedis before restoring, same as
+         the FirebaseAdmin package above already flags for itself. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="8.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="8.0.8" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.8">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -32,6 +46,10 @@
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
     <PackageReference Include="WebPush" Version="1.0.12" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ScoramAPI.Tests" />
   </ItemGroup>
 
 </Project>

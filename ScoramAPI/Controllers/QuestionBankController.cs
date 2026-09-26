@@ -20,11 +20,13 @@ namespace ScoramAPI.Controllers
     {
         private readonly ScoramDbContext _db;
         private readonly IGamificationService _gamification;
+        private readonly ILogger<QuestionBankController> _logger;
 
-        public QuestionBankController(ScoramDbContext db, IGamificationService gamification)
+        public QuestionBankController(ScoramDbContext db, IGamificationService gamification, ILogger<QuestionBankController> logger)
         {
             _db = db;
             _gamification = gamification;
+            _logger = logger;
         }
 
         // VISIBILITY FIX -- IQuestionBankMirrorService mirrors a PYP question into the Question Bank
@@ -58,54 +60,97 @@ namespace ScoramAPI.Controllers
         {
             var page = Math.Max(1, query.Page);
             var pageSize = Math.Clamp(query.PageSize, 1, 100);
+            var hasKeyword = !string.IsNullOrWhiteSpace(query.Search);
+            var term = hasKeyword ? query.Search!.Trim() : null;
 
-            var q = VisibleQuestions();
-
-            if (!string.IsNullOrWhiteSpace(query.Search))
+            // Builds the full filtered+sorted query. useFullTextForKeyword picks a SQL Server CONTAINS
+            // predicate (word-form-aware, e.g. "running" also matches "run") vs a plain LIKE '%term%'
+            // scan for the free-text Search filter specifically -- every other filter is identical
+            // either way, so this is just the existing filter logic moved into a local function rather
+            // than duplicated below. Mirrors FallbackSearchService's exact CONTAINS-then-LIKE pattern
+            // (see that file's own comment) for the same reason: CONTAINS needs a full-text index on
+            // QuestionBankQuestions.QuestionText (Scripts/SetupFullTextSearch.sql) and throws at
+            // execution time, not query-build time, if that index doesn't exist yet -- which is the
+            // expected state until that script has been run, not a real error.
+            IQueryable<QuestionBankQuestion> BuildQuery(bool useFullTextForKeyword)
             {
-                // Supports both a short keyword ("Harappa") and a fully-pasted question (section 2) --
-                // both are just a Contains() against the raw text; NormalizedQuestionText isn't used
-                // here since Contains needs to match mid-word/mid-punctuation too, not just exact
-                // normalized equality (that's reserved for duplicate detection).
-                var term = query.Search.Trim();
-                q = q.Where(x => EF.Functions.Like(x.QuestionText, $"%{term}%"));
+                var filtered = VisibleQuestions();
+
+                if (hasKeyword)
+                {
+                    // Supports both a short keyword ("Harappa") and a fully-pasted question (section 2).
+                    // NormalizedQuestionText isn't used here since both CONTAINS and LIKE need to match
+                    // mid-word/mid-punctuation too, not just exact normalized equality (that's reserved
+                    // for duplicate detection).
+                    filtered = useFullTextForKeyword
+                        ? filtered.Where(x => EF.Functions.Contains(x.QuestionText, term!))
+                        : filtered.Where(x => EF.Functions.Like(x.QuestionText, $"%{term}%"));
+                }
+
+                // Multi-select: each non-empty filter narrows the result (AND across filters), matching
+                // ANY of its own selected values (OR within that one filter) -- e.g. examIds=[SSC CGL,
+                // RRB NTPC] AND subjectIds=[Reasoning] returns Reasoning questions asked in either exam.
+                // A student who only ever picks one value per filter (the old single-select experience)
+                // gets identical results to before -- .Contains() against a 1-item list is just "==".
+                if (query.SubjectIds is { Count: > 0 } subjectIds)
+                    filtered = filtered.Where(x => subjectIds.Contains(x.SubjectId));
+                if (query.TopicIds is { Count: > 0 } topicIds)
+                    filtered = filtered.Where(x => topicIds.Contains(x.TopicId));
+                if (query.ExamIds is { Count: > 0 } examIds)
+                    filtered = filtered.Where(x => x.ExamMappings.Any(m => examIds.Contains(m.ExamId)));
+                if (query.Years is { Count: > 0 } years)
+                    filtered = filtered.Where(x => x.ExamMappings.Any(m => years.Contains(m.Year)));
+                if (query.Languages is { Count: > 0 } rawLanguages)
+                {
+                    var languageFilters = rawLanguages
+                        .Select(l => Enum.TryParse<PaperLanguage>(l, ignoreCase: true, out var parsed) ? (PaperLanguage?)parsed : null)
+                        .Where(l => l.HasValue)
+                        .Select(l => l!.Value)
+                        .ToList();
+                    if (languageFilters.Count > 0)
+                        filtered = filtered.Where(x => x.Language != null && languageFilters.Contains(x.Language.Value));
+                }
+
+                return filtered.OrderByDescending(x => x.CreatedAt);
             }
 
-            // Multi-select: each non-empty filter narrows the result (AND across filters), matching
-            // ANY of its own selected values (OR within that one filter) -- e.g. examIds=[SSC CGL,
-            // RRB NTPC] AND subjectIds=[Reasoning] returns Reasoning questions asked in either exam.
-            // A student who only ever picks one value per filter (the old single-select experience)
-            // gets identical results to before -- .Contains() against a 1-item list is just "==".
-            if (query.SubjectIds is { Count: > 0 } subjectIds)
-                q = q.Where(x => subjectIds.Contains(x.SubjectId));
-            if (query.TopicIds is { Count: > 0 } topicIds)
-                q = q.Where(x => topicIds.Contains(x.TopicId));
-            if (query.ExamIds is { Count: > 0 } examIds)
-                q = q.Where(x => x.ExamMappings.Any(m => examIds.Contains(m.ExamId)));
-            if (query.Years is { Count: > 0 } years)
-                q = q.Where(x => x.ExamMappings.Any(m => years.Contains(m.Year)));
-            if (query.Languages is { Count: > 0 } rawLanguages)
+            async Task<(int TotalCount, List<QuestionBankQuestion> Items)> ExecuteAsync(IQueryable<QuestionBankQuestion> source)
             {
-                var languageFilters = rawLanguages
-                    .Select(l => Enum.TryParse<PaperLanguage>(l, ignoreCase: true, out var parsed) ? (PaperLanguage?)parsed : null)
-                    .Where(l => l.HasValue)
-                    .Select(l => l!.Value)
-                    .ToList();
-                if (languageFilters.Count > 0)
-                    q = q.Where(x => x.Language != null && languageFilters.Contains(x.Language.Value));
+                var count = await source.CountAsync();
+                var pageItems = await source
+                    .Include(x => x.Subject)
+                    .Include(x => x.Topic)
+                    .Include(x => x.ExamMappings).ThenInclude(m => m.Exam)
+                    .Include(x => x.Solutions)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync();
+                return (count, pageItems);
             }
 
-            q = q.OrderByDescending(x => x.CreatedAt);
-
-            var totalCount = await q.CountAsync();
-            var items = await q
-                .Include(x => x.Subject)
-                .Include(x => x.Topic)
-                .Include(x => x.ExamMappings).ThenInclude(m => m.Exam)
-                .Include(x => x.Solutions)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
+            int totalCount;
+            List<QuestionBankQuestion> items;
+            if (hasKeyword)
+            {
+                try
+                {
+                    (totalCount, items) = await ExecuteAsync(BuildQuery(useFullTextForKeyword: true));
+                }
+                catch (Exception ex)
+                {
+                    // Most commonly: no full-text catalog/index exists yet on QuestionBankQuestions
+                    // (see Scripts/SetupFullTextSearch.sql), which SQL Server surfaces as an error on
+                    // the CONTAINS predicate itself, not as "zero rows". Expected until that script has
+                    // been run -- log at Warning (not Error, since LIKE below covers it), same as
+                    // FallbackSearchService does for the equivalent case on the main Questions table.
+                    _logger.LogWarning(ex, "SQL Full-Text search unavailable for question bank, falling back to LIKE for query {Query}", term);
+                    (totalCount, items) = await ExecuteAsync(BuildQuery(useFullTextForKeyword: false));
+                }
+            }
+            else
+            {
+                (totalCount, items) = await ExecuteAsync(BuildQuery(useFullTextForKeyword: false));
+            }
 
             // FEED REDESIGN -- like/dislike/comment counts (and the caller's own vote) are now shown
             // directly on the search results, not just on the single-question detail page (see

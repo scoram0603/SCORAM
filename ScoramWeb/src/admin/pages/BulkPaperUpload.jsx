@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, UploadCloud, Download, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { ArrowLeft, UploadCloud, Download, CheckCircle2, XCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
-import { previewBulkPapers, commitBulkPapers } from "../api/bulkPapers";
+import { previewBulkPapers, commitBulkPapers, getBulkPapersCommitStatus } from "../api/bulkPapers";
 import { PageHeader, Card, Button, Alert, friendlyError } from "../components/AdminUI";
 
 const ACCEPTED = ".csv,.xlsx,.json";
@@ -28,6 +28,9 @@ export default function BulkPaperUpload() {
   const [error, setError] = useState(null);
 
   const [committing, setCommitting] = useState(false);
+  // True only while polling a queued-but-not-yet-finished commit -- see handleCommit. Mirrors
+  // BulkImportPanel.jsx's identical state/reasoning.
+  const [commitProcessing, setCommitProcessing] = useState(false);
   const [commitResult, setCommitResult] = useState(null); // { createdCount, skippedExistingCount, createdPapers }
 
   function handleFileChange(e) {
@@ -66,16 +69,55 @@ export default function BulkPaperUpload() {
     });
   }
 
+  // Polls GET {jobId}/commit-status every 2.5s until Status moves past "Processing" -- see
+  // BulkImportPanel.jsx's pollCommitStatus for the identical reasoning (timeout, transient-error
+  // handling). Only ever reached when the backend has a Redis-backed background queue configured.
+  async function pollCommitStatus(jobId) {
+    const maxAttempts = 48;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      let status;
+      try {
+        status = await getBulkPapersCommitStatus(token, jobId);
+      } catch {
+        continue; // transient network hiccup while polling -- keep trying
+      }
+
+      if (status.status === "Processing") continue;
+
+      if (status.status === "Committed") {
+        setCommitResult(status.result);
+        setPreview(null);
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      } else {
+        setError(`This import didn't complete successfully${status.errorMessage ? `: ${status.errorMessage}` : "."} Try again.`);
+      }
+      return;
+    }
+
+    setError("Still processing after 2 minutes -- refresh this page shortly to check on it.");
+  }
+
   async function handleCommit() {
     if (!preview || checkedRows.size === 0) return;
     setCommitting(true);
     setError(null);
     try {
       const result = await commitBulkPapers(token, preview.jobId, Array.from(checkedRows));
-      setCommitResult(result);
-      setPreview(null);
-      setSelectedFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (result.status === "Processing") {
+        setCommitProcessing(true);
+        try {
+          await pollCommitStatus(preview.jobId);
+        } finally {
+          setCommitProcessing(false);
+        }
+      } else {
+        setCommitResult(result);
+        setPreview(null);
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
     } catch (err) {
       setError(friendlyError(err));
     } finally {
@@ -87,6 +129,7 @@ export default function BulkPaperUpload() {
     setSelectedFile(null);
     setPreview(null);
     setCommitResult(null);
+    setCommitProcessing(false);
     setError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -106,6 +149,13 @@ export default function BulkPaperUpload() {
 
       <div className="p-6">
         {error && <div className="mb-4"><Alert>{error}</Alert></div>}
+
+        {commitProcessing && (
+          <div className="mb-4 flex items-center gap-2 text-sm text-ink-400">
+            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} />
+            Import is processing in the background -- this can take a little while for a large file.
+          </div>
+        )}
 
         {commitResult ? (
           <Card>
@@ -140,7 +190,7 @@ export default function BulkPaperUpload() {
               <Button variant="ghost" onClick={handleReset}>Upload another file</Button>
             </div>
           </Card>
-        ) : (
+        ) : commitProcessing ? null : (
           <>
             <Card className="mb-6">
               <div className="flex items-center gap-2">

@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using ScoramAPI.Data;
 using ScoramAPI.DTOs;
 using ScoramAPI.Enums;
@@ -21,10 +20,12 @@ namespace ScoramAPI.Controllers
     // No ImportJob/rollback machinery here unlike BulkImportController. Each row's output is a whole,
     // independent Paper that's already visible and deletable via the existing "All Papers" list and
     // PapersController.Delete -- there's nothing a bulk "undo" would need to do that isn't already
-    // covered, so Preview's rows are cached in memory only (no DB job row) and there's no Rollback
-    // endpoint to match. If a row resolved to the wrong exam or has a typo, PapersController's new
-    // identity-edit endpoint (PATCH /api/admin/papers/{id}/identity) fixes it in place; if it's
-    // simply wrong, the admin deletes that one Draft paper like any other.
+    // covered, so Preview's rows are cached (see IStagedDataCache -- Redis-backed when configured, so
+    // this survives landing on a different app instance between preview and commit, same reasoning as
+    // BulkImportController's equivalent) rather than a DB job row, and there's no Rollback endpoint to
+    // match. If a row resolved to the wrong exam or has a typo, PapersController's new identity-edit
+    // endpoint (PATCH /api/admin/papers/{id}/identity) fixes it in place; if it's simply wrong, the
+    // admin deletes that one Draft paper like any other.
     [ApiController]
     [Route("api/admin/bulk-papers")]
     [Authorize(Roles = "Admin,SuperAdmin")]
@@ -36,20 +37,23 @@ namespace ScoramAPI.Controllers
         private readonly ScoramDbContext _db;
         private readonly IAdminPermissionService _permissions;
         private readonly IBulkPaperImportService _importService;
-        private readonly IMemoryCache _cache;
-        private readonly IAuditLogService _audit;
+        private readonly IStagedDataCache _cache;
         private readonly ILogger<BulkPaperImportController> _logger;
+        private readonly IBackgroundJobQueue _jobQueue;
+        private readonly IBulkPaperImportCommitService _commitService;
 
         public BulkPaperImportController(
             ScoramDbContext db, IAdminPermissionService permissions, IBulkPaperImportService importService,
-            IMemoryCache cache, IAuditLogService audit, ILogger<BulkPaperImportController> logger)
+            IStagedDataCache cache, ILogger<BulkPaperImportController> logger,
+            IBackgroundJobQueue jobQueue, IBulkPaperImportCommitService commitService)
         {
             _db = db;
             _permissions = permissions;
             _importService = importService;
             _cache = cache;
-            _audit = audit;
             _logger = logger;
+            _jobQueue = jobQueue;
+            _commitService = commitService;
         }
 
         // POST /api/admin/bulk-papers/preview
@@ -89,7 +93,7 @@ namespace ScoramAPI.Controllers
             await _importService.ValidateAsync(rows, _db);
 
             var jobId = Guid.NewGuid();
-            _cache.Set(CachePrefix + jobId, rows, CacheLifetime);
+            await _cache.SetAsync(CachePrefix + jobId, rows, CacheLifetime);
 
             return Ok(new BulkPaperImportPreviewResponseDto
             {
@@ -116,88 +120,48 @@ namespace ScoramAPI.Controllers
             if (!await _permissions.HasPermissionAsync(User, AdminPermission.UploadPaper))
                 return Forbid();
 
-            if (!_cache.TryGetValue(CachePrefix + jobId, out List<ImportedPaperRow>? rows) || rows == null)
+            var hasRows = await _cache.GetAsync<List<ImportedPaperRow>>(CachePrefix + jobId) != null;
+            if (!hasRows)
                 return BadRequest(new { message = "This preview has expired (previews last 30 minutes). Please re-upload the file." });
 
-            var targetRows = dto.RowNumbers == null
-                ? rows.Where(r => r.IsValid && !r.PaperAlreadyExists).ToList()
-                : rows.Where(r => dto.RowNumbers.Contains(r.RowNumber)).ToList();
-
             var adminId = User.GetAdminId();
-            var examCache = await _db.Exams.ToDictionaryAsync(e => e.Name, StringComparer.OrdinalIgnoreCase);
 
-            // Which exams THIS batch has already given a paper to -- needed on top of the live
-            // ExamHasContentAsync check below because a brand-new exam's first paper isn't saved to
-            // the database until the single SaveChangesAsync at the end of this loop, so a second row
-            // naming that same new exam would otherwise also see "no content yet" and wrongly qualify
-            // for Paper.ExamCreatedForThisPaper too -- only the row that's genuinely alone on its exam
-            // should get that flag.
-            var examsGivenAPaperThisBatch = new HashSet<Guid>();
-
-            var created = new List<Paper>();
-            var skippedExisting = 0;
-
-            foreach (var row in targetRows)
+            if (_jobQueue.IsAvailable)
             {
-                if (!row.IsValid) continue; // never force-commit a row flagged invalid, even if explicitly requested by row number
+                await _cache.SetAsync(BulkPaperImportCommitWorker.StatusCachePrefix + jobId,
+                    new BulkPaperImportCommitStatus { Status = "Processing" }, TimeSpan.FromHours(2));
+                await _jobQueue.EnqueueBulkPaperImportCommitJobAsync(new BulkPaperImportCommitJob { JobId = jobId, AdminId = adminId, RowNumbers = dto.RowNumbers });
 
-                var exam = await ExamsController.GetOrCreateExamCachedAsync(_db, row.ExamName.Trim(), adminId, examCache);
-                var language = Enum.Parse<PaperLanguage>(row.Medium, ignoreCase: true);
-
-                var existing = await _db.Papers.FirstOrDefaultAsync(p =>
-                    p.ExamId == exam.Id && p.Year == row.Year && p.Language == language &&
-                    p.PaperCode == row.PaperCode && p.Tier == row.Tier &&
-                    p.ExamDate == row.ExamDate && p.Shift == row.Shift && p.PaperLabel == row.PaperLabel);
-
-                if (existing != null)
-                {
-                    skippedExisting++;
-                    continue;
-                }
-
-                var examWasEmpty = !examsGivenAPaperThisBatch.Contains(exam.Id)
-                    && !await ExamsController.ExamHasContentAsync(_db, exam.Id, exam.Name);
-                examsGivenAPaperThisBatch.Add(exam.Id);
-
-                var paper = new Paper
-                {
-                    ExamId = exam.Id,
-                    Year = row.Year,
-                    Language = language,
-                    PaperCode = row.PaperCode,
-                    Tier = row.Tier,
-                    ExamDate = row.ExamDate,
-                    Shift = row.Shift,
-                    PaperLabel = row.PaperLabel,
-                    Status = PaperStatus.Draft,
-                    ExamCreatedForThisPaper = examWasEmpty,
-                    CreatedByAdminId = adminId,
-                    CreatedAt = DateTime.UtcNow
-                };
-                _db.Papers.Add(paper);
-                created.Add(paper);
+                // 202: accepted, not yet done -- the frontend polls GET {jobId}/commit-status (added
+                // below) until Status moves past "Processing". Unlike BulkImportController, there's
+                // no existing DB-backed GetStatus endpoint to piggyback on here (see
+                // BulkPaperImportCommitJob's own comment on why), hence the new endpoint.
+                return Accepted($"/api/admin/bulk-papers/{jobId}/commit-status", new BulkPaperImportCommitResultDto { Status = "Processing" });
             }
 
-            await _db.SaveChangesAsync();
-            _cache.Remove(CachePrefix + jobId);
-
-            await _audit.LogAsync(adminId, "BulkPaperImport.Commit", "Paper", null,
-                $"{created.Count} paper shell(s) created, {skippedExisting} already existed and were skipped");
-
-            var createdDtos = new List<PaperResponseDto>();
-            foreach (var p in created)
+            try
             {
-                await _db.Entry(p).Reference(x => x.Exam).LoadAsync();
-                await _db.Entry(p).Reference(x => x.CreatedByAdmin).LoadAsync();
-                createdDtos.Add(PapersController.MapToDto(p, questionCountOverride: 0));
+                var result = await _commitService.CommitAsync(jobId, adminId, dto.RowNumbers);
+                return Ok(result);
             }
-
-            return Ok(new BulkPaperImportCommitResultDto
+            catch (InvalidOperationException ex)
             {
-                CreatedCount = created.Count,
-                SkippedExistingCount = skippedExisting,
-                CreatedPapers = createdDtos
-            });
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        // GET /api/admin/bulk-papers/{jobId}/commit-status -- poll this after Commit comes back 202.
+        [HttpGet("{jobId:guid}/commit-status")]
+        public async Task<ActionResult<BulkPaperImportCommitStatus>> GetCommitStatus(Guid jobId)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.UploadPaper))
+                return Forbid();
+
+            var status = await _cache.GetAsync<BulkPaperImportCommitStatus>(BulkPaperImportCommitWorker.StatusCachePrefix + jobId);
+            if (status == null)
+                return NotFound(new { message = "No commit status found for this job (it may have expired, or Commit was never called with the background queue active)." });
+
+            return Ok(status);
         }
 
         private static ImportFileFormat? DetectFormat(string fileName)

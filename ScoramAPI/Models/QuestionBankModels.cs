@@ -175,8 +175,8 @@ namespace ScoramAPI.Models
 
     // Question Bank's own bulk-import job record -- deliberately NOT reusing Models/ImportJob, which
     // is hard-wired to a required PaperId and the Paper-based QuestionNumber-uniqueness flow. Same
-    // "preview creates a row, rows themselves live briefly in IMemoryCache until commit" pattern as
-    // ImportJob though -- see Controllers/QuestionBankAdminController.cs.
+    // "preview creates a row, rows themselves live briefly in IStagedDataCache until commit" pattern
+    // as ImportJob though -- see Controllers/QuestionBankAdminController.cs.
     public class QuestionBankImportJob
     {
         public Guid Id { get; set; } = Guid.NewGuid();

@@ -1,18 +1,24 @@
 import { useEffect, useState } from "react";
-import { Mail, Lock, ArrowRight, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Mail, Lock, ArrowRight, Loader2, AlertCircle, CheckCircle2, ShieldCheck, KeyRound } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import logo from "../../assets/scoram-logo-horizontal.png";
 import { useAdminAuth } from "../context/AdminAuthContext";
 
 export default function AdminLogin() {
-  const { login, isAuthenticated, isLoading, error, clearError, sessionExpired } = useAdminAuth();
+  const { login, verifyMfaLogin, isAuthenticated, admin, isLoading, error, clearError, sessionExpired } = useAdminAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const passwordChanged = searchParams.get("passwordChanged") === "1";
   const [form, setForm] = useState({ email: "", password: "" });
+  // Set once Login comes back with mfaRequired: true -- switches the form below from
+  // email/password to a single code field. See handleSubmit/handleVerifyMfa.
+  const [mfaChallengeToken, setMfaChallengeToken] = useState(null);
+  const [mfaCode, setMfaCode] = useState("");
 
   // Covers a logged-in admin navigating straight to /admin/login by URL.
   useEffect(() => {
-    if (isAuthenticated) navigate("/admin", { replace: true });
-  }, [isAuthenticated, navigate]);
+    if (isAuthenticated) navigate(admin?.mustChangePassword ? "/admin/change-password" : "/admin", { replace: true });
+  }, [isAuthenticated, admin, navigate]);
 
   function updateField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -21,10 +27,25 @@ export default function AdminLogin() {
   async function handleSubmit(e) {
     e.preventDefault();
     try {
-      await login(form);
-      navigate("/admin", { replace: true });
+      const res = await login(form);
+      if (res.mfaRequired) {
+        setMfaChallengeToken(res.mfaChallengeToken);
+        return;
+      }
+      navigate(res.mustChangePassword ? "/admin/change-password" : "/admin", { replace: true });
     } catch {
       // error is already captured in AdminAuthContext state and rendered below
+    }
+  }
+
+  async function handleVerifyMfa(e) {
+    e.preventDefault();
+    try {
+      const res = await verifyMfaLogin({ mfaChallengeToken, code: mfaCode });
+      navigate(res.mustChangePassword ? "/admin/change-password" : "/admin", { replace: true });
+    } catch {
+      // error is already captured in AdminAuthContext state and rendered below -- stay on this
+      // step so the admin can retry the code without re-entering their password.
     }
   }
 
@@ -45,6 +66,13 @@ export default function AdminLogin() {
         </div>
         <p className="mt-1 text-sm text-ink-400">Restricted access — Scoram staff only.</p>
 
+        {passwordChanged && (
+          <div className="mt-4 flex items-start gap-2 rounded-xl2 bg-mint-50 p-3 text-xs font-medium text-mint-600">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.25} />
+            <span>Password updated. Log in with your new password.</span>
+          </div>
+        )}
+
         {sessionExpired && (
           <div className="mt-4 flex items-start gap-2 rounded-xl2 bg-accent-50 p-3 text-xs font-medium text-accent-600">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.25} />
@@ -52,6 +80,48 @@ export default function AdminLogin() {
           </div>
         )}
 
+        {mfaChallengeToken ? (
+          <form onSubmit={handleVerifyMfa} className="mt-6 flex flex-col gap-3">
+            <p className="text-sm text-ink-600">Enter the 6-digit code from your authenticator app, or one of your backup codes.</p>
+            <Field icon={KeyRound} label="Code">
+              <input
+                type="text"
+                inputMode="numeric"
+                autoFocus
+                required
+                value={mfaCode}
+                onChange={(e) => {
+                  clearError();
+                  setMfaCode(e.target.value);
+                }}
+                placeholder="123456"
+                className="w-full bg-transparent text-sm tracking-widest text-ink-900 placeholder:text-ink-400 placeholder:tracking-normal focus:outline-none"
+              />
+            </Field>
+
+            {error && (
+              <div className="flex items-start gap-2 rounded-xl2 bg-red-50 p-3 text-xs font-medium text-red-600">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.25} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="mt-2 flex items-center justify-center gap-1.5 rounded-xl2 bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-60"
+            >
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.5} /> : (<>Verify<ArrowRight className="h-4 w-4" strokeWidth={2.5} /></>)}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMfaChallengeToken(null); setMfaCode(""); clearError(); }}
+              className="text-center text-xs font-medium text-ink-400 hover:text-ink-600"
+            >
+              Back to login
+            </button>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-3">
           <Field icon={Mail} label="Email">
             <input
@@ -103,6 +173,7 @@ export default function AdminLogin() {
             )}
           </button>
         </form>
+        )}
       </div>
 
       <p className="mt-6 max-w-sm text-center text-xs text-primary-100">
