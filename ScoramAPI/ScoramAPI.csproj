@@ -21,11 +21,11 @@
     <PackageReference Include="FirebaseAdmin" Version="3.6.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" />
     <!-- Redis backplane for SignalR (multi-instance chat/DM delivery) + IDistributedCache backing
-         (SecurityStampService, CaptchaService, instant-search cache) -- both are no-ops until
+         (SecurityStampService, CaptchaService, instant-search cache) — both are no-ops until
          ConnectionStrings:Redis is actually configured (see Program.cs), so this doesn't change
          behavior for a single-instance deployment with no Redis. VERIFY THESE VERSIONS: matched to
          this project's other 8.0.8-pinned AspNetCore/EF packages, but this sandbox has no nuget.org
-         access to confirm 8.0.8 is actually what's published for these two -- check
+         access to confirm 8.0.8 is actually what's published for these two — check
          nuget.org/packages/Microsoft.AspNetCore.SignalR.StackExchangeRedis and
          nuget.org/packages/Microsoft.Extensions.Caching.StackExchangeRedis before restoring, same as
          the FirebaseAdmin package above already flags for itself. -->

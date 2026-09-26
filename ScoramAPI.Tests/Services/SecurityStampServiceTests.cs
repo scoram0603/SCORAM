@@ -60,7 +60,7 @@ namespace ScoramAPI.Tests.Services
             // AuthController.ChangePassword actually performs.
             user.SecurityStamp = Guid.NewGuid();
             await _db.SaveChangesAsync();
-            _service.Invalidate(user.Id, isAdmin: false);
+            await _service.InvalidateAsync(user.Id, isAdmin: false);
 
             var result = await _service.IsValidAsync(user.Id, isAdmin: false, tokenStamp: originalStamp.ToString());
 

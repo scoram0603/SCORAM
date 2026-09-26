@@ -3,15 +3,15 @@
   <!--
     New test project (no automated tests existed before this). VERIFY THESE PACKAGE VERSIONS before
     restoring: this sandbox has no nuget.org access to confirm them, same caveat as the Redis packages
-    added earlier in ScoramAPI.csproj -- these are reasonable, well-known versions as of this file's
+    added earlier in ScoramAPI.csproj — these are reasonable, well-known versions as of this file's
     writing, not verified against the registry.
 
     Uses Microsoft.EntityFrameworkCore.InMemory for tests that need a DbContext (SecurityStampService,
-    RefreshTokenService, StagedDataCache-adjacent logic) rather than a real SQL Server -- this sandbox
+    RefreshTokenService, StagedDataCache-adjacent logic) rather than a real SQL Server — this sandbox
     can't run one, and InMemory is enough to exercise the C# logic under test. It does NOT validate
     real SQL Server behavior: unique-index enforcement, raw SQL (EF.Functions.Contains/Like), and
     computed column defaults (NEWID() etc.) all behave differently or not at all under InMemory. Tests
-    here are scoped to logic that doesn't depend on those -- nothing here is a substitute for running
+    here are scoped to logic that doesn't depend on those — nothing here is a substitute for running
     the real migrations against a real SQL Server instance at least once before relying on this suite.
   -->
 
