@@ -1,11 +1,11 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using ScoramAPI.Data;
 using ScoramAPI.DTOs;
 using ScoramAPI.Enums;
-using ScoramAPI.Extensions;
+using ScoramAPI.Extensions; // includes PasswordPolicy and ClaimsPrincipalExtensions
 using ScoramAPI.Models;
 using ScoramAPI.Services;
 
@@ -245,6 +245,15 @@ namespace ScoramAPI.Controllers
         [ScoramAPI.Middleware.AllowWhilePasswordChangeRequired]
         public async Task<ActionResult> ChangePassword(AdminChangePasswordDto dto)
         {
+            // Server-side confirm check -- never trust the client to do this for us.
+            if (dto.NewPassword != dto.ConfirmNewPassword)
+                return BadRequest(new { message = "New password and confirmation do not match." });
+
+            // Enforce password policy server-side -- same rules as SuperAdminBootstrapService.
+            var policyError = PasswordPolicy.Validate(dto.NewPassword);
+            if (policyError != null)
+                return BadRequest(new { message = policyError });
+
             var admin = await _db.Admins.FindAsync(User.GetAdminId());
             if (admin == null) return NotFound();
 
@@ -367,6 +376,12 @@ namespace ScoramAPI.Controllers
         [Authorize(Roles = "SuperAdmin")]
         public async Task<ActionResult<AdminResponseDto>> CreateAdmin(AdminCreateDto dto)
         {
+            // Enforce the same password policy for newly-created admin accounts as for
+            // password changes -- prevents weak passwords from being set via this endpoint.
+            var policyError = PasswordPolicy.Validate(dto.Password);
+            if (policyError != null)
+                return BadRequest(new { message = policyError });
+
             if (await _db.Admins.AnyAsync(a => a.Email == dto.Email))
                 return Conflict(new { message = "An admin account with this email already exists." });
 

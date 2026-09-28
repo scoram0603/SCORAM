@@ -31,7 +31,7 @@ export default function AdminChangePassword() {
     setError(null);
     setSubmitting(true);
     try {
-      await changePassword(token, { currentPassword, newPassword });
+      await changePassword(token, { currentPassword, newPassword, confirmNewPassword: confirmPassword });
       // The backend has already invalidated this session server-side (see changePassword's own
       // comment) -- log out locally to match, and send the admin to log back in with the new
       // password rather than leaving them on a page whose every other action would now 401/403.
@@ -70,10 +70,10 @@ export default function AdminChangePassword() {
             <input
               type={showPasswords ? "text" : "password"}
               required
-              minLength={8}
+              minLength={12}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="At least 8 characters"
+              placeholder="At least 12 characters"
               className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
             />
           </Field>
@@ -82,7 +82,7 @@ export default function AdminChangePassword() {
             <input
               type={showPasswords ? "text" : "password"}
               required
-              minLength={8}
+              minLength={12}
               value={confirmPassword}
               onChange={(e) => {
                 setConfirmPassword(e.target.value);

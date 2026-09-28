@@ -27,6 +27,7 @@ import QuestionBankReportsQueue from "./pages/QuestionBankReportsQueue";
 import MockTestManagement from "./pages/MockTestManagement";
 import PracticeTestManagement from "./pages/PracticeTestManagement";
 import QuizManagement from "./pages/QuizManagement";
+import AdminSecuritySettings from "./pages/AdminSecuritySettings";
 import AdminNotFound from "./pages/AdminNotFound";
 
 function AdminRoutes() {
@@ -48,6 +49,9 @@ function AdminRoutes() {
           <Route path="organizations" element={<OrganizationManagement />} />
           <Route path="tasks" element={<TaskManagement />} />
           <Route path="mfa-settings" element={<AdminMfaSettings />} />
+          {/* Voluntary password change -- any authenticated admin, own account only.
+              Backend authorisation is the real boundary (see AdminAuthController.ChangePassword). */}
+          <Route path="security" element={<AdminSecuritySettings />} />
 
           <Route element={<RequireAdminPermission permission="PublishPaper" />}>
             <Route path="review" element={<ReviewQueue />} />

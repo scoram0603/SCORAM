@@ -155,9 +155,9 @@ SUPERADMIN_PASSWORD=<a real password, 12+ characters>
 
 The account is created with `MustChangePassword = true`, so the first login is forced straight to
 `PATCH /api/admin/auth/change-password` before anything else in the admin API is reachable — see
-`MustChangePasswordFilter`. If a database already has the old seeded `superadmin@scoram.com` /
-`SuperAdmin@123` account from before this change, migration `RemoveDefaultSuperAdminSeed` flags it the
-same way (only if its password hasn't already been changed) rather than deleting it.
+`MustChangePasswordFilter`. If a database already has the old default-seeded SuperAdmin account
+from before this change, migration `RemoveDefaultSuperAdminSeed` flags it the same way
+(only if its password hasn't already been changed) rather than deleting it.
 
 | Method | Route | Auth | What it does |
 |---|---|---|---|
@@ -725,8 +725,9 @@ machine and paste me any error output — I'll fix it immediately.
 - **`Jwt:Key` in `appsettings.json`** is a placeholder — replace it with a long random secret (32+ chars)
   before running migrations/seeding real data. Don't commit the real key; move it to user-secrets or
   environment variables for anything beyond local dev.
-- **Admin login is now built** — `POST /api/admin/auth/login` (see `AdminAuthController`), with a seeded
-  Super Admin (`superadmin@scoram.com` / `SuperAdmin@123`) so there's a way in on a fresh database.
+- **Admin login is now built** — `POST /api/admin/auth/login` (see `AdminAuthController`). On a fresh
+  database the SuperAdmin account is created via `SuperAdminBootstrapService` using the
+  `SUPERADMIN_EMAIL` and `SUPERADMIN_PASSWORD` environment variables (see setup instructions above).
   `QuestionsController.Create` and `MockTestsController.Create` now resolve the real admin id from the JWT
   instead of the old "first row in `Admins`" placeholder.
 

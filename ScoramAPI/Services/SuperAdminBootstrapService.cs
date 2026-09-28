@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ScoramAPI.Data;
 using ScoramAPI.Enums;
+using ScoramAPI.Extensions;
 using ScoramAPI.Models;
 
 namespace ScoramAPI.Services
@@ -37,12 +38,16 @@ namespace ScoramAPI.Services
 
             // A weak or trivially-guessable value here would just recreate the exact problem this
             // bootstrap flow exists to fix, so refuse rather than silently accepting one.
-            if (password.Length < 12)
+            // Uses the same PasswordPolicy enforced by the change-password endpoint so the rule
+            // is defined and checked in exactly one place.
+            var policyError = PasswordPolicy.Validate(password);
+            if (policyError != null)
             {
                 logger.LogWarning(
-                    "SUPERADMIN_PASSWORD is shorter than 12 characters -- refusing to bootstrap the " +
-                    "first SuperAdmin with a weak password. Set a stronger SUPERADMIN_PASSWORD and " +
-                    "restart the app.");
+                    "SUPERADMIN_PASSWORD does not meet the password policy -- refusing to bootstrap " +
+                    "the first SuperAdmin. Set a stronger SUPERADMIN_PASSWORD and restart the app. " +
+                    "Policy: at least {MinLength} characters, mixed case, a digit, and a special character.",
+                    PasswordPolicy.MinLength);
                 return;
             }
 

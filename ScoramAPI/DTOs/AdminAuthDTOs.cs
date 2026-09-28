@@ -82,18 +82,26 @@ namespace ScoramAPI.DTOs
     }
 
     // PATCH /api/admin/auth/change-password -- any authenticated admin, for their own account.
+    // Backend enforces the password policy (12+ chars, mixed case, digit, special character) in
+    // AdminAuthController.ChangePassword using PasswordPolicy.Validate -- the MinLength attribute
+    // is a fast-fail fallback for the model binder; the real check is deeper in the controller.
     public class AdminChangePasswordDto
     {
         [Required]
         public string CurrentPassword { get; set; } = string.Empty;
 
-        [Required, MinLength(8)]
+        [Required, MinLength(12)]
         public string NewPassword { get; set; } = string.Empty;
+
+        // Server-side confirmation check -- never trust client-side-only validation.
+        [Required]
+        public string ConfirmNewPassword { get; set; } = string.Empty;
     }
 
     // Used by a Super Admin to create a new Admin (or another Super Admin) account.
     // There's no public self-registration endpoint for admins -- this is intentionally
     // only reachable by an authenticated Super Admin (see AdminAuthController).
+    // The controller also runs PasswordPolicy.Validate(dto.Password) beyond this attribute check.
     public class AdminCreateDto
     {
         [Required, MaxLength(100)]
@@ -102,7 +110,7 @@ namespace ScoramAPI.DTOs
         [Required, EmailAddress, MaxLength(150)]
         public string Email { get; set; } = string.Empty;
 
-        [Required, MinLength(8)]
+        [Required, MinLength(12)]
         public string Password { get; set; } = string.Empty;
 
         public AdminRole Role { get; set; } = AdminRole.Admin;

@@ -17,11 +17,11 @@ namespace ScoramAPI.Migrations
                 nullable: false,
                 defaultValue: false);
 
-            // The old HasData seed (removed from ScoramDbContext in this change) always created this
-            // exact row with this exact password hash -- BCrypt("SuperAdmin@123"), which was also
-            // documented in plaintext in README.md before this fix. Flag it to force a password
-            // change on next login, but ONLY if the hash still matches exactly, so a deployment that
-            // already rotated this account's password is never touched.
+            // The old HasData seed (removed from ScoramDbContext in this change) always created a
+            // well-known SuperAdmin row with a well-known default password hash. Flag the row to force
+            // a password change on next login, but ONLY if the PasswordHash still matches the original
+            // seeded value exactly, so a deployment that already rotated the account's password is
+            // never touched.
             //
             // Deliberately NOT a DeleteData op against this Id: deleting unconditionally would risk
             // destroying an already-secured account, and removing SuperAdmin login entirely was

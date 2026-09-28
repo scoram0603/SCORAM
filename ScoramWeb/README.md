@@ -60,9 +60,9 @@ consumer apps: the admin surface shouldn't be discoverable by a normal browsing 
   token/user under different `localStorage` keys (`scoram_admin_token` / `scoram_admin_user`) than the
   student `AuthContext`, so testing both in the same browser never has one login silently overwrite
   the other.
-- **Login**: `src/admin/pages/AdminLogin.jsx` → `POST /api/admin/auth/login`. Use the seeded Super Admin
-  (`superadmin@scoram.com` / `SuperAdmin@123`) to log in the first time — see the ScoramAPI README for
-  details on that seed.
+- **Login**: `src/admin/pages/AdminLogin.jsx` → `POST /api/admin/auth/login`. For a fresh database
+  the first SuperAdmin is bootstrapped via the `SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD` environment
+  variables — see the ScoramAPI README for setup details.
 
 ### Screens in this pass
 

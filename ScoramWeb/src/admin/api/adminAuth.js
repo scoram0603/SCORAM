@@ -39,11 +39,13 @@ export function disableMfa(token, { currentPassword, code }) {
 // backend has already invalidated the current token server-side (SecurityStamp regenerated), so
 // the caller should log out and send the admin back to /admin/login rather than trying to keep
 // using the session that was just superseded.
-export function changePassword(token, { currentPassword, newPassword }) {
+// confirmNewPassword is now required server-side (backend rejects mismatches independently of
+// the client-side check -- never rely on client validation alone).
+export function changePassword(token, { currentPassword, newPassword, confirmNewPassword }) {
   return apiFetch("/api/admin/auth/change-password", {
     method: "PATCH",
     token,
-    body: { currentPassword, newPassword },
+    body: { currentPassword, newPassword, confirmNewPassword },
   });
 }
 

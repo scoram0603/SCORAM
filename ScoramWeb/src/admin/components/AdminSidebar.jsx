@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, UploadCloud, FileStack, ClipboardCheck, ListChecks, Users, MessageSquare, LogOut,
   ShieldCheck, ShieldAlert, Lightbulb, Flag, Library, ChevronsLeft, ChevronsRight, PenLine, Trophy,
-  GraduationCap, Zap, Building2, KeyRound,
+  GraduationCap, Zap, Building2, KeyRound, LockKeyhole,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import logoMark from "../../assets/scoram-logo-square.png";
@@ -65,6 +65,10 @@ const NAV_GROUPS = [
     items: [
       { to: "/admin/tasks", label: "Tasks", icon: ListChecks },
       { to: "/admin/mfa-settings", label: "Two-Factor Auth", icon: KeyRound },
+      // Change password -- every admin can reach this (no superAdminOnly / permission gate),
+      // because any admin may want to voluntarily rotate their own password.  The backend
+      // enforces identity from the JWT, so only your own account can ever be modified.
+      { to: "/admin/security", label: "Security", icon: LockKeyhole },
       { to: "/admin/audit-log", label: "Audit Log", icon: ShieldAlert, permission: "Audit" },
       { to: "/admin/admins", label: "Manage Admins", icon: Users, superAdminOnly: true },
     ],
