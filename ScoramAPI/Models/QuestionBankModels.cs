@@ -30,6 +30,11 @@ namespace ScoramAPI.Models
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        // Subject Management: last time an admin renamed/activated/deactivated/merged this subject
+        // (SubjectManagementService stamps it). Nullable -- every subject that existed before this
+        // column did just has it unset, no backfill needed.
+        public DateTime? UpdatedAt { get; set; }
+
         public ICollection<QuestionBankTopic> Topics { get; set; } = new List<QuestionBankTopic>();
         public ICollection<QuestionBankQuestion> Questions { get; set; } = new List<QuestionBankQuestion>();
     }

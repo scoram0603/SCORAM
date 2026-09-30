@@ -12,6 +12,7 @@ const PERMISSIONS = [
   { key: "ModerateSolutions", label: "Moderate Solutions", hint: "Approve/reject student-submitted solutions, and post Official/Teacher solutions" },
   { key: "ModerateDiscussions", label: "Moderate Discussions", hint: "Pin comments, mark reported comments resolved/removed, and post official replies" },
   { key: "ManageQuestionBank", label: "Manage Question Bank", hint: "Add/edit/delete Question Bank questions, bulk Excel/JSON import, manage Subjects and Topics" },
+  { key: "ManageSubjects", label: "Manage Subjects", hint: "Rename, activate/deactivate, merge, reassign and delete Subjects (master data that every PYQ/PYP/test filter uses)" },
   { key: "ModerateQuestionReports", label: "Moderate Question Reports", hint: "Review \"Report Question\" submissions on PYQ and Question Bank questions" },
   { key: "ManageTests", label: "Manage Tests", hint: "Create/edit/publish/schedule Mock Tests and Practice Test templates, view student attempts and results" },
   { key: "ManageChatRooms", label: "Manage Chat Rooms", hint: "Create/rename/delete standalone group chat rooms (not tied to an exam)" },

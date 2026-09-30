@@ -61,6 +61,7 @@ builder.Services.AddScoped<IBulkImportCommitService, BulkImportCommitService>();
 builder.Services.AddScoped<IBulkPaperImportCommitService, BulkPaperImportCommitService>(); // extracted from BulkPaperImportController.Commit
 builder.Services.AddScoped<IQuestionBankImportCommitService, QuestionBankImportCommitService>(); // extracted from QuestionBankAdminController.Commit
 builder.Services.AddScoped<ITestAttemptService, TestAttemptService>(); // SCORAM_TESTS
+builder.Services.AddScoped<ISubjectManagementService, SubjectManagementService>(); // Subject Management (admin)
 builder.Services.AddScoped<IGamificationService, GamificationService>(); // GAMIFICATION
 // ---------- Redis (optional -- see ConnectionStrings:Redis) ----------
 // Everything below degrades gracefully to today's single-instance-only behavior when this isn't

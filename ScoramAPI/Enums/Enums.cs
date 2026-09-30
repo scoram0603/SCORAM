@@ -204,7 +204,15 @@ namespace ScoramAPI.Enums
         // "Daily Doubt Room", plus renaming/deleting any room). Separate from the existing
         // moderation permissions (ToggleChatLock, RemoveGroupMembers, etc.), which govern day-to-day
         // moderation of a room that already exists, not the room's own lifecycle.
-        ManageChatRooms
+        ManageChatRooms,
+        // Subject Management (admin > Subjects): rename/activate/merge/reassign/delete the Question
+        // Bank Subjects that every PYQ/PYP/Practice/Mock/Quiz filter and dropdown is built from.
+        // Separate from ManageQuestionBank on purpose -- an admin trusted to add/edit questions
+        // (and to add or retire a Subject from the existing Subjects & Topics screen) doesn't
+        // automatically get to merge/reassign/delete master data, which rewrites every piece of
+        // content tagged with it in one go. Stored as a string (see AdminPermissionGrant), so
+        // adding a value needs no migration.
+        ManageSubjects
     }
 
     // Deliberately just these two for now, per product decision -- not the free-text Language field

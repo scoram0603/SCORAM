@@ -23,6 +23,7 @@ import CommentReportsQueue from "./pages/CommentReportsQueue";
 import QuestionBankManagement from "./pages/QuestionBankManagement";
 import QuestionBankUploadWizard from "./pages/QuestionBankUploadWizard";
 import QuestionBankSubjectsTopics from "./pages/QuestionBankSubjectsTopics";
+import SubjectManagement from "./pages/SubjectManagement";
 import QuestionBankReportsQueue from "./pages/QuestionBankReportsQueue";
 import MockTestManagement from "./pages/MockTestManagement";
 import PracticeTestManagement from "./pages/PracticeTestManagement";
@@ -78,6 +79,11 @@ function AdminRoutes() {
 
           <Route element={<RequireAdminPermission permission="ModerateQuestionReports" />}>
             <Route path="question-bank/reports" element={<QuestionBankReportsQueue />} />
+          </Route>
+
+          {/* Subject Management: master-data admin (rename / merge / reassign / delete Subjects) */}
+          <Route element={<RequireAdminPermission permission="ManageSubjects" />}>
+            <Route path="subjects" element={<SubjectManagement />} />
           </Route>
 
           {/* SCORAM_TESTS */}
