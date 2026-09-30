@@ -100,6 +100,7 @@ namespace ScoramAPI.Controllers
                 NotifyOnDirectMessages = user.NotifyOnDirectMessages
             };
         }
+        [HttpPost("register")]
         [EnableRateLimiting("register")]
         public async Task<ActionResult<AuthResponseDto>> Register(RegisterDto dto)
         {
