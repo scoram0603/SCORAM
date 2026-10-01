@@ -359,6 +359,7 @@ namespace ScoramAPI.Controllers
                 .Select(a => new AdminResponseDto
                 {
                     Id = a.Id,
+                    BusinessId = a.BusinessId,
                     FullName = a.FullName,
                     Email = a.Email,
                     Role = a.Role.ToString(),
@@ -402,6 +403,7 @@ namespace ScoramAPI.Controllers
             return Ok(new AdminResponseDto
             {
                 Id = admin.Id,
+                BusinessId = admin.BusinessId,
                 FullName = admin.FullName,
                 Email = admin.Email,
                 Role = admin.Role.ToString(),

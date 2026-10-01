@@ -14,9 +14,14 @@ namespace ScoramAPI.Models
     // TestKind.Practice) via the same generation logic -- see Services/TestAttemptService.cs.
     // ==================================================================================
 
-    public class PracticeTestTemplate
+    public class PracticeTestTemplate : IHasBusinessId
     {
         public Guid Id { get; set; } = Guid.NewGuid();
+
+        // Human-readable Business ID, e.g. "TST0001" ("Test" in the admin panel). See
+        // Models/BusinessIdModels.cs.
+        [MaxLength(30)]
+        public string? BusinessId { get; set; }
 
         [Required, MaxLength(150)]
         public string Title { get; set; } = string.Empty;

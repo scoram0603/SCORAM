@@ -88,6 +88,7 @@ namespace ScoramAPI.Controllers
                 .Select(e => new ExamResponseDto
                 {
                     Id = e.Id,
+                    BusinessId = e.BusinessId,
                     Name = e.Name,
                     LogoUrl = e.LogoUrl,
                     IsBlocked = e.IsBlocked,
@@ -165,6 +166,7 @@ namespace ScoramAPI.Controllers
             return Ok(new ExamResponseDto
             {
                 Id = exam.Id,
+                BusinessId = exam.BusinessId,
                 Name = exam.Name,
                 LogoUrl = exam.LogoUrl,
                 IsBlocked = false,
@@ -234,6 +236,7 @@ namespace ScoramAPI.Controllers
             return Ok(new ExamResponseDto
             {
                 Id = exam.Id,
+                BusinessId = exam.BusinessId,
                 Name = exam.Name,
                 LogoUrl = exam.LogoUrl,
                 IsBlocked = exam.IsBlocked,
@@ -344,6 +347,7 @@ namespace ScoramAPI.Controllers
             return Ok(new ExamResponseDto
             {
                 Id = target.Id,
+                BusinessId = target.BusinessId,
                 Name = target.Name,
                 LogoUrl = target.LogoUrl,
                 IsBlocked = target.IsBlocked,
@@ -377,6 +381,7 @@ namespace ScoramAPI.Controllers
             return Ok(new ExamResponseDto
             {
                 Id = exam.Id,
+                BusinessId = exam.BusinessId,
                 Name = exam.Name,
                 LogoUrl = exam.LogoUrl,
                 IsBlocked = exam.IsBlocked,

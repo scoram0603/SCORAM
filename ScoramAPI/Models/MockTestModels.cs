@@ -3,9 +3,13 @@ using ScoramAPI.Enums;
 
 namespace ScoramAPI.Models
 {
-    public class MockTest
+    public class MockTest : IHasBusinessId
     {
         public Guid Id { get; set; } = Guid.NewGuid();
+
+        // Human-readable Business ID, e.g. "MCK0001". See Models/BusinessIdModels.cs.
+        [MaxLength(30)]
+        public string? BusinessId { get; set; }
 
         [Required, MaxLength(150)]
         public string Title { get; set; } = string.Empty;

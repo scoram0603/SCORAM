@@ -28,6 +28,10 @@ namespace ScoramAPI.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("BusinessId")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -69,6 +73,11 @@ namespace ScoramAPI.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BusinessId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Admins_BusinessId")
+                        .HasFilter("[BusinessId] IS NOT NULL");
 
                     b.HasIndex("Email")
                         .IsUnique();
@@ -321,6 +330,44 @@ namespace ScoramAPI.Migrations
                         .HasFilter("[QuestionId] IS NOT NULL");
 
                     b.ToTable("Bookmarks");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.BusinessIdCounter", b =>
+                {
+                    b.Property<string>("CounterKey")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("LastNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("CounterKey");
+
+                    b.ToTable("BusinessIdCounters");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.BusinessIdRegistryEntry", b =>
+                {
+                    b.Property<string>("BusinessId")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("IssuedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("BusinessId");
+
+                    b.HasIndex("EntityId");
+
+                    b.ToTable("BusinessIdRegistry");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.ChatMessage", b =>
@@ -925,6 +972,10 @@ namespace ScoramAPI.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("BusinessId")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -946,6 +997,11 @@ namespace ScoramAPI.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BusinessId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Exams_BusinessId")
+                        .HasFilter("[BusinessId] IS NOT NULL");
 
                     b.HasIndex("CreatedByAdminId");
 
@@ -1081,6 +1137,10 @@ namespace ScoramAPI.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("BusinessId")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -1139,6 +1199,11 @@ namespace ScoramAPI.Migrations
                         .HasColumnType("nvarchar(150)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BusinessId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_MockTests_BusinessId")
+                        .HasFilter("[BusinessId] IS NOT NULL");
 
                     b.HasIndex("CreatedByAdminId");
 
@@ -1372,6 +1437,10 @@ namespace ScoramAPI.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("BusinessId")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -1427,6 +1496,11 @@ namespace ScoramAPI.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BusinessId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PracticeTestTemplates_BusinessId")
+                        .HasFilter("[BusinessId] IS NOT NULL");
 
                     b.HasIndex("CreatedByAdminId");
 
@@ -1854,6 +1928,10 @@ namespace ScoramAPI.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("BusinessId")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -1872,6 +1950,11 @@ namespace ScoramAPI.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BusinessId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_QuestionBankSubjects_BusinessId")
+                        .HasFilter("[BusinessId] IS NOT NULL");
 
                     b.HasIndex("CreatedByAdminId");
 

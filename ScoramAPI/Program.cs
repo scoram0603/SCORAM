@@ -62,6 +62,7 @@ builder.Services.AddScoped<IBulkPaperImportCommitService, BulkPaperImportCommitS
 builder.Services.AddScoped<IQuestionBankImportCommitService, QuestionBankImportCommitService>(); // extracted from QuestionBankAdminController.Commit
 builder.Services.AddScoped<ITestAttemptService, TestAttemptService>(); // SCORAM_TESTS
 builder.Services.AddScoped<ISubjectManagementService, SubjectManagementService>(); // Subject Management (admin)
+builder.Services.AddScoped<IBusinessIdService, BusinessIdService>(); // Business IDs (EXMSSC001, SUB001, ...) -- SuperAdmin change + one-time backfill
 builder.Services.AddScoped<IGamificationService, GamificationService>(); // GAMIFICATION
 // ---------- Redis (optional -- see ConnectionStrings:Redis) ----------
 // Everything below degrades gracefully to today's single-instance-only behavior when this isn't
@@ -467,6 +468,21 @@ try
 catch (Exception ex)
 {
     app.Logger.LogError(ex, "SuperAdmin bootstrap check failed at startup (likely: migrations not yet applied). Will retry on next restart.");
+}
+
+// One-time, idempotent: gives every pre-existing Exam / Subject / Test / Mock Test / Admin its
+// human-readable Business ID (oldest first, deterministic). Runs AFTER the SuperAdmin bootstrap above
+// so a freshly-bootstrapped admin is numbered too. Same fail-soft reasoning as the block above --
+// it must never stop the process from reaching app.Run() -- and a failed attempt is rolled back
+// completely and simply retried on the next restart. Set BusinessIds:AutoBackfillOnStartup=false
+// to skip it and run POST /api/admin/business-ids/backfill (dry run first) by hand instead.
+try
+{
+    await ScoramAPI.Services.BusinessIdService.RunStartupBackfillAsync(app.Services, app.Configuration, app.Logger);
+}
+catch (Exception ex)
+{
+    app.Logger.LogError(ex, "Business ID backfill failed at startup (likely: migrations not yet applied). Nothing was changed; it will be retried on the next restart.");
 }
 
 app.Run();

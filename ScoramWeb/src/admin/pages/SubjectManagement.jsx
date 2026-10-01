@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowRightLeft, ArrowUp, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, GitMerge, Pencil, Plus, Power, Search, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowRightLeft, ArrowUp, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, GitMerge, KeyRound, Pencil, Plus, Power, Search, Trash2 } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { listManagedSubjects, setManagedSubjectActive } from "../api/subjects";
 import { PageHeader, Card, Button, TextInput, Alert, friendlyError } from "../components/AdminUI";
 import { SubjectFormDialog, DeactivateDialog, MoveDialog, DeleteDialog, UsageDialog } from "../components/SubjectManagementDialogs";
 import { formatDate } from "../components/subjectFormat";
+import { BusinessIdBadge, BusinessIdChangeDialog } from "../components/BusinessId";
 
 const PAGE_SIZE = 20;
 
@@ -35,7 +36,7 @@ const num = (v) => (v ?? 0).toLocaleString();
 // (rename, merge, reassign, delete) happens behind impact-preview + confirmation dialogs and is
 // enforced again on the server.
 export default function SubjectManagement() {
-  const { token } = useAdminAuth();
+  const { token, isSuperAdmin } = useAdminAuth();
 
   const [data, setData] = useState(null); // { items, total, activeCount, inactiveCount }
   const [loading, setLoading] = useState(true);
@@ -145,7 +146,7 @@ export default function SubjectManagement() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative min-w-[220px] flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-              <TextInput value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search subjects…" className="!pl-9" aria-label="Search subjects" />
+              <TextInput value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search by name or ID (e.g. SUB003)…" className="!pl-9" aria-label="Search subjects" />
             </div>
             <div className="flex gap-1 rounded-xl2 bg-surface p-1" role="tablist" aria-label="Filter by status">
               {STATUS_FILTERS.map((f) => (
@@ -181,9 +182,12 @@ export default function SubjectManagement() {
                 {items.map((s) => (
                   <tr key={s.id} className="hover:bg-surface/60">
                     <td className="px-4 py-3">
-                      <button type="button" onClick={() => setDialog({ type: "usage", subject: s })} className="text-left font-bold text-ink-900 hover:text-secondary-500 hover:underline">
-                        {s.name}
-                      </button>
+                      <div className="flex flex-col items-start gap-0.5">
+                        <BusinessIdBadge id={s.businessId} />
+                        <button type="button" onClick={() => setDialog({ type: "usage", subject: s })} className="text-left font-bold text-ink-900 hover:text-secondary-500 hover:underline">
+                          {s.name}
+                        </button>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${s.isActive ? "bg-mint-50 text-mint-500" : "bg-surface text-ink-400"}`}>
@@ -207,6 +211,7 @@ export default function SubjectManagement() {
                           : <IconAction label="Activate subject" onClick={() => activate(s)} icon={Power} busy={rowBusyId === s.id} tone="mint" />}
                         <IconAction label="Merge into another subject" onClick={() => setDialog({ type: "merge", subject: s })} icon={GitMerge} />
                         <IconAction label="Reassign content" onClick={() => setDialog({ type: "reassign", subject: s })} icon={ArrowRightLeft} />
+                        {isSuperAdmin && <IconAction label="Change Business ID (Super Admin)" onClick={() => setDialog({ type: "businessId", subject: s })} icon={KeyRound} />}
                         <IconAction label="Delete subject" onClick={() => setDialog({ type: "delete", subject: s })} icon={Trash2} tone="danger" />
                       </div>
                     </td>
@@ -261,6 +266,16 @@ export default function SubjectManagement() {
       {dialog?.type === "merge" && <MoveDialog mode="merge" initialSourceId={dialog.subject?.id} onClose={() => setDialog(null)} onDone={handleDone} />}
       {dialog?.type === "reassign" && <MoveDialog mode="reassign" initialSourceId={dialog.subject?.id} onClose={() => setDialog(null)} onDone={handleDone} />}
       {dialog?.type === "usage" && <UsageDialog subject={dialog.subject} onClose={() => setDialog(null)} />}
+      {dialog?.type === "businessId" && (
+        <BusinessIdChangeDialog
+          token={token}
+          entityType="subject"
+          entity={dialog.subject}
+          name={dialog.subject.name}
+          onClose={() => setDialog(null)}
+          onChanged={(res) => handleDone(res.message)}
+        />
+      )}
       {dialog?.type === "delete" && (
         <DeleteDialog
           subject={dialog.subject}

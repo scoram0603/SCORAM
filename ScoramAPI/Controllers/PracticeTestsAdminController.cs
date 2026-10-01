@@ -29,10 +29,11 @@ namespace ScoramAPI.Controllers
             _audit = audit;
         }
 
-        // GET /api/admin/practice-tests?status=&page=&pageSize=
+        // GET /api/admin/practice-tests?status=&search=&page=&pageSize=
+        // search matches the Business ID (TST0001) or Title, case-insensitive.
         [HttpGet]
         public async Task<ActionResult<PagedResult<PracticeTestTemplateAdminDto>>> List(
-            [FromQuery] string? status, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+            [FromQuery] string? status, [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
             if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageTests)) return Forbid();
 
@@ -46,6 +47,11 @@ namespace ScoramAPI.Controllers
 
             if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<TestPublishStatus>(status, true, out var parsed))
                 query = query.Where(t => t.Status == parsed);
+
+            var term = search?.Trim();
+            if (!string.IsNullOrEmpty(term))
+                query = query.Where(t => t.Title.Contains(term)
+                    || (t.BusinessId != null && t.BusinessId.Contains(term)));
 
             query = query.OrderByDescending(t => t.CreatedAt);
             var totalCount = await query.CountAsync();
@@ -270,6 +276,7 @@ namespace ScoramAPI.Controllers
         private static PracticeTestTemplateAdminDto ToAdminDto(PracticeTestTemplate t, int attemptCount) => new PracticeTestTemplateAdminDto
         {
             Id = t.Id,
+            BusinessId = t.BusinessId,
             Title = t.Title,
             Description = t.Description,
             Subject = t.Subject?.Name,

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Pencil, Ban, CheckCircle2, Trash2, X } from "lucide-react";
+import { Plus, Pencil, Ban, CheckCircle2, Trash2, X, Search } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { listAdminExams, createExam, updateExam, setExamBlocked, mergeExam } from "../api/exams";
 import { listAdminOrganizations } from "../api/organizations";
 import { PageHeader, Card, Button, FormField, TextInput, Select, Alert, friendlyError } from "../components/AdminUI";
 import ExamDeleteModal from "../components/ExamDeleteModal";
+import { BusinessIdBadge, BusinessIdChangeDialog, ChangeBusinessIdButton, matchesSearch } from "../components/BusinessId";
 import { API_BASE_URL } from "../../api/client";
 
 function logoSrc(url) {
@@ -31,6 +32,8 @@ export default function ExamManagement() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingExam, setEditingExam] = useState(null);
   const [deletingExam, setDeletingExam] = useState(null);
+  const [search, setSearch] = useState(""); // matches Business ID (EXMSSC001) or name
+  const [changingIdExam, setChangingIdExam] = useState(null);
 
   useEffect(() => {
     refresh();
@@ -54,10 +57,11 @@ export default function ExamManagement() {
   );
 
   const visibleExams = useMemo(() => {
-    if (!orgFilter) return exams;
-    if (orgFilter === "__unassigned") return exams.filter((e) => !e.organizationId);
-    return exams.filter((e) => e.organizationId === orgFilter);
-  }, [exams, orgFilter]);
+    let list = exams;
+    if (orgFilter === "__unassigned") list = list.filter((e) => !e.organizationId);
+    else if (orgFilter) list = list.filter((e) => e.organizationId === orgFilter);
+    return list.filter((e) => matchesSearch(search, e.businessId, e.name, e.organizationName));
+  }, [exams, orgFilter, search]);
 
   async function handleToggleBlock(exam) {
     setExams((prev) => prev.map((e) => (e.id === exam.id ? { ...e, isBlocked: !e.isBlocked } : e)));
@@ -143,6 +147,33 @@ export default function ExamManagement() {
           </div>
         )}
 
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <div className="relative w-full max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+            <TextInput
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or ID (e.g. EXMSSC001)…"
+              aria-label="Search exams"
+              className="!pl-9"
+            />
+          </div>
+        </div>
+
+        {changingIdExam && (
+          <BusinessIdChangeDialog
+            token={token}
+            entityType="exam"
+            entity={changingIdExam}
+            name={changingIdExam.name}
+            onClose={() => setChangingIdExam(null)}
+            onChanged={(res) => {
+              setExams((prev) => prev.map((e) => (e.id === res.entityId ? { ...e, businessId: res.newBusinessId } : e)));
+              setChangingIdExam(null);
+            }}
+          />
+        )}
+
         {organizations.length > 0 && (
           <div className="mb-4 max-w-xs">
             <FormField label="Filter by Organization">
@@ -174,6 +205,7 @@ export default function ExamManagement() {
                   )}
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
+                      <BusinessIdBadge id={exam.businessId} />
                       <span className="truncate text-sm font-bold text-ink-900">{exam.name}</span>
                       {exam.isBlocked && (
                         <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600">Blocked</span>
@@ -201,6 +233,7 @@ export default function ExamManagement() {
                     {exam.isBlocked ? <CheckCircle2 className="h-4 w-4" strokeWidth={2.25} /> : <Ban className="h-4 w-4" strokeWidth={2.25} />}
                     {exam.isBlocked ? "Unblock" : "Block"}
                   </Button>
+                  <ChangeBusinessIdButton show={isSuperAdmin} onClick={() => setChangingIdExam(exam)} />
                   {isSuperAdmin && (
                     <Button variant="danger" onClick={() => setDeletingExam(exam)}>
                       <Trash2 className="h-4 w-4" strokeWidth={2.25} />

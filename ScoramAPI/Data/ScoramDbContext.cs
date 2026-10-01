@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScoramAPI.Models;
+using ScoramAPI.Services;
 
 namespace ScoramAPI.Data
 {
@@ -74,6 +75,11 @@ namespace ScoramAPI.Data
 
         // Question Bank (SCORAM_QUESTION_BANK)
         public DbSet<QuestionBankSubject> QuestionBankSubjects => Set<QuestionBankSubject>();
+
+        // BUSINESS IDs -- see Models/BusinessIdModels.cs. Counter = "next number" per prefix;
+        // Registry = permanent ledger of every ID ever issued (what guarantees no reuse).
+        public DbSet<BusinessIdCounter> BusinessIdCounters => Set<BusinessIdCounter>();
+        public DbSet<BusinessIdRegistryEntry> BusinessIdRegistry => Set<BusinessIdRegistryEntry>();
         public DbSet<QuestionBankTopic> QuestionBankTopics => Set<QuestionBankTopic>();
         public DbSet<QuestionBankQuestion> QuestionBankQuestions => Set<QuestionBankQuestion>();
         public DbSet<QuestionBankExamMapping> QuestionBankExamMappings => Set<QuestionBankExamMapping>();
@@ -103,6 +109,100 @@ namespace ScoramAPI.Data
         // Azure Blob Storage -- file metadata only, actual bytes live in the "uploads" container.
         public DbSet<Document> Documents => Set<Document>();
         public DbSet<Bookmark> Bookmarks => Set<Bookmark>();
+
+        // ---------- BUSINESS IDs: central assignment + edit guard ----------
+        //
+        // Every insert of an Exam / Subject (QuestionBankSubject) / Test (PracticeTestTemplate) /
+        // Mock Test / Admin goes through here, wherever in the app it originates (admin forms, bulk
+        // imports, mirror services, bootstrap) -- so nothing that creates one of these has to know
+        // Business IDs exist, and a new creation path added later can't forget to assign one.
+        //
+        // Set ONLY by BusinessIdService.ChangeAsync (the SuperAdmin-only correction flow) for the
+        // duration of its own save. Everything else that tries to rewrite an existing BusinessId is
+        // rejected below, so "normal admins can't change it" holds even if some future endpoint
+        // accidentally binds the property from a request body.
+        internal bool AllowBusinessIdChange { get; set; }
+
+        public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+        {
+            GuardBusinessIdEdits();
+
+            var needId = ChangeTracker.Entries()
+                .Where(e => e.State == EntityState.Added
+                    && e.Entity is IHasBusinessId b
+                    && string.IsNullOrWhiteSpace(b.BusinessId))
+                .Select(e => (IHasBusinessId)e.Entity)
+                .ToList();
+
+            // Nothing to assign -- or the one-time backfill of existing records hasn't run yet, in
+            // which case these new rows stay null and the backfill numbers them in creation order.
+            if (needId.Count == 0 || !await BusinessIdGenerator.IsBackfillCompleteAsync(this, cancellationToken))
+                return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+
+            // Counter increment + registry row + the entity insert must commit or roll back TOGETHER.
+            // If the caller already opened a transaction (e.g. Subject Management's merge), join it;
+            // otherwise open one just for this save.
+            var ownTx = Database.CurrentTransaction == null
+                ? await Database.BeginTransactionAsync(cancellationToken)
+                : null;
+            try
+            {
+                await BusinessIdGenerator.AssignAsync(this, needId, cancellationToken);
+                var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+                if (ownTx != null) await ownTx.CommitAsync(cancellationToken);
+                return saved;
+            }
+            catch
+            {
+                // The counter bump and registry rows roll back with the transaction; also undo the
+                // in-memory side so a caller that retries SaveChanges on these same objects gets fresh
+                // IDs instead of re-using ones that were never actually recorded.
+                foreach (var entity in needId) entity.BusinessId = null;
+                foreach (var entry in ChangeTracker.Entries<BusinessIdRegistryEntry>()
+                             .Where(e => e.State == EntityState.Added).ToList())
+                    entry.State = EntityState.Detached;
+                if (ownTx != null) await ownTx.RollbackAsync(CancellationToken.None);
+                throw;
+            }
+            finally
+            {
+                if (ownTx != null) await ownTx.DisposeAsync();
+            }
+        }
+
+        // No code path in the app uses the synchronous SaveChanges (everything is async), but a future
+        // one must not be able to silently skip the Business ID rules.
+        public override int SaveChanges(bool acceptAllChangesOnSuccess)
+        {
+            GuardBusinessIdEdits();
+            if (ChangeTracker.Entries().Any(e => e.State == EntityState.Added
+                    && e.Entity is IHasBusinessId b && string.IsNullOrWhiteSpace(b.BusinessId)))
+                throw new NotSupportedException("Use SaveChangesAsync: new records need a Business ID assigned inside a transaction.");
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+
+        // A BusinessId that already has a value may only change via BusinessIdService.ChangeAsync.
+        // (null -> value is allowed: that is the one-time backfill assigning an existing record its
+        // first ID.)
+        private void GuardBusinessIdEdits()
+        {
+            if (AllowBusinessIdChange) return;
+
+            foreach (var entry in ChangeTracker.Entries().Where(e => e.State == EntityState.Modified && e.Entity is IHasBusinessId))
+            {
+                var prop = entry.Property(nameof(IHasBusinessId.BusinessId));
+                if (!prop.IsModified) continue;
+
+                var original = prop.OriginalValue as string;
+                var current = prop.CurrentValue as string;
+                if (!string.IsNullOrEmpty(original)
+                    && !string.Equals(original, current, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        $"BusinessId is not editable (attempted {original} -> {current ?? "null"}). Only a SuperAdmin can change it, via the Business ID change endpoint.");
+                }
+            }
+        }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -170,6 +270,26 @@ namespace ScoramAPI.Data
                 .HasIndex(t => new { t.UserId, t.CreatedAt });
             modelBuilder.Entity<XpTransaction>()
                 .HasIndex(t => new { t.ExamName, t.CreatedAt });
+
+            // ---------- Business IDs ----------
+            // Unique among NON-NULL values (filtered index): existing production rows have no
+            // BusinessId until the one-time backfill runs, and SQL Server would otherwise treat a
+            // second NULL as a duplicate. BusinessId is never a key or foreign key -- Id (Guid) stays
+            // the primary key and every relationship keeps pointing at it.
+            modelBuilder.Entity<Exam>().Property(e => e.BusinessId).HasMaxLength(30);
+            modelBuilder.Entity<Exam>().HasIndex(e => e.BusinessId).IsUnique().HasFilter("[BusinessId] IS NOT NULL").HasDatabaseName("UX_Exams_BusinessId");
+            modelBuilder.Entity<QuestionBankSubject>().Property(s => s.BusinessId).HasMaxLength(30);
+            modelBuilder.Entity<QuestionBankSubject>().HasIndex(s => s.BusinessId).IsUnique().HasFilter("[BusinessId] IS NOT NULL").HasDatabaseName("UX_QuestionBankSubjects_BusinessId");
+            modelBuilder.Entity<PracticeTestTemplate>().Property(t => t.BusinessId).HasMaxLength(30);
+            modelBuilder.Entity<PracticeTestTemplate>().HasIndex(t => t.BusinessId).IsUnique().HasFilter("[BusinessId] IS NOT NULL").HasDatabaseName("UX_PracticeTestTemplates_BusinessId");
+            modelBuilder.Entity<MockTest>().Property(m => m.BusinessId).HasMaxLength(30);
+            modelBuilder.Entity<MockTest>().HasIndex(m => m.BusinessId).IsUnique().HasFilter("[BusinessId] IS NOT NULL").HasDatabaseName("UX_MockTests_BusinessId");
+            modelBuilder.Entity<Admin>().Property(a => a.BusinessId).HasMaxLength(30);
+            modelBuilder.Entity<Admin>().HasIndex(a => a.BusinessId).IsUnique().HasFilter("[BusinessId] IS NOT NULL").HasDatabaseName("UX_Admins_BusinessId");
+
+            modelBuilder.Entity<BusinessIdCounter>().HasKey(c => c.CounterKey);
+            modelBuilder.Entity<BusinessIdRegistryEntry>().HasKey(r => r.BusinessId);
+            modelBuilder.Entity<BusinessIdRegistryEntry>().HasIndex(r => r.EntityId);
 
             // ---------- Enum -> string conversions (readable in DB) ----------
             modelBuilder.Entity<Admin>().Property(a => a.Role).HasConversion<string>().HasMaxLength(20);

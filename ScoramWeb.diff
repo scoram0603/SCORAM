@@ -1,0 +1,632 @@
+diff -ruN -x node_modules -x dist -x assets -x package-lock.json orig/ScoramWeb/src/admin/api/businessIds.js work/ScoramWeb/src/admin/api/businessIds.js
+--- orig/ScoramWeb/src/admin/api/businessIds.js	1970-01-01 00:00:00.000000000 +0000
++++ work/ScoramWeb/src/admin/api/businessIds.js	2026-09-30 17:10:05.192229485 +0000
+@@ -0,0 +1,19 @@
++import { apiFetch } from "../../api/client";
++
++// Business IDs (EXMSSC001, SUB001, TST0001, MCK0001, ADM0001) -- SuperAdmin-only endpoints.
++// The server enforces the role; the UI only hides the controls for everyone else.
++//
++// Failed calls throw ApiError; err.data.code is one of INVALID_FORMAT, DUPLICATE_BUSINESS_ID,
++// CONFIRMATION_REQUIRED, NO_CHANGE, NOT_FOUND, BACKFILL_PENDING, SUPERADMIN_REQUIRED.
++
++// payload: { entityType: "exam"|"subject"|"test"|"mocktest"|"admin", entityId (the GUID),
++//            newBusinessId, confirm: true }
++// Changes ONLY the Business ID -- the GUID and every relationship stay as they were.
++export function changeBusinessId(token, payload) {
++  return apiFetch("/api/admin/business-ids/change", { method: "POST", token, body: payload });
++}
++
++// dryRun defaults to true on the server: returns the plan without saving anything.
++export function runBusinessIdBackfill(token, { dryRun = true } = {}) {
++  return apiFetch(`/api/admin/business-ids/backfill?dryRun=${dryRun}`, { method: "POST", token });
++}
+diff -ruN -x node_modules -x dist -x assets -x package-lock.json orig/ScoramWeb/src/admin/components/BusinessId.jsx work/ScoramWeb/src/admin/components/BusinessId.jsx
+--- orig/ScoramWeb/src/admin/components/BusinessId.jsx	1970-01-01 00:00:00.000000000 +0000
++++ work/ScoramWeb/src/admin/components/BusinessId.jsx	2026-09-30 17:10:05.196229485 +0000
+@@ -0,0 +1,167 @@
++import { useEffect, useState } from "react";
++import { KeyRound } from "lucide-react";
++import { changeBusinessId } from "../api/businessIds";
++import { Modal } from "./SubjectManagementDialogs";
++import { Alert, Button, FormField, TextInput, friendlyError } from "./AdminUI";
++
++// Formats mirror the backend (Services/BusinessIdFormats.cs) -- used only for instant feedback in the
++// change dialog. The server is the authority and re-validates everything.
++const FORMATS = {
++  exam: { label: "Exam", example: "EXMSSC001", regex: /^EXM[A-Z]{1,10}\d{3,9}$/ },
++  subject: { label: "Subject", example: "SUB001", regex: /^SUB\d{3,9}$/ },
++  test: { label: "Test", example: "TST0001", regex: /^TST\d{4,9}$/ },
++  mocktest: { label: "Mock Test", example: "MCK0001", regex: /^MCK\d{4,9}$/ },
++  admin: { label: "Admin", example: "ADM0001", regex: /^ADM\d{4,9}$/ },
++};
++
++// Small monospace chip -- distinguishable from the entity name without competing with it.
++export function BusinessIdBadge({ id, className = "" }) {
++  if (!id) return null;
++  return (
++    <span
++      title="Business ID"
++      className={`inline-block shrink-0 rounded-md bg-primary-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide text-primary-600 ${className}`}
++    >
++      {id}
++    </span>
++  );
++}
++
++// SuperAdmin-only affordance. Renders nothing for anyone else (the server enforces this too).
++export function ChangeBusinessIdButton({ show, onClick, className = "" }) {
++  if (!show) return null;
++  return (
++    <button
++      type="button"
++      onClick={onClick}
++      title="Change Business ID (Super Admin)"
++      aria-label="Change Business ID"
++      className={`rounded-full p-1.5 text-ink-400 hover:bg-primary-50 hover:text-primary-600 ${className}`}
++    >
++      <KeyRound className="h-4 w-4" strokeWidth={2.25} />
++    </button>
++  );
++}
++
++// Case-insensitive match on the Business ID OR any of the record's other searchable fields, so adding
++// Business ID search never removes the existing name/title/email search.
++export function matchesSearch(query, businessId, ...fields) {
++  const q = (query || "").trim().toLowerCase();
++  if (!q) return true;
++  return [businessId, ...fields].some((f) => (f || "").toString().toLowerCase().includes(q));
++}
++
++export function useDebouncedValue(value, delay = 300) {
++  const [debounced, setDebounced] = useState(value);
++  useEffect(() => {
++    const t = setTimeout(() => setDebounced(value), delay);
++    return () => clearTimeout(t);
++  }, [value, delay]);
++  return debounced;
++}
++
++// Two steps, on purpose: (1) enter + validate the new ID, (2) the explicit "Change Business ID?"
++// warning. The GUID is what's sent to identify the record, never the old Business ID.
++export function BusinessIdChangeDialog({ token, entityType, entity, name, onClose, onChanged }) {
++  const format = FORMATS[entityType];
++  const [step, setStep] = useState(1);
++  const [value, setValue] = useState(entity.businessId || "");
++  const [typed, setTyped] = useState("");
++  const [sending, setSending] = useState(false);
++  const [error, setError] = useState(null);
++
++  const next = value.trim().toUpperCase();
++  const formatOk = format.regex.test(next);
++  const unchanged = next === (entity.businessId || "").toUpperCase();
++
++  async function submit() {
++    setSending(true);
++    setError(null);
++    try {
++      const res = await changeBusinessId(token, {
++        entityType,
++        entityId: entity.id,
++        newBusinessId: next,
++        confirm: true,
++      });
++      onChanged(res);
++    } catch (err) {
++      // Duplicate / invalid format etc. -> go back to the field so it can be fixed.
++      setError(friendlyError(err));
++      setStep(1);
++    } finally {
++      setSending(false);
++    }
++  }
++
++  if (step === 1) {
++    return (
++      <Modal
++        title={`Change ${format.label} Business ID`}
++        icon={KeyRound}
++        onClose={onClose}
++        busy={sending}
++        footer={
++          <>
++            <Button variant="ghost" onClick={onClose}>Cancel</Button>
++            <Button disabled={!formatOk || unchanged} onClick={() => { setError(null); setStep(2); }}>Continue</Button>
++          </>
++        }
++      >
++        <p className="text-sm text-ink-600">
++          <span className="font-bold text-ink-900">{name}</span>
++          {entity.businessId && <> is currently <BusinessIdBadge id={entity.businessId} className="!text-xs" /></>}
++        </p>
++        {error && <Alert>{error}</Alert>}
++        <FormField
++          label="New Business ID"
++          hint={`Format like ${format.example}. IDs are never reused, so an ID that was ever issued to another record can't be chosen.`}
++        >
++          <TextInput
++            autoFocus
++            value={value}
++            onChange={(e) => setValue(e.target.value.toUpperCase())}
++            placeholder={format.example}
++            className="font-mono"
++          />
++        </FormField>
++        {value && !formatOk && (
++          <p className="text-xs font-medium text-red-600">Not a valid {format.label} Business ID (e.g. {format.example}).</p>
++        )}
++      </Modal>
++    );
++  }
++
++  return (
++    <Modal
++      title="Change Business ID?"
++      icon={KeyRound}
++      tone="warning"
++      onClose={onClose}
++      busy={sending}
++      footer={
++        <>
++          <Button variant="ghost" disabled={sending} onClick={() => setStep(1)}>Back</Button>
++          <Button isLoading={sending} disabled={typed.trim().toUpperCase() !== next} onClick={submit}>
++            Change Business ID
++          </Button>
++        </>
++      }
++    >
++      <div className="rounded-xl2 bg-accent-50 p-3 text-sm text-accent-600">
++        This identifier is used for administrative identification and may be referenced in reports, logs or external processes.
++      </div>
++      <div className="flex items-center justify-center gap-3 py-1 font-mono text-sm">
++        <BusinessIdBadge id={entity.businessId || "(none)"} className="!text-sm" />
++        <span className="text-ink-400">→</span>
++        <BusinessIdBadge id={next} className="!text-sm" />
++      </div>
++      <p className="text-xs text-ink-400">
++        Only the Business ID changes. The record itself and everything linked to it stay exactly as they are. The change is written to the audit log.
++      </p>
++      <FormField label={`Type ${next} to confirm`}>
++        <TextInput value={typed} onChange={(e) => setTyped(e.target.value)} className="font-mono" autoFocus />
++      </FormField>
++    </Modal>
++  );
++}
+diff -ruN -x node_modules -x dist -x assets -x package-lock.json orig/ScoramWeb/src/admin/pages/ExamManagement.jsx work/ScoramWeb/src/admin/pages/ExamManagement.jsx
+--- orig/ScoramWeb/src/admin/pages/ExamManagement.jsx	2026-09-11 01:10:50.000000000 +0000
++++ work/ScoramWeb/src/admin/pages/ExamManagement.jsx	2026-09-30 17:10:26.860737233 +0000
+@@ -1,10 +1,11 @@
+ import { useEffect, useMemo, useState } from "react";
+-import { Plus, Pencil, Ban, CheckCircle2, Trash2, X } from "lucide-react";
++import { Plus, Pencil, Ban, CheckCircle2, Trash2, X, Search } from "lucide-react";
+ import { useAdminAuth } from "../context/AdminAuthContext";
+ import { listAdminExams, createExam, updateExam, setExamBlocked, mergeExam } from "../api/exams";
+ import { listAdminOrganizations } from "../api/organizations";
+ import { PageHeader, Card, Button, FormField, TextInput, Select, Alert, friendlyError } from "../components/AdminUI";
+ import ExamDeleteModal from "../components/ExamDeleteModal";
++import { BusinessIdBadge, BusinessIdChangeDialog, ChangeBusinessIdButton, matchesSearch } from "../components/BusinessId";
+ import { API_BASE_URL } from "../../api/client";
+ 
+ function logoSrc(url) {
+@@ -31,6 +32,8 @@
+   const [showCreateForm, setShowCreateForm] = useState(false);
+   const [editingExam, setEditingExam] = useState(null);
+   const [deletingExam, setDeletingExam] = useState(null);
++  const [search, setSearch] = useState(""); // matches Business ID (EXMSSC001) or name
++  const [changingIdExam, setChangingIdExam] = useState(null);
+ 
+   useEffect(() => {
+     refresh();
+@@ -54,10 +57,11 @@
+   );
+ 
+   const visibleExams = useMemo(() => {
+-    if (!orgFilter) return exams;
+-    if (orgFilter === "__unassigned") return exams.filter((e) => !e.organizationId);
+-    return exams.filter((e) => e.organizationId === orgFilter);
+-  }, [exams, orgFilter]);
++    let list = exams;
++    if (orgFilter === "__unassigned") list = list.filter((e) => !e.organizationId);
++    else if (orgFilter) list = list.filter((e) => e.organizationId === orgFilter);
++    return list.filter((e) => matchesSearch(search, e.businessId, e.name, e.organizationName));
++  }, [exams, orgFilter, search]);
+ 
+   async function handleToggleBlock(exam) {
+     setExams((prev) => prev.map((e) => (e.id === exam.id ? { ...e, isBlocked: !e.isBlocked } : e)));
+@@ -143,6 +147,33 @@
+           </div>
+         )}
+ 
++        <div className="mb-4 flex flex-wrap items-end gap-3">
++          <div className="relative w-full max-w-xs">
++            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
++            <TextInput
++              value={search}
++              onChange={(e) => setSearch(e.target.value)}
++              placeholder="Search by name or ID (e.g. EXMSSC001)…"
++              aria-label="Search exams"
++              className="!pl-9"
++            />
++          </div>
++        </div>
++
++        {changingIdExam && (
++          <BusinessIdChangeDialog
++            token={token}
++            entityType="exam"
++            entity={changingIdExam}
++            name={changingIdExam.name}
++            onClose={() => setChangingIdExam(null)}
++            onChanged={(res) => {
++              setExams((prev) => prev.map((e) => (e.id === res.entityId ? { ...e, businessId: res.newBusinessId } : e)));
++              setChangingIdExam(null);
++            }}
++          />
++        )}
++
+         {organizations.length > 0 && (
+           <div className="mb-4 max-w-xs">
+             <FormField label="Filter by Organization">
+@@ -174,6 +205,7 @@
+                   )}
+                   <div className="min-w-0">
+                     <div className="flex items-center gap-1.5">
++                      <BusinessIdBadge id={exam.businessId} />
+                       <span className="truncate text-sm font-bold text-ink-900">{exam.name}</span>
+                       {exam.isBlocked && (
+                         <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600">Blocked</span>
+@@ -201,6 +233,7 @@
+                     {exam.isBlocked ? <CheckCircle2 className="h-4 w-4" strokeWidth={2.25} /> : <Ban className="h-4 w-4" strokeWidth={2.25} />}
+                     {exam.isBlocked ? "Unblock" : "Block"}
+                   </Button>
++                  <ChangeBusinessIdButton show={isSuperAdmin} onClick={() => setChangingIdExam(exam)} />
+                   {isSuperAdmin && (
+                     <Button variant="danger" onClick={() => setDeletingExam(exam)}>
+                       <Trash2 className="h-4 w-4" strokeWidth={2.25} />
+diff -ruN -x node_modules -x dist -x assets -x package-lock.json orig/ScoramWeb/src/admin/pages/ManageAdmins.jsx work/ScoramWeb/src/admin/pages/ManageAdmins.jsx
+--- orig/ScoramWeb/src/admin/pages/ManageAdmins.jsx	2026-09-30 08:17:48.000000000 +0000
++++ work/ScoramWeb/src/admin/pages/ManageAdmins.jsx	2026-09-30 17:10:51.206425298 +0000
+@@ -1,8 +1,9 @@
+ import { useEffect, useState } from "react";
+-import { Plus, ShieldCheck, Shield, Settings2 } from "lucide-react";
++import { Plus, ShieldCheck, Shield, Settings2, Search } from "lucide-react";
+ import { useAdminAuth } from "../context/AdminAuthContext";
+ import { listAdmins, createAdmin, setAdminStatus, setAdminPermissions } from "../api/adminAuth";
+ import { PageHeader, Card, Button, FormField, TextInput, Select, Alert } from "../components/AdminUI";
++import { BusinessIdBadge, BusinessIdChangeDialog, ChangeBusinessIdButton, matchesSearch } from "../components/BusinessId";
+ 
+ const PERMISSIONS = [
+   { key: "UploadPaper", label: "Upload Paper", hint: "Create exams and upload new PYQ papers/questions" },
+@@ -26,12 +27,14 @@
+ ];
+ 
+ export default function ManageAdmins() {
+-  const { token, admin: currentAdmin } = useAdminAuth();
++  const { token, admin: currentAdmin, isSuperAdmin } = useAdminAuth();
+   const [admins, setAdmins] = useState([]);
+   const [isLoading, setIsLoading] = useState(true);
+   const [loadError, setLoadError] = useState(null);
+   const [showCreateForm, setShowCreateForm] = useState(false);
+   const [editingPermissionsId, setEditingPermissionsId] = useState(null);
++  const [search, setSearch] = useState(""); // matches Business ID (ADM0001), name or email
++  const [changingIdAdmin, setChangingIdAdmin] = useState(null);
+ 
+   useEffect(() => {
+     refresh();
+@@ -80,15 +83,41 @@
+           </div>
+         )}
+ 
++        <div className="relative mb-4 w-full max-w-xs">
++          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
++          <TextInput
++            value={search}
++            onChange={(e) => setSearch(e.target.value)}
++            placeholder="Search by ID (ADM0001), name or email…"
++            aria-label="Search admins"
++            className="!pl-9"
++          />
++        </div>
++
++        {changingIdAdmin && (
++          <BusinessIdChangeDialog
++            token={token}
++            entityType="admin"
++            entity={changingIdAdmin}
++            name={changingIdAdmin.fullName}
++            onClose={() => setChangingIdAdmin(null)}
++            onChanged={(res) => {
++              setAdmins((prev) => prev.map((x) => (x.id === res.entityId ? { ...x, businessId: res.newBusinessId } : x)));
++              setChangingIdAdmin(null);
++            }}
++          />
++        )}
++
+         {isLoading && <p className="text-sm text-ink-400">Loading admins…</p>}
+         {loadError && <Alert>{loadError}</Alert>}
+ 
+         <div className="flex flex-col gap-3">
+-          {admins.map((a) => (
++          {admins.filter((a) => matchesSearch(search, a.businessId, a.fullName, a.email)).map((a) => (
+             <Card key={a.id}>
+               <div className="flex flex-wrap items-center justify-between gap-4">
+                 <div>
+                   <div className="flex items-center gap-2">
++                    <BusinessIdBadge id={a.businessId} />
+                     <h3 className="text-sm font-bold text-ink-900">{a.fullName}</h3>
+                     <span className="flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-600">
+                       {a.role === "SuperAdmin" ? <ShieldCheck className="h-3 w-3" strokeWidth={2.5} /> : <Shield className="h-3 w-3" strokeWidth={2.5} />}
+@@ -106,7 +135,8 @@
+                   )}
+                 </div>
+ 
+-                <div className="flex gap-2">
++                <div className="flex items-center gap-2">
++                  <ChangeBusinessIdButton show={isSuperAdmin} onClick={() => setChangingIdAdmin(a)} />
+                   {a.role === "Admin" && (
+                     <Button variant="secondary" onClick={() => setEditingPermissionsId(editingPermissionsId === a.id ? null : a.id)}>
+                       <Settings2 className="h-4 w-4" strokeWidth={2.25} />
+diff -ruN -x node_modules -x dist -x assets -x package-lock.json orig/ScoramWeb/src/admin/pages/MockTestManagement.jsx work/ScoramWeb/src/admin/pages/MockTestManagement.jsx
+--- orig/ScoramWeb/src/admin/pages/MockTestManagement.jsx	2026-08-28 15:32:18.000000000 +0000
++++ work/ScoramWeb/src/admin/pages/MockTestManagement.jsx	2026-09-30 17:10:51.204693694 +0000
+@@ -1,26 +1,30 @@
+ import { useEffect, useState } from "react";
+-import { Plus, X, Trash2, Copy } from "lucide-react";
++import { Plus, X, Trash2, Copy, Search } from "lucide-react";
+ import { useAdminAuth } from "../context/AdminAuthContext";
+ import {
+   listMockTestsAdmin, getMockTestAdmin, createMockTest, updateMockTest, updateMockTestStatus,
+   duplicateMockTest, addMockTestQuestions, removeMockTestQuestion,
+ } from "../api/mockTests";
+ import TestQuestionPicker from "../components/TestQuestionPicker";
++import { BusinessIdBadge, BusinessIdChangeDialog, ChangeBusinessIdButton, useDebouncedValue } from "../components/BusinessId";
+ import { PageHeader, Card, Button, FormField, TextInput, TextArea, Select, Alert, friendlyError } from "../components/AdminUI";
+ 
+ export default function MockTestManagement() {
+-  const { token } = useAdminAuth();
++  const { token, isSuperAdmin } = useAdminAuth();
+   const [mode, setMode] = useState("list");
+   const [editingId, setEditingId] = useState(null);
+   const [items, setItems] = useState([]);
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState(null);
++  const [search, setSearch] = useState(""); // server-side: matches Business ID (MCK0001), title or exam name
++  const debouncedSearch = useDebouncedValue(search);
++  const [changingIdTest, setChangingIdTest] = useState(null);
+ 
+-  useEffect(refresh, [token]);
++  useEffect(refresh, [token, debouncedSearch]);
+ 
+   function refresh() {
+     setLoading(true);
+-    listMockTestsAdmin(token, { page: 1, pageSize: 50 })
++    listMockTestsAdmin(token, { page: 1, pageSize: 50, search: debouncedSearch.trim() })
+       .then((res) => setItems(res.items))
+       .catch((err) => setError(friendlyError(err)))
+       .finally(() => setLoading(false));
+@@ -71,6 +75,31 @@
+       <div className="p-6">
+         {error && <div className="mb-4"><Alert>{error}</Alert></div>}
+ 
++        <div className="relative mb-4 w-full max-w-xs">
++          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
++          <TextInput
++            value={search}
++            onChange={(e) => setSearch(e.target.value)}
++            placeholder="Search by ID (MCK0001), title or exam…"
++            aria-label="Search mock tests"
++            className="!pl-9"
++          />
++        </div>
++
++        {changingIdTest && (
++          <BusinessIdChangeDialog
++            token={token}
++            entityType="mocktest"
++            entity={changingIdTest}
++            name={changingIdTest.title}
++            onClose={() => setChangingIdTest(null)}
++            onChanged={(res) => {
++              setItems((prev) => prev.map((x) => (x.id === res.entityId ? { ...x, businessId: res.newBusinessId } : x)));
++              setChangingIdTest(null);
++            }}
++          />
++        )}
++
+         <Card className="!p-0">
+           <div className="overflow-x-auto">
+             <table className="w-full text-left text-xs">
+@@ -91,7 +120,12 @@
+                 {!loading && items.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-ink-400">No mock tests yet.</td></tr>}
+                 {items.map((t) => (
+                   <tr key={t.id} className="border-t border-primary-50">
+-                    <td className="px-3 py-2.5 font-medium text-ink-900">{t.title}</td>
++                    <td className="px-3 py-2.5 font-medium text-ink-900">
++                      <div className="flex flex-col items-start gap-0.5">
++                        <BusinessIdBadge id={t.businessId} />
++                        <span>{t.title}</span>
++                      </div>
++                    </td>
+                     <td className="px-3 py-2.5 text-ink-600">{t.examName}</td>
+                     <td className="px-3 py-2.5 text-ink-600">{t.language || <span className="text-ink-300">—</span>}</td>
+                     <td className="px-3 py-2.5 text-ink-600">{t.questionCount}</td>
+@@ -107,6 +141,7 @@
+                     <td className="px-3 py-2.5">
+                       <div className="flex items-center justify-end gap-2">
+                         <button type="button" onClick={() => { setEditingId(t.id); setMode("form"); }} className="font-semibold text-secondary-500 hover:underline">Edit</button>
++                        <ChangeBusinessIdButton show={isSuperAdmin} onClick={() => setChangingIdTest(t)} className="!p-1" />
+                         <button type="button" onClick={() => handleDuplicate(t.id)} className="flex items-center gap-1 font-semibold text-ink-400 hover:text-ink-600">
+                           <Copy className="h-3.5 w-3.5" strokeWidth={2.25} />
+                         </button>
+diff -ruN -x node_modules -x dist -x assets -x package-lock.json orig/ScoramWeb/src/admin/pages/PracticeTestManagement.jsx work/ScoramWeb/src/admin/pages/PracticeTestManagement.jsx
+--- orig/ScoramWeb/src/admin/pages/PracticeTestManagement.jsx	2026-08-16 00:33:36.000000000 +0000
++++ work/ScoramWeb/src/admin/pages/PracticeTestManagement.jsx	2026-09-30 17:10:51.205616005 +0000
+@@ -1,5 +1,5 @@
+ import { useEffect, useState } from "react";
+-import { Plus, X, Trash2 } from "lucide-react";
++import { Plus, X, Trash2, Search } from "lucide-react";
+ import { useAdminAuth } from "../context/AdminAuthContext";
+ import {
+   listPracticeTestTemplatesAdmin, getPracticeTestTemplateAdmin, createPracticeTestTemplate,
+@@ -8,21 +8,25 @@
+ import { listSubjects, listTopics } from "../api/questionBank";
+ import { listExams } from "../api/exams";
+ import TestQuestionPicker from "../components/TestQuestionPicker";
++import { BusinessIdBadge, BusinessIdChangeDialog, ChangeBusinessIdButton, useDebouncedValue } from "../components/BusinessId";
+ import { PageHeader, Card, Button, FormField, TextInput, Select, Alert, friendlyError } from "../components/AdminUI";
+ 
+ export default function PracticeTestManagement() {
+-  const { token } = useAdminAuth();
++  const { token, isSuperAdmin } = useAdminAuth();
+   const [mode, setMode] = useState("list");
+   const [editingId, setEditingId] = useState(null);
+   const [items, setItems] = useState([]);
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState(null);
++  const [search, setSearch] = useState(""); // server-side: matches Business ID (TST0001) or title
++  const debouncedSearch = useDebouncedValue(search);
++  const [changingIdTest, setChangingIdTest] = useState(null);
+ 
+-  useEffect(refresh, [token]);
++  useEffect(refresh, [token, debouncedSearch]);
+ 
+   function refresh() {
+     setLoading(true);
+-    listPracticeTestTemplatesAdmin(token, { page: 1, pageSize: 50 })
++    listPracticeTestTemplatesAdmin(token, { page: 1, pageSize: 50, search: debouncedSearch.trim() })
+       .then((res) => setItems(res.items))
+       .catch((err) => setError(friendlyError(err)))
+       .finally(() => setLoading(false));
+@@ -64,6 +68,31 @@
+       <div className="p-6">
+         {error && <div className="mb-4"><Alert>{error}</Alert></div>}
+ 
++        <div className="relative mb-4 w-full max-w-xs">
++          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
++          <TextInput
++            value={search}
++            onChange={(e) => setSearch(e.target.value)}
++            placeholder="Search by ID (TST0001) or title…"
++            aria-label="Search tests"
++            className="!pl-9"
++          />
++        </div>
++
++        {changingIdTest && (
++          <BusinessIdChangeDialog
++            token={token}
++            entityType="test"
++            entity={changingIdTest}
++            name={changingIdTest.title}
++            onClose={() => setChangingIdTest(null)}
++            onChanged={(res) => {
++              setItems((prev) => prev.map((x) => (x.id === res.entityId ? { ...x, businessId: res.newBusinessId } : x)));
++              setChangingIdTest(null);
++            }}
++          />
++        )}
++
+         <Card className="!p-0">
+           <div className="overflow-x-auto">
+             <table className="w-full text-left text-xs">
+@@ -82,7 +111,12 @@
+                 {!loading && items.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-ink-400">No templates yet.</td></tr>}
+                 {items.map((t) => (
+                   <tr key={t.id} className="border-t border-primary-50">
+-                    <td className="px-3 py-2.5 font-medium text-ink-900">{t.title}</td>
++                    <td className="px-3 py-2.5 font-medium text-ink-900">
++                      <div className="flex flex-col items-start gap-0.5">
++                        <BusinessIdBadge id={t.businessId} />
++                        <span>{t.title}</span>
++                      </div>
++                    </td>
+                     <td className="px-3 py-2.5 text-ink-600">{t.isCurated ? "Curated" : "Filter-based"}</td>
+                     <td className="px-3 py-2.5 text-ink-600">{t.questionCount}</td>
+                     <td className="px-3 py-2.5 text-ink-600">{t.attemptCount}</td>
+@@ -94,7 +128,10 @@
+                       </Select>
+                     </td>
+                     <td className="px-3 py-2.5">
+-                      <button type="button" onClick={() => { setEditingId(t.id); setMode("form"); }} className="font-semibold text-secondary-500 hover:underline">Edit</button>
++                      <div className="flex items-center justify-end gap-2">
++                        <button type="button" onClick={() => { setEditingId(t.id); setMode("form"); }} className="font-semibold text-secondary-500 hover:underline">Edit</button>
++                        <ChangeBusinessIdButton show={isSuperAdmin} onClick={() => setChangingIdTest(t)} className="!p-1" />
++                      </div>
+                     </td>
+                   </tr>
+                 ))}
+diff -ruN -x node_modules -x dist -x assets -x package-lock.json orig/ScoramWeb/src/admin/pages/SubjectManagement.jsx work/ScoramWeb/src/admin/pages/SubjectManagement.jsx
+--- orig/ScoramWeb/src/admin/pages/SubjectManagement.jsx	2026-09-30 08:20:20.000000000 +0000
++++ work/ScoramWeb/src/admin/pages/SubjectManagement.jsx	2026-09-30 17:10:26.859751768 +0000
+@@ -1,10 +1,11 @@
+ import { useCallback, useEffect, useRef, useState } from "react";
+-import { ArrowDown, ArrowRightLeft, ArrowUp, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, GitMerge, Pencil, Plus, Power, Search, Trash2 } from "lucide-react";
++import { ArrowDown, ArrowRightLeft, ArrowUp, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, GitMerge, KeyRound, Pencil, Plus, Power, Search, Trash2 } from "lucide-react";
+ import { useAdminAuth } from "../context/AdminAuthContext";
+ import { listManagedSubjects, setManagedSubjectActive } from "../api/subjects";
+ import { PageHeader, Card, Button, TextInput, Alert, friendlyError } from "../components/AdminUI";
+ import { SubjectFormDialog, DeactivateDialog, MoveDialog, DeleteDialog, UsageDialog } from "../components/SubjectManagementDialogs";
+ import { formatDate } from "../components/subjectFormat";
++import { BusinessIdBadge, BusinessIdChangeDialog } from "../components/BusinessId";
+ 
+ const PAGE_SIZE = 20;
+ 
+@@ -35,7 +36,7 @@
+ // (rename, merge, reassign, delete) happens behind impact-preview + confirmation dialogs and is
+ // enforced again on the server.
+ export default function SubjectManagement() {
+-  const { token } = useAdminAuth();
++  const { token, isSuperAdmin } = useAdminAuth();
+ 
+   const [data, setData] = useState(null); // { items, total, activeCount, inactiveCount }
+   const [loading, setLoading] = useState(true);
+@@ -145,7 +146,7 @@
+           <div className="flex flex-wrap items-center gap-3">
+             <div className="relative min-w-[220px] flex-1">
+               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+-              <TextInput value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search subjects…" className="!pl-9" aria-label="Search subjects" />
++              <TextInput value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search by name or ID (e.g. SUB003)…" className="!pl-9" aria-label="Search subjects" />
+             </div>
+             <div className="flex gap-1 rounded-xl2 bg-surface p-1" role="tablist" aria-label="Filter by status">
+               {STATUS_FILTERS.map((f) => (
+@@ -181,9 +182,12 @@
+                 {items.map((s) => (
+                   <tr key={s.id} className="hover:bg-surface/60">
+                     <td className="px-4 py-3">
+-                      <button type="button" onClick={() => setDialog({ type: "usage", subject: s })} className="text-left font-bold text-ink-900 hover:text-secondary-500 hover:underline">
+-                        {s.name}
+-                      </button>
++                      <div className="flex flex-col items-start gap-0.5">
++                        <BusinessIdBadge id={s.businessId} />
++                        <button type="button" onClick={() => setDialog({ type: "usage", subject: s })} className="text-left font-bold text-ink-900 hover:text-secondary-500 hover:underline">
++                          {s.name}
++                        </button>
++                      </div>
+                     </td>
+                     <td className="px-4 py-3">
+                       <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${s.isActive ? "bg-mint-50 text-mint-500" : "bg-surface text-ink-400"}`}>
+@@ -207,6 +211,7 @@
+                           : <IconAction label="Activate subject" onClick={() => activate(s)} icon={Power} busy={rowBusyId === s.id} tone="mint" />}
+                         <IconAction label="Merge into another subject" onClick={() => setDialog({ type: "merge", subject: s })} icon={GitMerge} />
+                         <IconAction label="Reassign content" onClick={() => setDialog({ type: "reassign", subject: s })} icon={ArrowRightLeft} />
++                        {isSuperAdmin && <IconAction label="Change Business ID (Super Admin)" onClick={() => setDialog({ type: "businessId", subject: s })} icon={KeyRound} />}
+                         <IconAction label="Delete subject" onClick={() => setDialog({ type: "delete", subject: s })} icon={Trash2} tone="danger" />
+                       </div>
+                     </td>
+@@ -261,6 +266,16 @@
+       {dialog?.type === "merge" && <MoveDialog mode="merge" initialSourceId={dialog.subject?.id} onClose={() => setDialog(null)} onDone={handleDone} />}
+       {dialog?.type === "reassign" && <MoveDialog mode="reassign" initialSourceId={dialog.subject?.id} onClose={() => setDialog(null)} onDone={handleDone} />}
+       {dialog?.type === "usage" && <UsageDialog subject={dialog.subject} onClose={() => setDialog(null)} />}
++      {dialog?.type === "businessId" && (
++        <BusinessIdChangeDialog
++          token={token}
++          entityType="subject"
++          entity={dialog.subject}
++          name={dialog.subject.name}
++          onClose={() => setDialog(null)}
++          onChanged={(res) => handleDone(res.message)}
++        />
++      )}
+       {dialog?.type === "delete" && (
+         <DeleteDialog
+           subject={dialog.subject}

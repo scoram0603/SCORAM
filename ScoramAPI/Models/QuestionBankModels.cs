@@ -16,9 +16,14 @@ namespace ScoramAPI.Models
     // work identically for both the legacy Paper-based Question and this new QuestionBankQuestion.
     // ==================================================================================
 
-    public class QuestionBankSubject
+    public class QuestionBankSubject : IHasBusinessId
     {
         public Guid Id { get; set; } = Guid.NewGuid();
+
+        // Human-readable Business ID, e.g. "SUB001". Never encodes the subject name, so it survives
+        // renames and is the same subject after a merge/restore. See Models/BusinessIdModels.cs.
+        [MaxLength(30)]
+        public string? BusinessId { get; set; }
 
         [Required, MaxLength(100)]
         public string Name { get; set; } = string.Empty; // "Ancient History", "Quantitative Aptitude"

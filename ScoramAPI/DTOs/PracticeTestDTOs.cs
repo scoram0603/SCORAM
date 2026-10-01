@@ -59,6 +59,8 @@ namespace ScoramAPI.DTOs
 
     public class PracticeTestTemplateAdminDto : PracticeTestTemplateDto
     {
+        // Human-readable Business ID (e.g. "TST0001"); admin-only.
+        public string? BusinessId { get; set; }
         public string Status { get; set; } = string.Empty;
         public string CreatedByAdminName { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }

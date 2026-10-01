@@ -1,0 +1,1982 @@
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/BUSINESS_IDS_REPORT.md work/ScoramAPI/BUSINESS_IDS_REPORT.md
+--- orig/ScoramAPI/BUSINESS_IDS_REPORT.md	1970-01-01 00:00:00.000000000 +0000
++++ work/ScoramAPI/BUSINESS_IDS_REPORT.md	2026-10-01 08:48:48.738117187 +0000
+@@ -0,0 +1,139 @@
++# SCORAM — Business IDs (EXMSSC001, SUB001, TST0001, MCK0001, ADM0001)
++
++Human-readable IDs **added alongside** the existing GUID keys of Exams, Subjects, Tests, Mock Tests and Admins.
++GUIDs remain the primary key and every foreign key. Nothing is dropped, truncated, recreated or re-keyed.
++
++> **Verification status — read first.** The sandbox this was built in has no NuGet access, so the ASP.NET /
++> EF Core project **could not be compiled or run against SQL Server here.** What *was* verified:
++> the pure ID rules (formats, validation, organization-code mapping — 60+ assertions pass), a syntax-level
++> compile of every new backend file (no syntax errors; only the expected "EF type not found" noise), and
++> a full production build of the React app. Everything database-facing (migration, backfill, concurrency,
++> no-reuse) is written but **unexecuted** — run the checklist in §7 on a staging copy before production.
++
++---
++
++## 1. Inspection findings (what the code actually looks like)
++
++| Topic | Finding |
++|---|---|
++| Stack | ASP.NET Core 8 + EF Core 8 on **SQL Server**; React/Vite admin app. |
++| Primary keys | Every entity uses `Guid Id`. |
++| Exams | `Exam` (`Exams`): `Name`, optional `OrganizationId → Organization`, `IsBlocked`, `CreatedAt`. **Hard-deleted** (Delete + Merge endpoints), so "never reuse" needs more than `MAX()+1`. Created from several places (admin form, PYQ/Question-Bank wizards via get-or-create). |
++| Subjects | `QuestionBankSubject` (`QuestionBankSubjects`): `Name`, `IsActive`, `CreatedAt`, `UpdatedAt`. Subject Management service does rename / deactivate / merge / reassign / delete inside transactions with audit logging. |
++| Tests | "Tests" in the admin panel = `PracticeTestTemplate` (`PracticeTestTemplates`). |
++| Mock Tests | `MockTest` (`MockTests`). |
++| Admins | `Admin` (`Admins`), `Role` = `AdminRole { SuperAdmin, Admin }`, JWT role claim, `[Authorize(Roles = "SuperAdmin")]` already used. No admin delete endpoint. |
++| Audit | `AuditLog` (`AdminId`, `Action`, `TargetType`, `TargetId`, `Detail ≤1000`) — reused. |
++| Migrations | EF migrations with a hand-maintained model snapshot; startup does fail-soft bootstrap work in `Program.cs`. |
++| Quizzes | Exist but are **not** in your list — untouched (see §6). |
++
++## 2. Design
++
++* `BusinessId` is a nullable `nvarchar(30)` on the five tables, with a **filtered unique index**
++  (`WHERE BusinessId IS NOT NULL`) → the **database** rejects duplicates, and the index can be created
++  before any data has IDs.
++* **Assignment is central:** `ScoramDbContext.SaveChangesAsync` assigns an ID to every newly inserted
++  Exam/Subject/Test/Mock Test/Admin, wherever it was created (controllers, bulk imports, bootstrap).
++  No creation site had to change, and a future one can't forget.
++* **Concurrency:** `BusinessIdCounters` row per prefix (`EXM:SSC`, `EXM:RRB`, `SUB`, `TST`, `MCK`, `ADM`),
++  incremented with one atomic `MERGE … WITH (HOLDLOCK)` **inside the same transaction as the insert**.
++  The row lock is held until commit, so simultaneous creates serialize (A→004, B→005). No `MAX()+1`.
++* **Never reused:** counters only go up, **and** every ID ever issued is written to `BusinessIdRegistry`
++  (primary key = the ID, no FK to the entity). Deleted / merged-away / renumbered IDs stay reserved.
++  If the transaction rolls back, the counter bump and registry row roll back with it.
++* **Not editable by normal admins:** no create/update DTO carries the field, and `ScoramDbContext`
++  throws if anything modifies an existing `BusinessId` outside the SuperAdmin service.
++* **SuperAdmin change:** `POST /api/admin/business-ids/change` — role-gated, re-checks the live account,
++  validates entity-type format + uniqueness + history, requires `confirm: true`, writes the audit row in
++  the same transaction, leaves the GUID and all FKs untouched. A previously-issued ID can't go to a
++  different record (only back to its own).
++* **Exam organization code** (`ExamOrganizationCodes`): (1) the exam's assigned Organization → map;
++  (2) else the exam name's **leading** word(s) → map ("UPSSSC PET"→`UP`, "Bihar Police …"→`BP`);
++  (3) unmapped Organization → its own letters (≤10); (4) else `GEN`. Never a blind substring
++  ("SSCGD" → `GEN`, not `SSC`). Letters-only so the number can always be parsed back out.
++
++## 3. Existing-data migration (deterministic)
++
++The migration is schema-only. Existing rows are numbered by `BusinessIdService.BackfillAsync`, run
++automatically at startup (after the SuperAdmin bootstrap) **using the same code path as new records**:
++
++* oldest first (`CreatedAt`, then GUID as tie-break) → "first exam ever created" = `EXMSSC001`; no randomness;
++* one transaction under `sp_getapplock` (two instances starting together can't double-number);
++* idempotent; a failed attempt rolls back fully and retries next start;
++* until it completes, newly created records keep a null ID and are numbered by the backfill in creation
++  order, so existing records still get the low numbers;
++* `BusinessIds:AutoBackfillOnStartup=false` disables auto-run; then use
++  `POST /api/admin/business-ids/backfill?dryRun=true` (SuperAdmin) to see the exact plan, `dryRun=false` to commit.
++
++## 4. Files
++
++**New (API):** `Models/BusinessIdModels.cs`, `Services/BusinessIdFormats.cs`, `Services/BusinessIdGenerator.cs`,
++`Services/BusinessIdService.cs`, `Controllers/BusinessIdsController.cs`, `DTOs/BusinessIdDTOs.cs`,
++`Migrations/20260930120000_AddBusinessIds.cs`, `Scripts/BusinessIdsVerify.sql`, this report.
++**New (tests):** `ScoramAPI.Tests/Services/BusinessIdFormatsTests.cs` — one file to add to your EXISTING `ScoramAPI.Tests` project (no csproj change).
++**New (web):** `src/admin/api/businessIds.js`, `src/admin/components/BusinessId.jsx`.
++
++**Modified (API):** the five entity models (+`BusinessId`), `ScoramDbContext` (DbSets, 5 unique indexes,
++assignment + edit guard), `ScoramDbContextModelSnapshot` (hand-updated), `Program.cs` (DI + startup
++backfill), admin DTOs (`businessId` next to `id`), `ExamsController`, `AdminAuthController`,
++`MockTestsController`, `MockTestsAdminController` (+`search`), `PracticeTestsAdminController` (+`search`),
++`QuestionBankAdminController`, `SubjectManagementService` (search by ID; audit text shows IDs).
++**Modified (web):** `ExamManagement`, `SubjectManagement`, `MockTestManagement`, `PracticeTestManagement`,
++`ManageAdmins` — ID badge beside the name, ID search, SuperAdmin-only "change ID" button + two-step dialog
++(entry → "Change Business ID?" warning with typed confirmation).
++
++**DB changes:** columns `BusinessId nvarchar(30) NULL` on `Exams`, `QuestionBankSubjects`,
++`PracticeTestTemplates`, `MockTests`, `Admins`; unique filtered indexes `UX_<Table>_BusinessId`;
++tables `BusinessIdCounters`, `BusinessIdRegistry`.
++
++**API:** `POST /api/admin/business-ids/change`, `POST /api/admin/business-ids/backfill` (both SuperAdmin);
++`search` param on admin mock-test and practice-test lists; `businessId` on admin exam / subject / test /
++mock-test / admin responses.
++
++## 5. Deploy steps
++
++1. Back up the database.
++2. Apply the migration (`dotnet ef database update`) **before** the new build serves traffic — the new
++   code reads the new columns/tables.
++3. Start the app once. Watch the log for `Business ID backfill complete: …`.
++4. Run `Scripts/BusinessIdsVerify.sql`; sets 1–5 must be empty/expected. **Review result set 6 (exam IDs and
++   their organization codes) before anyone uses these IDs externally** — after that only a SuperAdmin can
++   change them. The map to review is `ExamOrganizationCodes` in `Services/BusinessIdFormats.cs`.
++5. Apply to staging first.
++
++## 6. Assumptions / decisions to confirm
++
++* **Org codes:** the mapping list (SSC, RRB, UP, UPPR, BP, BPSC, BSSC, IBPS, SBI, …) is my best reading of
++  your examples plus common bodies — I did not have your live exam list. Unlisted bodies get their own
++  letters or `GEN`. Please review step 4 above.
++* **"Tests" = `PracticeTestTemplate`.** Quizzes, Papers/PYQ papers were not in scope and have no ID.
++* **Column stays nullable** (needed for a safe, additive migration). Once the verify script is clean you may
++  add a follow-up migration making it `NOT NULL`; I did not, so a failed backfill can't block inserts.
++* IDs are 3-digit (exam, subject) / 4-digit (test, mock, admin) minimum and simply widen past that (`SUB1000`).
++* A SuperAdmin cannot move a record to an ID that was *ever* issued to a different record (even a deleted
++  one) — that is the "never reuse" rule applied to manual changes.
++* Hard deletes of exams/subjects need no code change: their IDs stay in the registry.
++* Merges: exam/subject merge code is unchanged; the target keeps its ID, the source's ID is retired for good.
++* Multi-entity saves take counter locks in the order the entities appear; deadlocks are theoretically possible
++  under heavy parallel mixed creation but not expected at admin-panel volumes.
++
++## 6b. Not touched
++Login/auth, question/bulk-upload/PYP/PYQ/quiz/student code and all foreign keys. The only edits outside the
++new feature are additive (`BusinessId` on DTOs/selects, `search` params, audit text).
++
++## 7. Test status vs. your 20-point list
++
++| # | Item | Status |
++|---|---|---|
++| 1–5 | Existing exams/subjects/tests/mocks/admins get IDs | **Not run** (needs SQL Server) → startup backfill + `BusinessIdsVerify.sql` #2 |
++| 6–7 | GUIDs & FKs unchanged | By construction (migration only adds columns); confirm with row counts before/after |
++| 8 | New records get correct IDs | Format logic **tested**; DB assignment **not run** |
++| 9 | Duplicates rejected | Unique indexes + registry PK + service checks; **not run** |
++| 10 | Concurrent creation | Design above; **not run** — suggested: 20 parallel `POST /api/admin/exams` then verify script #3 |
++| 11 | Deleted IDs not reused | Registry design; **not run** — create exam, delete it, create another, expect next number |
++| 12–14 | Admin can't change / SuperAdmin can / no duplicates | Role gate + context guard + service; **not run** |
++| 15–16 | Search by ID; name search intact | Code in place (server-side for subjects/tests/mocks, client-side for exams/admins); **not run** |
++| 17–18 | Subject merge keeps target ID | Merge code untouched; **not run** |
++| 19–20 | Relationships / existing features | **Regression pass required** (login, exam/subject/question CRUD, bulk upload, PYP/PYQ, mocks, tests, quizzes, reports) |
++
++Run the unit tests with `dotnet test` in your `ScoramAPI.Tests` project.
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Controllers/AdminAuthController.cs work/ScoramAPI/Controllers/AdminAuthController.cs
+--- orig/ScoramAPI/Controllers/AdminAuthController.cs	2026-09-27 13:33:00.000000000 +0000
++++ work/ScoramAPI/Controllers/AdminAuthController.cs	2026-10-01 00:21:10.145969620 +0000
+@@ -359,6 +359,7 @@
+                 .Select(a => new AdminResponseDto
+                 {
+                     Id = a.Id,
++                    BusinessId = a.BusinessId,
+                     FullName = a.FullName,
+                     Email = a.Email,
+                     Role = a.Role.ToString(),
+@@ -402,6 +403,7 @@
+             return Ok(new AdminResponseDto
+             {
+                 Id = admin.Id,
++                BusinessId = admin.BusinessId,
+                 FullName = admin.FullName,
+                 Email = admin.Email,
+                 Role = admin.Role.ToString(),
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Controllers/BusinessIdsController.cs work/ScoramAPI/Controllers/BusinessIdsController.cs
+--- orig/ScoramAPI/Controllers/BusinessIdsController.cs	1970-01-01 00:00:00.000000000 +0000
++++ work/ScoramAPI/Controllers/BusinessIdsController.cs	2026-09-30 07:56:51.688351074 +0000
+@@ -0,0 +1,56 @@
++using Microsoft.AspNetCore.Authorization;
++using Microsoft.AspNetCore.Mvc;
++using ScoramAPI.DTOs;
++using ScoramAPI.Extensions;
++using ScoramAPI.Services;
++
++namespace ScoramAPI.Controllers
++{
++    // Business ID administration. SuperAdmin ONLY -- both endpoints are gated by
++    // [Authorize(Roles = "SuperAdmin")], and BusinessIdService.ChangeAsync re-checks the live account.
++    //
++    // There is intentionally no endpoint for normal admins to change a Business ID: the create/update
++    // DTOs for exams, subjects, tests, mock tests and admins do not carry the field at all, and
++    // ScoramDbContext refuses any other write to an existing BusinessId.
++    [ApiController]
++    [Route("api/admin/business-ids")]
++    [Authorize(Roles = "SuperAdmin")]
++    public class BusinessIdsController : ControllerBase
++    {
++        private readonly IBusinessIdService _businessIds;
++
++        public BusinessIdsController(IBusinessIdService businessIds)
++        {
++            _businessIds = businessIds;
++        }
++
++        // POST /api/admin/business-ids/change
++        // { "entityType": "exam", "entityId": "<guid>", "newBusinessId": "EXMSSC010", "confirm": true }
++        // Changes ONLY the Business ID. The GUID and every foreign key stay exactly as they were.
++        [HttpPost("change")]
++        public Task<IActionResult> Change(BusinessIdChangeRequestDto dto, CancellationToken ct) =>
++            Run(() => _businessIds.ChangeAsync(User.GetAdminId(), dto, ct));
++
++        // POST /api/admin/business-ids/backfill?dryRun=true
++        // Numbers every existing record that has no Business ID yet. dryRun=true (the default here, so a
++        // stray call can't assign permanent IDs) returns the plan without saving anything; pass
++        // dryRun=false to commit it. Normally this has already happened automatically at startup --
++        // this endpoint exists for deployments that set BusinessIds:AutoBackfillOnStartup=false to
++        // review the plan first.
++        [HttpPost("backfill")]
++        public Task<IActionResult> Backfill([FromQuery] bool dryRun = true, CancellationToken ct = default) =>
++            Run(() => _businessIds.BackfillAsync(dryRun, ct));
++
++        private async Task<IActionResult> Run<T>(Func<Task<T>> action)
++        {
++            try
++            {
++                return Ok(await action());
++            }
++            catch (BusinessIdException ex)
++            {
++                return StatusCode(ex.Status, new { message = ex.Message, code = ex.Code });
++            }
++        }
++    }
++}
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Controllers/ExamsController.cs work/ScoramAPI/Controllers/ExamsController.cs
+--- orig/ScoramAPI/Controllers/ExamsController.cs	2026-09-11 01:09:26.000000000 +0000
++++ work/ScoramAPI/Controllers/ExamsController.cs	2026-09-30 07:58:04.753510107 +0000
+@@ -88,6 +88,7 @@
+                 .Select(e => new ExamResponseDto
+                 {
+                     Id = e.Id,
++                    BusinessId = e.BusinessId,
+                     Name = e.Name,
+                     LogoUrl = e.LogoUrl,
+                     IsBlocked = e.IsBlocked,
+@@ -165,6 +166,7 @@
+             return Ok(new ExamResponseDto
+             {
+                 Id = exam.Id,
++                BusinessId = exam.BusinessId,
+                 Name = exam.Name,
+                 LogoUrl = exam.LogoUrl,
+                 IsBlocked = false,
+@@ -234,6 +236,7 @@
+             return Ok(new ExamResponseDto
+             {
+                 Id = exam.Id,
++                BusinessId = exam.BusinessId,
+                 Name = exam.Name,
+                 LogoUrl = exam.LogoUrl,
+                 IsBlocked = exam.IsBlocked,
+@@ -344,6 +347,7 @@
+             return Ok(new ExamResponseDto
+             {
+                 Id = target.Id,
++                BusinessId = target.BusinessId,
+                 Name = target.Name,
+                 LogoUrl = target.LogoUrl,
+                 IsBlocked = target.IsBlocked,
+@@ -377,6 +381,7 @@
+             return Ok(new ExamResponseDto
+             {
+                 Id = exam.Id,
++                BusinessId = exam.BusinessId,
+                 Name = exam.Name,
+                 LogoUrl = exam.LogoUrl,
+                 IsBlocked = exam.IsBlocked,
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Controllers/MockTestsAdminController.cs work/ScoramAPI/Controllers/MockTestsAdminController.cs
+--- orig/ScoramAPI/Controllers/MockTestsAdminController.cs	2026-09-01 04:27:44.000000000 +0000
++++ work/ScoramAPI/Controllers/MockTestsAdminController.cs	2026-09-30 07:58:15.753229134 +0000
+@@ -29,10 +29,11 @@
+             _audit = audit;
+         }
+ 
+-        // GET /api/admin/mocktests?status=&page=&pageSize=
++        // GET /api/admin/mocktests?status=&search=&page=&pageSize=
++        // search matches the Business ID (MCK0001), Title or Exam name, case-insensitive.
+         [HttpGet]
+         public async Task<ActionResult<PagedResult<MockTestSummaryDto>>> List(
+-            [FromQuery] string? status, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
++            [FromQuery] string? status, [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+         {
+             if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageTests)) return Forbid();
+ 
+@@ -43,6 +44,11 @@
+             if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<TestPublishStatus>(status, true, out var parsed))
+                 query = query.Where(t => t.Status == parsed);
+ 
++            var term = search?.Trim();
++            if (!string.IsNullOrEmpty(term))
++                query = query.Where(t => t.Title.Contains(term) || t.ExamName.Contains(term)
++                    || (t.BusinessId != null && t.BusinessId.Contains(term)));
++
+             query = query.OrderByDescending(t => t.CreatedAt);
+             var totalCount = await query.CountAsync();
+             var tests = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+@@ -63,6 +69,7 @@
+             var items = tests.Select(t => new MockTestSummaryDto
+             {
+                 Id = t.Id,
++                BusinessId = t.BusinessId,
+                 Title = t.Title,
+                 ExamName = t.ExamName,
+                 TestType = t.TestType.ToString(),
+@@ -96,6 +103,7 @@
+             return Ok(new
+             {
+                 test.Id,
++                test.BusinessId,
+                 test.Title,
+                 test.ExamName,
+                 TestType = test.TestType.ToString(),
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Controllers/MockTestsController.cs work/ScoramAPI/Controllers/MockTestsController.cs
+--- orig/ScoramAPI/Controllers/MockTestsController.cs	2026-09-01 04:27:38.000000000 +0000
++++ work/ScoramAPI/Controllers/MockTestsController.cs	2026-09-30 07:58:15.752379985 +0000
+@@ -544,6 +544,7 @@
+             return CreatedAtAction(nameof(GetById), new { id = test.Id }, new MockTestSummaryDto
+             {
+                 Id = test.Id,
++                BusinessId = test.BusinessId,
+                 Title = test.Title,
+                 ExamName = test.ExamName,
+                 ExamId = test.ExamId,
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Controllers/PracticeTestsAdminController.cs work/ScoramAPI/Controllers/PracticeTestsAdminController.cs
+--- orig/ScoramAPI/Controllers/PracticeTestsAdminController.cs	2026-08-16 00:33:36.000000000 +0000
++++ work/ScoramAPI/Controllers/PracticeTestsAdminController.cs	2026-09-30 07:58:15.753933712 +0000
+@@ -29,10 +29,11 @@
+             _audit = audit;
+         }
+ 
+-        // GET /api/admin/practice-tests?status=&page=&pageSize=
++        // GET /api/admin/practice-tests?status=&search=&page=&pageSize=
++        // search matches the Business ID (TST0001) or Title, case-insensitive.
+         [HttpGet]
+         public async Task<ActionResult<PagedResult<PracticeTestTemplateAdminDto>>> List(
+-            [FromQuery] string? status, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
++            [FromQuery] string? status, [FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+         {
+             if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageTests)) return Forbid();
+ 
+@@ -47,6 +48,11 @@
+             if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<TestPublishStatus>(status, true, out var parsed))
+                 query = query.Where(t => t.Status == parsed);
+ 
++            var term = search?.Trim();
++            if (!string.IsNullOrEmpty(term))
++                query = query.Where(t => t.Title.Contains(term)
++                    || (t.BusinessId != null && t.BusinessId.Contains(term)));
++
+             query = query.OrderByDescending(t => t.CreatedAt);
+             var totalCount = await query.CountAsync();
+             var templates = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+@@ -270,6 +276,7 @@
+         private static PracticeTestTemplateAdminDto ToAdminDto(PracticeTestTemplate t, int attemptCount) => new PracticeTestTemplateAdminDto
+         {
+             Id = t.Id,
++            BusinessId = t.BusinessId,
+             Title = t.Title,
+             Description = t.Description,
+             Subject = t.Subject?.Name,
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Controllers/QuestionBankAdminController.cs work/ScoramAPI/Controllers/QuestionBankAdminController.cs
+--- orig/ScoramAPI/Controllers/QuestionBankAdminController.cs	2026-09-21 13:27:38.000000000 +0000
++++ work/ScoramAPI/Controllers/QuestionBankAdminController.cs	2026-09-30 07:58:32.993744085 +0000
+@@ -432,7 +432,7 @@
+             if (!includeInactive) q = q.Where(s => s.IsActive);
+ 
+             var subjects = await q.OrderBy(s => s.Name)
+-                .Select(s => new QuestionBankSubjectDto { Id = s.Id, Name = s.Name, IsActive = s.IsActive, QuestionCount = s.Questions.Count(x => x.IsActive) })
++                .Select(s => new QuestionBankSubjectDto { Id = s.Id, BusinessId = s.BusinessId, Name = s.Name, IsActive = s.IsActive, QuestionCount = s.Questions.Count(x => x.IsActive) })
+                 .ToListAsync();
+             return Ok(subjects);
+         }
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/DTOs/AdminAuthDTOs.cs work/ScoramAPI/DTOs/AdminAuthDTOs.cs
+--- orig/ScoramAPI/DTOs/AdminAuthDTOs.cs	2026-09-27 13:33:06.000000000 +0000
++++ work/ScoramAPI/DTOs/AdminAuthDTOs.cs	2026-09-30 07:58:04.752184015 +0000
+@@ -119,6 +119,8 @@
+     public class AdminResponseDto
+     {
+         public Guid Id { get; set; }
++        // Human-readable Business ID (e.g. "ADM0001") -- contains no personal information.
++        public string? BusinessId { get; set; }
+         public string FullName { get; set; } = string.Empty;
+         public string Email { get; set; } = string.Empty;
+         public string Role { get; set; } = string.Empty;
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/DTOs/BusinessIdDTOs.cs work/ScoramAPI/DTOs/BusinessIdDTOs.cs
+--- orig/ScoramAPI/DTOs/BusinessIdDTOs.cs	1970-01-01 00:00:00.000000000 +0000
++++ work/ScoramAPI/DTOs/BusinessIdDTOs.cs	2026-09-30 07:56:51.685895491 +0000
+@@ -0,0 +1,49 @@
++namespace ScoramAPI.DTOs
++{
++    // SuperAdmin-only "correct a Business ID" request. Deliberately carries the entity's GUID (the
++    // real identity) rather than its current Business ID, so the request can't be misdirected by a
++    // typo in the ID being replaced.
++    public class BusinessIdChangeRequestDto
++    {
++        // exam | subject | test | mocktest | admin (case/hyphen-insensitive; plural accepted)
++        public string EntityType { get; set; } = string.Empty;
++        public Guid EntityId { get; set; }
++        public string NewBusinessId { get; set; } = string.Empty;
++        // Must be true -- the "Change Business ID?" confirmation. Enforced here, not just in the UI.
++        public bool Confirm { get; set; }
++    }
++
++    public class BusinessIdChangeResultDto
++    {
++        public string Message { get; set; } = string.Empty;
++        public string EntityType { get; set; } = string.Empty;
++        // The record's GUID -- unchanged by this operation, as are all foreign keys pointing at it.
++        public Guid EntityId { get; set; }
++        public string Name { get; set; } = string.Empty;
++        public string? OldBusinessId { get; set; }
++        public string NewBusinessId { get; set; } = string.Empty;
++    }
++
++    public class BusinessIdBackfillItemDto
++    {
++        public string EntityType { get; set; } = string.Empty;
++        public Guid EntityId { get; set; }
++        public string Name { get; set; } = string.Empty;
++        public string BusinessId { get; set; } = string.Empty;
++    }
++
++    public class BusinessIdBackfillResultDto
++    {
++        // true = ran inside a transaction that was rolled back; nothing was saved.
++        public bool DryRun { get; set; }
++        // true once the sentinel says the one-time backfill has been completed for real.
++        public bool Completed { get; set; }
++        public int Exams { get; set; }
++        public int Subjects { get; set; }
++        public int Tests { get; set; }
++        public int MockTests { get; set; }
++        public int Admins { get; set; }
++        public int Total => Exams + Subjects + Tests + MockTests + Admins;
++        public List<BusinessIdBackfillItemDto> Items { get; set; } = new();
++    }
++}
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/DTOs/ExamDTOs.cs work/ScoramAPI/DTOs/ExamDTOs.cs
+--- orig/ScoramAPI/DTOs/ExamDTOs.cs	2026-09-10 13:44:34.000000000 +0000
++++ work/ScoramAPI/DTOs/ExamDTOs.cs	2026-09-30 07:58:04.747918287 +0000
+@@ -43,6 +43,9 @@
+     public class ExamResponseDto
+     {
+         public Guid Id { get; set; }
++        // Human-readable Business ID (e.g. "EXMSSC001"). Filled in only by the ADMIN endpoints -- the
++        // public student-facing list leaves it null. Additional to Id, never a replacement for it.
++        public string? BusinessId { get; set; }
+         public string Name { get; set; } = string.Empty;
+         public string? LogoUrl { get; set; }
+         public bool IsBlocked { get; set; }
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/DTOs/MockTestDTOs.cs work/ScoramAPI/DTOs/MockTestDTOs.cs
+--- orig/ScoramAPI/DTOs/MockTestDTOs.cs	2026-09-01 04:27:02.000000000 +0000
++++ work/ScoramAPI/DTOs/MockTestDTOs.cs	2026-09-30 07:58:04.750914510 +0000
+@@ -54,6 +54,8 @@
+     public class MockTestSummaryDto
+     {
+         public Guid Id { get; set; }
++        // Human-readable Business ID (e.g. "MCK0001"); filled in by the admin endpoints only.
++        public string? BusinessId { get; set; }
+         public string Title { get; set; } = string.Empty;
+         public string ExamName { get; set; } = string.Empty;
+         public Guid? ExamId { get; set; }
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/DTOs/PracticeTestDTOs.cs work/ScoramAPI/DTOs/PracticeTestDTOs.cs
+--- orig/ScoramAPI/DTOs/PracticeTestDTOs.cs	2026-08-28 10:22:14.000000000 +0000
++++ work/ScoramAPI/DTOs/PracticeTestDTOs.cs	2026-09-30 07:58:04.751630557 +0000
+@@ -59,6 +59,8 @@
+ 
+     public class PracticeTestTemplateAdminDto : PracticeTestTemplateDto
+     {
++        // Human-readable Business ID (e.g. "TST0001"); admin-only.
++        public string? BusinessId { get; set; }
+         public string Status { get; set; } = string.Empty;
+         public string CreatedByAdminName { get; set; } = string.Empty;
+         public DateTime CreatedAt { get; set; }
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/DTOs/QuestionBankDTOs.cs work/ScoramAPI/DTOs/QuestionBankDTOs.cs
+--- orig/ScoramAPI/DTOs/QuestionBankDTOs.cs	2026-09-07 06:03:58.000000000 +0000
++++ work/ScoramAPI/DTOs/QuestionBankDTOs.cs	2026-09-30 07:58:32.992673612 +0000
+@@ -5,6 +5,8 @@
+     public class QuestionBankSubjectDto
+     {
+         public Guid Id { get; set; }
++        // Human-readable Business ID (e.g. "SUB001"); filled in by the admin subject list only.
++        public string? BusinessId { get; set; }
+         public string Name { get; set; } = string.Empty;
+         public bool IsActive { get; set; }
+         public int QuestionCount { get; set; }
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/DTOs/SubjectManagementDTOs.cs work/ScoramAPI/DTOs/SubjectManagementDTOs.cs
+--- orig/ScoramAPI/DTOs/SubjectManagementDTOs.cs	2026-09-29 16:19:36.000000000 +0000
++++ work/ScoramAPI/DTOs/SubjectManagementDTOs.cs	2026-09-30 07:58:04.752742821 +0000
+@@ -47,6 +47,9 @@
+     public class SubjectListItemDto
+     {
+         public Guid Id { get; set; }
++        // Human-readable Business ID (e.g. "SUB001"). Stays the same across rename / merge / archive /
++        // restore -- it identifies the subject record, not its current name.
++        public string? BusinessId { get; set; }
+         public string Name { get; set; } = string.Empty;
+         public bool IsActive { get; set; }
+         public DateTime CreatedAt { get; set; }
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Data/ScoramDbContext.cs work/ScoramAPI/Data/ScoramDbContext.cs
+--- orig/ScoramAPI/Data/ScoramDbContext.cs	2026-09-17 20:27:18.000000000 +0000
++++ work/ScoramAPI/Data/ScoramDbContext.cs	2026-09-30 07:55:31.743575569 +0000
+@@ -1,6 +1,7 @@
+ using Microsoft.EntityFrameworkCore;
+ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+ using ScoramAPI.Models;
++using ScoramAPI.Services;
+ 
+ namespace ScoramAPI.Data
+ {
+@@ -74,6 +75,11 @@
+ 
+         // Question Bank (SCORAM_QUESTION_BANK)
+         public DbSet<QuestionBankSubject> QuestionBankSubjects => Set<QuestionBankSubject>();
++
++        // BUSINESS IDs -- see Models/BusinessIdModels.cs. Counter = "next number" per prefix;
++        // Registry = permanent ledger of every ID ever issued (what guarantees no reuse).
++        public DbSet<BusinessIdCounter> BusinessIdCounters => Set<BusinessIdCounter>();
++        public DbSet<BusinessIdRegistryEntry> BusinessIdRegistry => Set<BusinessIdRegistryEntry>();
+         public DbSet<QuestionBankTopic> QuestionBankTopics => Set<QuestionBankTopic>();
+         public DbSet<QuestionBankQuestion> QuestionBankQuestions => Set<QuestionBankQuestion>();
+         public DbSet<QuestionBankExamMapping> QuestionBankExamMappings => Set<QuestionBankExamMapping>();
+@@ -104,6 +110,100 @@
+         public DbSet<Document> Documents => Set<Document>();
+         public DbSet<Bookmark> Bookmarks => Set<Bookmark>();
+ 
++        // ---------- BUSINESS IDs: central assignment + edit guard ----------
++        //
++        // Every insert of an Exam / Subject (QuestionBankSubject) / Test (PracticeTestTemplate) /
++        // Mock Test / Admin goes through here, wherever in the app it originates (admin forms, bulk
++        // imports, mirror services, bootstrap) -- so nothing that creates one of these has to know
++        // Business IDs exist, and a new creation path added later can't forget to assign one.
++        //
++        // Set ONLY by BusinessIdService.ChangeAsync (the SuperAdmin-only correction flow) for the
++        // duration of its own save. Everything else that tries to rewrite an existing BusinessId is
++        // rejected below, so "normal admins can't change it" holds even if some future endpoint
++        // accidentally binds the property from a request body.
++        internal bool AllowBusinessIdChange { get; set; }
++
++        public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
++        {
++            GuardBusinessIdEdits();
++
++            var needId = ChangeTracker.Entries()
++                .Where(e => e.State == EntityState.Added
++                    && e.Entity is IHasBusinessId b
++                    && string.IsNullOrWhiteSpace(b.BusinessId))
++                .Select(e => (IHasBusinessId)e.Entity)
++                .ToList();
++
++            // Nothing to assign -- or the one-time backfill of existing records hasn't run yet, in
++            // which case these new rows stay null and the backfill numbers them in creation order.
++            if (needId.Count == 0 || !await BusinessIdGenerator.IsBackfillCompleteAsync(this, cancellationToken))
++                return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
++
++            // Counter increment + registry row + the entity insert must commit or roll back TOGETHER.
++            // If the caller already opened a transaction (e.g. Subject Management's merge), join it;
++            // otherwise open one just for this save.
++            var ownTx = Database.CurrentTransaction == null
++                ? await Database.BeginTransactionAsync(cancellationToken)
++                : null;
++            try
++            {
++                await BusinessIdGenerator.AssignAsync(this, needId, cancellationToken);
++                var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
++                if (ownTx != null) await ownTx.CommitAsync(cancellationToken);
++                return saved;
++            }
++            catch
++            {
++                // The counter bump and registry rows roll back with the transaction; also undo the
++                // in-memory side so a caller that retries SaveChanges on these same objects gets fresh
++                // IDs instead of re-using ones that were never actually recorded.
++                foreach (var entity in needId) entity.BusinessId = null;
++                foreach (var entry in ChangeTracker.Entries<BusinessIdRegistryEntry>()
++                             .Where(e => e.State == EntityState.Added).ToList())
++                    entry.State = EntityState.Detached;
++                if (ownTx != null) await ownTx.RollbackAsync(CancellationToken.None);
++                throw;
++            }
++            finally
++            {
++                if (ownTx != null) await ownTx.DisposeAsync();
++            }
++        }
++
++        // No code path in the app uses the synchronous SaveChanges (everything is async), but a future
++        // one must not be able to silently skip the Business ID rules.
++        public override int SaveChanges(bool acceptAllChangesOnSuccess)
++        {
++            GuardBusinessIdEdits();
++            if (ChangeTracker.Entries().Any(e => e.State == EntityState.Added
++                    && e.Entity is IHasBusinessId b && string.IsNullOrWhiteSpace(b.BusinessId)))
++                throw new NotSupportedException("Use SaveChangesAsync: new records need a Business ID assigned inside a transaction.");
++            return base.SaveChanges(acceptAllChangesOnSuccess);
++        }
++
++        // A BusinessId that already has a value may only change via BusinessIdService.ChangeAsync.
++        // (null -> value is allowed: that is the one-time backfill assigning an existing record its
++        // first ID.)
++        private void GuardBusinessIdEdits()
++        {
++            if (AllowBusinessIdChange) return;
++
++            foreach (var entry in ChangeTracker.Entries().Where(e => e.State == EntityState.Modified && e.Entity is IHasBusinessId))
++            {
++                var prop = entry.Property(nameof(IHasBusinessId.BusinessId));
++                if (!prop.IsModified) continue;
++
++                var original = prop.OriginalValue as string;
++                var current = prop.CurrentValue as string;
++                if (!string.IsNullOrEmpty(original)
++                    && !string.Equals(original, current, StringComparison.OrdinalIgnoreCase))
++                {
++                    throw new InvalidOperationException(
++                        $"BusinessId is not editable (attempted {original} -> {current ?? "null"}). Only a SuperAdmin can change it, via the Business ID change endpoint.");
++                }
++            }
++        }
++
+         protected override void OnModelCreating(ModelBuilder modelBuilder)
+         {
+             base.OnModelCreating(modelBuilder);
+@@ -171,6 +271,26 @@
+             modelBuilder.Entity<XpTransaction>()
+                 .HasIndex(t => new { t.ExamName, t.CreatedAt });
+ 
++            // ---------- Business IDs ----------
++            // Unique among NON-NULL values (filtered index): existing production rows have no
++            // BusinessId until the one-time backfill runs, and SQL Server would otherwise treat a
++            // second NULL as a duplicate. BusinessId is never a key or foreign key -- Id (Guid) stays
++            // the primary key and every relationship keeps pointing at it.
++            modelBuilder.Entity<Exam>().Property(e => e.BusinessId).HasMaxLength(30);
++            modelBuilder.Entity<Exam>().HasIndex(e => e.BusinessId).IsUnique().HasFilter("[BusinessId] IS NOT NULL").HasDatabaseName("UX_Exams_BusinessId");
++            modelBuilder.Entity<QuestionBankSubject>().Property(s => s.BusinessId).HasMaxLength(30);
++            modelBuilder.Entity<QuestionBankSubject>().HasIndex(s => s.BusinessId).IsUnique().HasFilter("[BusinessId] IS NOT NULL").HasDatabaseName("UX_QuestionBankSubjects_BusinessId");
++            modelBuilder.Entity<PracticeTestTemplate>().Property(t => t.BusinessId).HasMaxLength(30);
++            modelBuilder.Entity<PracticeTestTemplate>().HasIndex(t => t.BusinessId).IsUnique().HasFilter("[BusinessId] IS NOT NULL").HasDatabaseName("UX_PracticeTestTemplates_BusinessId");
++            modelBuilder.Entity<MockTest>().Property(m => m.BusinessId).HasMaxLength(30);
++            modelBuilder.Entity<MockTest>().HasIndex(m => m.BusinessId).IsUnique().HasFilter("[BusinessId] IS NOT NULL").HasDatabaseName("UX_MockTests_BusinessId");
++            modelBuilder.Entity<Admin>().Property(a => a.BusinessId).HasMaxLength(30);
++            modelBuilder.Entity<Admin>().HasIndex(a => a.BusinessId).IsUnique().HasFilter("[BusinessId] IS NOT NULL").HasDatabaseName("UX_Admins_BusinessId");
++
++            modelBuilder.Entity<BusinessIdCounter>().HasKey(c => c.CounterKey);
++            modelBuilder.Entity<BusinessIdRegistryEntry>().HasKey(r => r.BusinessId);
++            modelBuilder.Entity<BusinessIdRegistryEntry>().HasIndex(r => r.EntityId);
++
+             // ---------- Enum -> string conversions (readable in DB) ----------
+             modelBuilder.Entity<Admin>().Property(a => a.Role).HasConversion<string>().HasMaxLength(20);
+             modelBuilder.Entity<Question>().Property(q => q.DifficultyLevel).HasConversion<string>().HasMaxLength(20);
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Migrations/20260930120000_AddBusinessIds.cs work/ScoramAPI/Migrations/20260930120000_AddBusinessIds.cs
+--- orig/ScoramAPI/Migrations/20260930120000_AddBusinessIds.cs	1970-01-01 00:00:00.000000000 +0000
++++ work/ScoramAPI/Migrations/20260930120000_AddBusinessIds.cs	2026-09-30 07:57:31.857271844 +0000
+@@ -0,0 +1,115 @@
++using System;
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Migrations;
++using ScoramAPI.Data;
++
++#nullable disable
++
++namespace ScoramAPI.Migrations
++{
++    // Business IDs (EXMSSC001, SUB001, TST0001, MCK0001, ADM0001): a human-readable identifier ADDED
++    // alongside the existing GUID Id of Exams, QuestionBankSubjects (Subjects), PracticeTestTemplates
++    // (Tests), MockTests and Admins.
++    //
++    // PURELY ADDITIVE -- safe on a production database:
++    //   * Five nullable nvarchar(30) columns. No existing row is touched, no primary key or foreign
++    //     key changes, nothing is dropped, truncated or recreated. Existing GUIDs are untouched.
++    //   * Five unique indexes, FILTERED to "[BusinessId] IS NOT NULL". Every existing row is NULL right
++    //     now, so a plain unique index would fail (SQL Server counts NULLs as equal); the filter makes
++    //     the constraint apply from the first value onward and lets it be created before any data
++    //     exists. The database itself then rejects a duplicate Business ID -- not just the app.
++    //   * Two small bookkeeping tables: BusinessIdCounters (atomic "next number" per prefix) and
++    //     BusinessIdRegistry (permanent ledger of every ID ever issued -- what makes "never reuse"
++    //     hold even after a record is deleted or merged away).
++    //
++    // Existing rows receive their IDs from the app, not from this migration: on startup
++    // BusinessIdService.RunStartupBackfillAsync numbers them deterministically (oldest first) using the
++    // same code path new records use, so the organization-code rules for exams live in exactly one
++    // place. See BUSINESS_IDS_REPORT.md.
++    //
++    // NOTE: the [DbContext]/[Migration] attributes are written out here (instead of living in a
++    // separate .Designer.cs) for the same reason as AddQuestionBankSubjectUpdatedAt: EF only
++    // discovers a migration class that carries them. The model snapshot has already been updated, so
++    // the next `dotnet ef migrations add` won't try to re-add any of this.
++    [DbContext(typeof(ScoramDbContext))]
++    [Migration("20260930120000_AddBusinessIds")]
++    public partial class AddBusinessIds : Migration
++    {
++        /// <inheritdoc />
++        protected override void Up(MigrationBuilder migrationBuilder)
++        {
++            migrationBuilder.CreateTable(
++                name: "BusinessIdCounters",
++                columns: table => new
++                {
++                    CounterKey = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
++                    LastNumber = table.Column<int>(type: "int", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_BusinessIdCounters", x => x.CounterKey);
++                });
++
++            migrationBuilder.CreateTable(
++                name: "BusinessIdRegistry",
++                columns: table => new
++                {
++                    BusinessId = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
++                    EntityType = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
++                    EntityId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
++                    IssuedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
++                },
++                constraints: table =>
++                {
++                    table.PrimaryKey("PK_BusinessIdRegistry", x => x.BusinessId);
++                });
++
++            migrationBuilder.CreateIndex(
++                name: "IX_BusinessIdRegistry_EntityId",
++                table: "BusinessIdRegistry",
++                column: "EntityId");
++
++            AddBusinessIdColumn(migrationBuilder, "Exams", "UX_Exams_BusinessId");
++            AddBusinessIdColumn(migrationBuilder, "QuestionBankSubjects", "UX_QuestionBankSubjects_BusinessId");
++            AddBusinessIdColumn(migrationBuilder, "PracticeTestTemplates", "UX_PracticeTestTemplates_BusinessId");
++            AddBusinessIdColumn(migrationBuilder, "MockTests", "UX_MockTests_BusinessId");
++            AddBusinessIdColumn(migrationBuilder, "Admins", "UX_Admins_BusinessId");
++        }
++
++        /// <inheritdoc />
++        protected override void Down(MigrationBuilder migrationBuilder)
++        {
++            DropBusinessIdColumn(migrationBuilder, "Exams", "UX_Exams_BusinessId");
++            DropBusinessIdColumn(migrationBuilder, "QuestionBankSubjects", "UX_QuestionBankSubjects_BusinessId");
++            DropBusinessIdColumn(migrationBuilder, "PracticeTestTemplates", "UX_PracticeTestTemplates_BusinessId");
++            DropBusinessIdColumn(migrationBuilder, "MockTests", "UX_MockTests_BusinessId");
++            DropBusinessIdColumn(migrationBuilder, "Admins", "UX_Admins_BusinessId");
++
++            migrationBuilder.DropTable(name: "BusinessIdRegistry");
++            migrationBuilder.DropTable(name: "BusinessIdCounters");
++        }
++
++        private static void AddBusinessIdColumn(MigrationBuilder migrationBuilder, string table, string indexName)
++        {
++            migrationBuilder.AddColumn<string>(
++                name: "BusinessId",
++                table: table,
++                type: "nvarchar(30)",
++                maxLength: 30,
++                nullable: true);
++
++            migrationBuilder.CreateIndex(
++                name: indexName,
++                table: table,
++                column: "BusinessId",
++                unique: true,
++                filter: "[BusinessId] IS NOT NULL");
++        }
++
++        private static void DropBusinessIdColumn(MigrationBuilder migrationBuilder, string table, string indexName)
++        {
++            migrationBuilder.DropIndex(name: indexName, table: table);
++            migrationBuilder.DropColumn(name: "BusinessId", table: table);
++        }
++    }
++}
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Migrations/ScoramDbContextModelSnapshot.cs work/ScoramAPI/Migrations/ScoramDbContextModelSnapshot.cs
+--- orig/ScoramAPI/Migrations/ScoramDbContextModelSnapshot.cs	2026-09-29 16:17:50.000000000 +0000
++++ work/ScoramAPI/Migrations/ScoramDbContextModelSnapshot.cs	2026-09-30 07:57:31.879214997 +0000
+@@ -28,6 +28,10 @@
+                         .ValueGeneratedOnAdd()
+                         .HasColumnType("uniqueidentifier");
+ 
++                    b.Property<string>("BusinessId")
++                        .HasMaxLength(30)
++                        .HasColumnType("nvarchar(30)");
++
+                     b.Property<DateTime>("CreatedAt")
+                         .HasColumnType("datetime2");
+ 
+@@ -70,6 +74,11 @@
+ 
+                     b.HasKey("Id");
+ 
++                    b.HasIndex("BusinessId")
++                        .IsUnique()
++                        .HasDatabaseName("UX_Admins_BusinessId")
++                        .HasFilter("[BusinessId] IS NOT NULL");
++
+                     b.HasIndex("Email")
+                         .IsUnique();
+ 
+@@ -323,6 +332,44 @@
+                     b.ToTable("Bookmarks");
+                 });
+ 
++            modelBuilder.Entity("ScoramAPI.Models.BusinessIdCounter", b =>
++                {
++                    b.Property<string>("CounterKey")
++                        .HasMaxLength(50)
++                        .HasColumnType("nvarchar(50)");
++
++                    b.Property<int>("LastNumber")
++                        .HasColumnType("int");
++
++                    b.HasKey("CounterKey");
++
++                    b.ToTable("BusinessIdCounters");
++                });
++
++            modelBuilder.Entity("ScoramAPI.Models.BusinessIdRegistryEntry", b =>
++                {
++                    b.Property<string>("BusinessId")
++                        .HasMaxLength(40)
++                        .HasColumnType("nvarchar(40)");
++
++                    b.Property<Guid>("EntityId")
++                        .HasColumnType("uniqueidentifier");
++
++                    b.Property<string>("EntityType")
++                        .IsRequired()
++                        .HasMaxLength(20)
++                        .HasColumnType("nvarchar(20)");
++
++                    b.Property<DateTime>("IssuedAt")
++                        .HasColumnType("datetime2");
++
++                    b.HasKey("BusinessId");
++
++                    b.HasIndex("EntityId");
++
++                    b.ToTable("BusinessIdRegistry");
++                });
++
+             modelBuilder.Entity("ScoramAPI.Models.ChatMessage", b =>
+                 {
+                     b.Property<Guid>("Id")
+@@ -925,6 +972,10 @@
+                         .ValueGeneratedOnAdd()
+                         .HasColumnType("uniqueidentifier");
+ 
++                    b.Property<string>("BusinessId")
++                        .HasMaxLength(30)
++                        .HasColumnType("nvarchar(30)");
++
+                     b.Property<DateTime>("CreatedAt")
+                         .HasColumnType("datetime2");
+ 
+@@ -947,6 +998,11 @@
+ 
+                     b.HasKey("Id");
+ 
++                    b.HasIndex("BusinessId")
++                        .IsUnique()
++                        .HasDatabaseName("UX_Exams_BusinessId")
++                        .HasFilter("[BusinessId] IS NOT NULL");
++
+                     b.HasIndex("CreatedByAdminId");
+ 
+                     b.HasIndex("Name")
+@@ -1081,6 +1137,10 @@
+                         .ValueGeneratedOnAdd()
+                         .HasColumnType("uniqueidentifier");
+ 
++                    b.Property<string>("BusinessId")
++                        .HasMaxLength(30)
++                        .HasColumnType("nvarchar(30)");
++
+                     b.Property<DateTime>("CreatedAt")
+                         .HasColumnType("datetime2");
+ 
+@@ -1140,6 +1200,11 @@
+ 
+                     b.HasKey("Id");
+ 
++                    b.HasIndex("BusinessId")
++                        .IsUnique()
++                        .HasDatabaseName("UX_MockTests_BusinessId")
++                        .HasFilter("[BusinessId] IS NOT NULL");
++
+                     b.HasIndex("CreatedByAdminId");
+ 
+                     b.HasIndex("ExamId");
+@@ -1372,6 +1437,10 @@
+                         .ValueGeneratedOnAdd()
+                         .HasColumnType("uniqueidentifier");
+ 
++                    b.Property<string>("BusinessId")
++                        .HasMaxLength(30)
++                        .HasColumnType("nvarchar(30)");
++
+                     b.Property<DateTime>("CreatedAt")
+                         .HasColumnType("datetime2");
+ 
+@@ -1428,6 +1497,11 @@
+ 
+                     b.HasKey("Id");
+ 
++                    b.HasIndex("BusinessId")
++                        .IsUnique()
++                        .HasDatabaseName("UX_PracticeTestTemplates_BusinessId")
++                        .HasFilter("[BusinessId] IS NOT NULL");
++
+                     b.HasIndex("CreatedByAdminId");
+ 
+                     b.HasIndex("ExamId");
+@@ -1854,6 +1928,10 @@
+                         .ValueGeneratedOnAdd()
+                         .HasColumnType("uniqueidentifier");
+ 
++                    b.Property<string>("BusinessId")
++                        .HasMaxLength(30)
++                        .HasColumnType("nvarchar(30)");
++
+                     b.Property<DateTime>("CreatedAt")
+                         .HasColumnType("datetime2");
+ 
+@@ -1873,6 +1951,11 @@
+ 
+                     b.HasKey("Id");
+ 
++                    b.HasIndex("BusinessId")
++                        .IsUnique()
++                        .HasDatabaseName("UX_QuestionBankSubjects_BusinessId")
++                        .HasFilter("[BusinessId] IS NOT NULL");
++
+                     b.HasIndex("CreatedByAdminId");
+ 
+                     b.HasIndex("Name")
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Models/Admin.cs work/ScoramAPI/Models/Admin.cs
+--- orig/ScoramAPI/Models/Admin.cs	2026-09-22 17:43:28.000000000 +0000
++++ work/ScoramAPI/Models/Admin.cs	2026-09-30 07:52:42.892065023 +0000
+@@ -3,10 +3,15 @@
+ 
+ namespace ScoramAPI.Models
+ {
+-    public class Admin
++    public class Admin : IHasBusinessId
+     {
+         public Guid Id { get; set; } = Guid.NewGuid();
+ 
++        // Human-readable Business ID, e.g. "ADM0001". Contains no name/email/phone. See
++        // Models/BusinessIdModels.cs.
++        [MaxLength(30)]
++        public string? BusinessId { get; set; }
++
+         [Required, MaxLength(100)]
+         public string FullName { get; set; } = string.Empty;
+ 
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Models/BusinessIdModels.cs work/ScoramAPI/Models/BusinessIdModels.cs
+--- orig/ScoramAPI/Models/BusinessIdModels.cs	1970-01-01 00:00:00.000000000 +0000
++++ work/ScoramAPI/Models/BusinessIdModels.cs	2026-09-30 07:52:42.735197810 +0000
+@@ -0,0 +1,67 @@
++using System.ComponentModel.DataAnnotations;
++
++namespace ScoramAPI.Models
++{
++    // ==================================================================================
++    // BUSINESS IDs -- human-readable administrative identifiers (EXMSSC001, SUB001, TST0001,
++    // MCK0001, ADM0001) that sit ALONGSIDE the existing GUID Id of these five entities.
++    //
++    //   Id           (Guid)   = internal identity: primary key, every foreign key, every join.
++    //                           Never replaced, never rewritten.
++    //   BusinessId   (string) = what admins say, search for, put in tickets and reports.
++    //                           Never used as a key or foreign key anywhere.
++    //
++    // Nullable on purpose: existing production rows have no value until the one-time backfill
++    // (see Services/BusinessIdService.BackfillAsync) has run, and the unique index is filtered to
++    // non-null values so it can be created before that. New rows are assigned automatically in
++    // ScoramDbContext.SaveChangesAsync -- callers never set this themselves.
++    // ==================================================================================
++    public interface IHasBusinessId
++    {
++        Guid Id { get; }
++        string? BusinessId { get; set; }
++    }
++
++    public enum BusinessIdEntityType
++    {
++        Exam,
++        Subject,
++        Test,
++        MockTest,
++        Admin
++    }
++
++    // One row per counter (e.g. "EXM:SSC", "SUB", "TST", "MCK", "ADM"). LastNumber only ever goes
++    // UP -- it is incremented atomically inside the same transaction as the insert that consumes
++    // it (see BusinessIdGenerator.NextNumberAsync) and is never decremented by a delete, which is
++    // exactly what stops a deleted record's number being handed out again.
++    public class BusinessIdCounter
++    {
++        [Key, MaxLength(50)]
++        public string CounterKey { get; set; } = string.Empty;
++
++        public int LastNumber { get; set; }
++    }
++
++    // Permanent ledger of EVERY Business ID that has ever been issued -- including IDs whose
++    // record was later deleted, merged away, or given a different ID by a SuperAdmin. Its primary
++    // key is what makes "never reuse" a database guarantee rather than a convention: an ID that is
++    // in here can never be issued a second time to a different record.
++    //
++    // Deliberately no foreign key to the entity table (EntityId is a plain Guid): the whole point
++    // is that the row must outlive the record it was issued to.
++    public class BusinessIdRegistryEntry
++    {
++        [Key, MaxLength(40)]
++        public string BusinessId { get; set; } = string.Empty;
++
++        // BusinessIdEntityType, stored as text so the table stays readable in SSMS.
++        [Required, MaxLength(20)]
++        public string EntityType { get; set; } = string.Empty;
++
++        // GUID of the record this ID was issued to. Kept after that record is deleted.
++        public Guid EntityId { get; set; }
++
++        public DateTime IssuedAt { get; set; } = DateTime.UtcNow;
++    }
++}
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Models/Exam.cs work/ScoramAPI/Models/Exam.cs
+--- orig/ScoramAPI/Models/Exam.cs	2026-09-02 09:16:20.000000000 +0000
++++ work/ScoramAPI/Models/Exam.cs	2026-09-30 07:52:42.891035449 +0000
+@@ -6,10 +6,16 @@
+     // "choose exam / + New Exam" step of the PYQ upload wizard. Kept as its own table (rather than
+     // just a free-text field on Question) so it can carry a logo and be reused as a picklist instead
+     // of admins re-typing the same exam name slightly differently every time.
+-    public class Exam
++    public class Exam : IHasBusinessId
+     {
+         public Guid Id { get; set; } = Guid.NewGuid();
+ 
++        // Human-readable Business ID, e.g. "EXMSSC001" (EXM + organization code + sequence). Assigned
++        // automatically on insert -- see Models/BusinessIdModels.cs. Not editable by normal admins,
++        // never a key. Stays unchanged when the exam is renamed.
++        [MaxLength(30)]
++        public string? BusinessId { get; set; }
++
+         [Required, MaxLength(100)]
+         public string Name { get; set; } = string.Empty; // "SSC CGL", "SSC CHSL", "Railway NTPC"
+ 
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Models/MockTestModels.cs work/ScoramAPI/Models/MockTestModels.cs
+--- orig/ScoramAPI/Models/MockTestModels.cs	2026-09-01 04:26:40.000000000 +0000
++++ work/ScoramAPI/Models/MockTestModels.cs	2026-09-30 07:52:42.894687043 +0000
+@@ -3,10 +3,14 @@
+ 
+ namespace ScoramAPI.Models
+ {
+-    public class MockTest
++    public class MockTest : IHasBusinessId
+     {
+         public Guid Id { get; set; } = Guid.NewGuid();
+ 
++        // Human-readable Business ID, e.g. "MCK0001". See Models/BusinessIdModels.cs.
++        [MaxLength(30)]
++        public string? BusinessId { get; set; }
++
+         [Required, MaxLength(150)]
+         public string Title { get; set; } = string.Empty;
+ 
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Models/PracticeTestModels.cs work/ScoramAPI/Models/PracticeTestModels.cs
+--- orig/ScoramAPI/Models/PracticeTestModels.cs	2026-08-16 00:33:36.000000000 +0000
++++ work/ScoramAPI/Models/PracticeTestModels.cs	2026-09-30 07:52:42.895192506 +0000
+@@ -14,10 +14,15 @@
+     // TestKind.Practice) via the same generation logic -- see Services/TestAttemptService.cs.
+     // ==================================================================================
+ 
+-    public class PracticeTestTemplate
++    public class PracticeTestTemplate : IHasBusinessId
+     {
+         public Guid Id { get; set; } = Guid.NewGuid();
+ 
++        // Human-readable Business ID, e.g. "TST0001" ("Test" in the admin panel). See
++        // Models/BusinessIdModels.cs.
++        [MaxLength(30)]
++        public string? BusinessId { get; set; }
++
+         [Required, MaxLength(150)]
+         public string Title { get; set; } = string.Empty;
+ 
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Models/QuestionBankModels.cs work/ScoramAPI/Models/QuestionBankModels.cs
+--- orig/ScoramAPI/Models/QuestionBankModels.cs	2026-09-29 16:17:50.000000000 +0000
++++ work/ScoramAPI/Models/QuestionBankModels.cs	2026-09-30 07:52:42.893621861 +0000
+@@ -16,10 +16,15 @@
+     // work identically for both the legacy Paper-based Question and this new QuestionBankQuestion.
+     // ==================================================================================
+ 
+-    public class QuestionBankSubject
++    public class QuestionBankSubject : IHasBusinessId
+     {
+         public Guid Id { get; set; } = Guid.NewGuid();
+ 
++        // Human-readable Business ID, e.g. "SUB001". Never encodes the subject name, so it survives
++        // renames and is the same subject after a merge/restore. See Models/BusinessIdModels.cs.
++        [MaxLength(30)]
++        public string? BusinessId { get; set; }
++
+         [Required, MaxLength(100)]
+         public string Name { get; set; } = string.Empty; // "Ancient History", "Quantitative Aptitude"
+ 
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Program.cs work/ScoramAPI/Program.cs
+--- orig/ScoramAPI/Program.cs	2026-09-29 16:17:50.000000000 +0000
++++ work/ScoramAPI/Program.cs	2026-09-30 07:57:02.531026934 +0000
+@@ -62,6 +62,7 @@
+ builder.Services.AddScoped<IQuestionBankImportCommitService, QuestionBankImportCommitService>(); // extracted from QuestionBankAdminController.Commit
+ builder.Services.AddScoped<ITestAttemptService, TestAttemptService>(); // SCORAM_TESTS
+ builder.Services.AddScoped<ISubjectManagementService, SubjectManagementService>(); // Subject Management (admin)
++builder.Services.AddScoped<IBusinessIdService, BusinessIdService>(); // Business IDs (EXMSSC001, SUB001, ...) -- SuperAdmin change + one-time backfill
+ builder.Services.AddScoped<IGamificationService, GamificationService>(); // GAMIFICATION
+ // ---------- Redis (optional -- see ConnectionStrings:Redis) ----------
+ // Everything below degrades gracefully to today's single-instance-only behavior when this isn't
+@@ -469,4 +470,19 @@
+     app.Logger.LogError(ex, "SuperAdmin bootstrap check failed at startup (likely: migrations not yet applied). Will retry on next restart.");
+ }
+ 
++// One-time, idempotent: gives every pre-existing Exam / Subject / Test / Mock Test / Admin its
++// human-readable Business ID (oldest first, deterministic). Runs AFTER the SuperAdmin bootstrap above
++// so a freshly-bootstrapped admin is numbered too. Same fail-soft reasoning as the block above --
++// it must never stop the process from reaching app.Run() -- and a failed attempt is rolled back
++// completely and simply retried on the next restart. Set BusinessIds:AutoBackfillOnStartup=false
++// to skip it and run POST /api/admin/business-ids/backfill (dry run first) by hand instead.
++try
++{
++    await ScoramAPI.Services.BusinessIdService.RunStartupBackfillAsync(app.Services, app.Configuration, app.Logger);
++}
++catch (Exception ex)
++{
++    app.Logger.LogError(ex, "Business ID backfill failed at startup (likely: migrations not yet applied). Nothing was changed; it will be retried on the next restart.");
++}
++
+ app.Run();
+\ No newline at end of file
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Scripts/BusinessIdsVerify.sql work/ScoramAPI/Scripts/BusinessIdsVerify.sql
+--- orig/ScoramAPI/Scripts/BusinessIdsVerify.sql	1970-01-01 00:00:00.000000000 +0000
++++ work/ScoramAPI/Scripts/BusinessIdsVerify.sql	2026-10-01 00:20:53.315455972 +0000
+@@ -0,0 +1,61 @@
++-- BusinessIdsVerify.sql -- READ-ONLY checks to run after the AddBusinessIds migration has been applied
++-- and the app has started once (which runs the one-time backfill). Every result set below should be
++-- EMPTY (or, where noted, show the expected shape). Changes nothing.
++
++-- 1. The backfill finished (expect exactly 1 row).
++SELECT CounterKey, LastNumber FROM BusinessIdCounters WHERE CounterKey = '__BACKFILL_COMPLETE__';
++
++-- 2. No record is left without a Business ID (expect 0 rows in each).
++SELECT 'Exams' AS T, COUNT(*) AS Missing FROM Exams WHERE BusinessId IS NULL
++UNION ALL SELECT 'QuestionBankSubjects', COUNT(*) FROM QuestionBankSubjects WHERE BusinessId IS NULL
++UNION ALL SELECT 'PracticeTestTemplates', COUNT(*) FROM PracticeTestTemplates WHERE BusinessId IS NULL
++UNION ALL SELECT 'MockTests', COUNT(*) FROM MockTests WHERE BusinessId IS NULL
++UNION ALL SELECT 'Admins', COUNT(*) FROM Admins WHERE BusinessId IS NULL;
++
++-- 3. No duplicates (expect 0 rows; the unique indexes also make this impossible).
++SELECT 'Exams' AS T, BusinessId, COUNT(*) AS N FROM Exams WHERE BusinessId IS NOT NULL GROUP BY BusinessId HAVING COUNT(*) > 1
++UNION ALL SELECT 'QuestionBankSubjects', BusinessId, COUNT(*) FROM QuestionBankSubjects WHERE BusinessId IS NOT NULL GROUP BY BusinessId HAVING COUNT(*) > 1
++UNION ALL SELECT 'PracticeTestTemplates', BusinessId, COUNT(*) FROM PracticeTestTemplates WHERE BusinessId IS NOT NULL GROUP BY BusinessId HAVING COUNT(*) > 1
++UNION ALL SELECT 'MockTests', BusinessId, COUNT(*) FROM MockTests WHERE BusinessId IS NOT NULL GROUP BY BusinessId HAVING COUNT(*) > 1
++UNION ALL SELECT 'Admins', BusinessId, COUNT(*) FROM Admins WHERE BusinessId IS NOT NULL GROUP BY BusinessId HAVING COUNT(*) > 1;
++
++-- 4. Every live ID is in the permanent registry, pointing at the same GUID (expect 0 rows).
++SELECT 'Exams' AS T, e.Id, e.BusinessId FROM Exams e LEFT JOIN BusinessIdRegistry r ON r.BusinessId = e.BusinessId AND r.EntityId = e.Id WHERE e.BusinessId IS NOT NULL AND r.BusinessId IS NULL
++UNION ALL SELECT 'QuestionBankSubjects', s.Id, s.BusinessId FROM QuestionBankSubjects s LEFT JOIN BusinessIdRegistry r ON r.BusinessId = s.BusinessId AND r.EntityId = s.Id WHERE s.BusinessId IS NOT NULL AND r.BusinessId IS NULL
++UNION ALL SELECT 'PracticeTestTemplates', t.Id, t.BusinessId FROM PracticeTestTemplates t LEFT JOIN BusinessIdRegistry r ON r.BusinessId = t.BusinessId AND r.EntityId = t.Id WHERE t.BusinessId IS NOT NULL AND r.BusinessId IS NULL
++UNION ALL SELECT 'MockTests', m.Id, m.BusinessId FROM MockTests m LEFT JOIN BusinessIdRegistry r ON r.BusinessId = m.BusinessId AND r.EntityId = m.Id WHERE m.BusinessId IS NOT NULL AND r.BusinessId IS NULL
++UNION ALL SELECT 'Admins', a.Id, a.BusinessId FROM Admins a LEFT JOIN BusinessIdRegistry r ON r.BusinessId = a.BusinessId AND r.EntityId = a.Id WHERE a.BusinessId IS NOT NULL AND r.BusinessId IS NULL;
++
++-- 5. No counter is BEHIND the highest ID in use for its prefix (expect 0 rows). A counter behind the
++--    data would only cost a few skipped numbers (the generator skips taken IDs), but it shouldn't happen.
++SELECT c.CounterKey, c.LastNumber, x.MaxInUse
++FROM BusinessIdCounters c
++JOIN (
++    SELECT 'SUB' AS K, MAX(TRY_CONVERT(int, SUBSTRING(BusinessId, 4, 20))) AS MaxInUse FROM QuestionBankSubjects WHERE BusinessId LIKE 'SUB[0-9]%'
++    UNION ALL SELECT 'TST', MAX(TRY_CONVERT(int, SUBSTRING(BusinessId, 4, 20))) FROM PracticeTestTemplates WHERE BusinessId LIKE 'TST[0-9]%'
++    UNION ALL SELECT 'MCK', MAX(TRY_CONVERT(int, SUBSTRING(BusinessId, 4, 20))) FROM MockTests WHERE BusinessId LIKE 'MCK[0-9]%'
++    UNION ALL SELECT 'ADM', MAX(TRY_CONVERT(int, SUBSTRING(BusinessId, 4, 20))) FROM Admins WHERE BusinessId LIKE 'ADM[0-9]%'
++) x ON x.K = c.CounterKey
++WHERE c.LastNumber < ISNULL(x.MaxInUse, 0);
++
++-- 6. EYEBALL: exam IDs and the organization code each got. Review the codes BEFORE anyone relies on
++--    these IDs externally (only a SuperAdmin can change one afterwards).
++SELECT e.BusinessId, e.Name, o.Name AS Organization, e.CreatedAt
++FROM Exams e LEFT JOIN Organizations o ON o.Id = e.OrganizationId
++ORDER BY e.BusinessId;
++
++-- 7. EYEBALL: every ID ever issued, including those whose record has since been deleted/merged away
++--    (these are the ones that can never be handed out again).
++SELECT r.BusinessId, r.EntityType, r.EntityId, r.IssuedAt,
++       CASE WHEN EXISTS (SELECT 1 FROM Exams WHERE Id = r.EntityId)
++              OR EXISTS (SELECT 1 FROM QuestionBankSubjects WHERE Id = r.EntityId)
++              OR EXISTS (SELECT 1 FROM PracticeTestTemplates WHERE Id = r.EntityId)
++              OR EXISTS (SELECT 1 FROM MockTests WHERE Id = r.EntityId)
++              OR EXISTS (SELECT 1 FROM Admins WHERE Id = r.EntityId)
++            THEN 'live' ELSE 'RETIRED (record gone, ID reserved forever)' END AS State
++FROM BusinessIdRegistry r
++ORDER BY r.EntityType, r.BusinessId;
++
++-- 8. Audit trail of SuperAdmin changes.
++SELECT TOP 50 CreatedAt, AdminId, Action, TargetType, TargetId, Detail
++FROM AuditLogs WHERE Action = 'BusinessId.Change' ORDER BY CreatedAt DESC;
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Services/BusinessIdFormats.cs work/ScoramAPI/Services/BusinessIdFormats.cs
+--- orig/ScoramAPI/Services/BusinessIdFormats.cs	1970-01-01 00:00:00.000000000 +0000
++++ work/ScoramAPI/Services/BusinessIdFormats.cs	2026-09-30 07:53:16.611500363 +0000
+@@ -0,0 +1,227 @@
++using System.Text;
++using System.Text.RegularExpressions;
++using ScoramAPI.Models;
++
++namespace ScoramAPI.Services
++{
++    // Pure, database-free rules for what a Business ID looks like -- kept separate from
++    // BusinessIdService so it can be unit-tested without a database, and so the backend validator
++    // (SuperAdmin manual change), the generator and the backfill can never disagree on a format.
++    //
++    //   Exam       EXM + organization code (letters) + sequence (3+ digits)   EXMSSC001
++    //   Subject    SUB + sequence (3+ digits)                                 SUB001
++    //   Test       TST + sequence (4+ digits)                                 TST0001
++    //   Mock Test  MCK + sequence (4+ digits)                                 MCK0001
++    //   Admin      ADM + sequence (4+ digits)                                 ADM0001
++    //
++    // "3+" / "4+" digits: the number is zero-padded to that width and simply grows past it
++    // (SUB999 -> SUB1000) rather than ever wrapping or truncating.
++    public static class BusinessIdFormats
++    {
++        public const string ExamPrefix = "EXM";
++        public const string SubjectPrefix = "SUB";
++        public const string TestPrefix = "TST";
++        public const string MockTestPrefix = "MCK";
++        public const string AdminPrefix = "ADM";
++
++        // Letters only, on purpose: with digits allowed in the code, "EXMSSC2001" could be code
++        // "SSC2"+001 or "SSC"+2001 and the sequence could not be parsed back out unambiguously.
++        public const int MaxOrganizationCodeLength = 10;
++        public const string FallbackOrganizationCode = "GEN";
++
++        private static readonly Regex ExamRegex = new(@"^EXM(?<code>[A-Z]{1,10})(?<num>\d{3,9})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
++        private static readonly Regex SubjectRegex = new(@"^SUB(?<num>\d{3,9})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
++        private static readonly Regex TestRegex = new(@"^TST(?<num>\d{4,9})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
++        private static readonly Regex MockTestRegex = new(@"^MCK(?<num>\d{4,9})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
++        private static readonly Regex AdminRegex = new(@"^ADM(?<num>\d{4,9})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
++
++        public static string Normalize(string? raw) => (raw ?? string.Empty).Trim().ToUpperInvariant();
++
++        public static bool IsValid(BusinessIdEntityType type, string? businessId) =>
++            TryParse(type, businessId, out _, out _);
++
++        // Splits a Business ID into its counter key ("EXM:SSC", "SUB", ...) and sequence number.
++        public static bool TryParse(BusinessIdEntityType type, string? businessId, out string counterKey, out int number)
++        {
++            counterKey = string.Empty;
++            number = 0;
++            var id = Normalize(businessId);
++            if (id.Length == 0) return false;
++
++            var regex = RegexFor(type);
++            var m = regex.Match(id);
++            if (!m.Success) return false;
++
++            if (!int.TryParse(m.Groups["num"].Value, out number) || number < 1) return false;
++            counterKey = type == BusinessIdEntityType.Exam
++                ? CounterKeyForExam(m.Groups["code"].Value)
++                : PrefixFor(type);
++            return true;
++        }
++
++        public static string PrefixFor(BusinessIdEntityType type) => type switch
++        {
++            BusinessIdEntityType.Exam => ExamPrefix,
++            BusinessIdEntityType.Subject => SubjectPrefix,
++            BusinessIdEntityType.Test => TestPrefix,
++            BusinessIdEntityType.MockTest => MockTestPrefix,
++            BusinessIdEntityType.Admin => AdminPrefix,
++            _ => throw new ArgumentOutOfRangeException(nameof(type))
++        };
++
++        public static int PadWidthFor(BusinessIdEntityType type) => type switch
++        {
++            BusinessIdEntityType.Exam => 3,
++            BusinessIdEntityType.Subject => 3,
++            _ => 4
++        };
++
++        public static string CounterKeyForExam(string organizationCode) => $"EXM:{organizationCode}";
++
++        // Counter key for a non-exam entity type is just its prefix; for an exam it also depends
++        // on the organization code, so SSC and RRB each have their own 001, 002, ... sequence.
++        public static string CounterKeyFor(BusinessIdEntityType type, string? organizationCode = null) =>
++            type == BusinessIdEntityType.Exam
++                ? CounterKeyForExam(organizationCode ?? FallbackOrganizationCode)
++                : PrefixFor(type);
++
++        public static string Format(BusinessIdEntityType type, int number, string? organizationCode = null)
++        {
++            var digits = number.ToString().PadLeft(PadWidthFor(type), '0');
++            return type == BusinessIdEntityType.Exam
++                ? $"{ExamPrefix}{organizationCode ?? FallbackOrganizationCode}{digits}"
++                : $"{PrefixFor(type)}{digits}";
++        }
++
++        public static bool TryParseEntityType(string? raw, out BusinessIdEntityType type)
++        {
++            type = default;
++            var key = (raw ?? string.Empty).Trim().Replace("-", "").Replace("_", "").Replace(" ", "").ToLowerInvariant();
++            switch (key)
++            {
++                case "exam": case "exams": type = BusinessIdEntityType.Exam; return true;
++                case "subject": case "subjects": type = BusinessIdEntityType.Subject; return true;
++                case "test": case "tests": case "practicetest": case "practicetests": type = BusinessIdEntityType.Test; return true;
++                case "mocktest": case "mocktests": case "mock": type = BusinessIdEntityType.MockTest; return true;
++                case "admin": case "admins": type = BusinessIdEntityType.Admin; return true;
++                default: return false;
++            }
++        }
++
++        public static string ExampleFor(BusinessIdEntityType type) => type switch
++        {
++            BusinessIdEntityType.Exam => "EXMSSC001",
++            BusinessIdEntityType.Subject => "SUB001",
++            BusinessIdEntityType.Test => "TST0001",
++            BusinessIdEntityType.MockTest => "MCK0001",
++            BusinessIdEntityType.Admin => "ADM0001",
++            _ => string.Empty
++        };
++
++        private static Regex RegexFor(BusinessIdEntityType type) => type switch
++        {
++            BusinessIdEntityType.Exam => ExamRegex,
++            BusinessIdEntityType.Subject => SubjectRegex,
++            BusinessIdEntityType.Test => TestRegex,
++            BusinessIdEntityType.MockTest => MockTestRegex,
++            BusinessIdEntityType.Admin => AdminRegex,
++            _ => throw new ArgumentOutOfRangeException(nameof(type))
++        };
++    }
++
++    // Decides the organization code that goes into an Exam's Business ID (EXM + THIS + 001).
++    //
++    // Resolution order -- deterministic, never a blind substring of the exam name:
++    //   1. The exam's assigned Organization (Exam.OrganizationId): its leading word(s) looked up in
++    //      the map below.
++    //   2. No Organization (or an unmapped one)? The exam NAME's leading word(s), looked up in the
++    //      same map ("UPSSSC PET" -> UPSSSC -> UP, "Bihar Police Constable" -> BIHAR POLICE -> BP).
++    //   3. Organization name is unmapped but present: its letters only, capped at 10 chars
++    //      (Organization "NABARD" -> NABARD), so an org nobody thought to list still gets a stable,
++    //      readable prefix instead of a generic one.
++    //   4. Nothing recognisable: "GEN".
++    //
++    // Once a Business ID has been issued it is permanent (only a SuperAdmin can change it), so this
++    // map is the ONE place to review before the first backfill runs -- see BUSINESS_IDS_REPORT.md.
++    public static class ExamOrganizationCodes
++    {
++        // Keys are UPPERCASE, single-space-separated words. Longest match wins (2 words, then 1).
++        private static readonly Dictionary<string, string> Map = new(StringComparer.Ordinal)
++        {
++            ["SSC"] = "SSC",
++            ["RRB"] = "RRB",
++            ["RAILWAY"] = "RRB",
++            ["RAILWAYS"] = "RRB",
++            ["RRC"] = "RRC",
++            ["UPSSSC"] = "UP",
++            ["UP POLICE"] = "UP",
++            ["UPPRPB"] = "UPPR",
++            ["UPPSC"] = "UPPSC",
++            ["UPSC"] = "UPSC",
++            ["BPSC"] = "BPSC",
++            ["BSSC"] = "BSSC",
++            ["BIHAR POLICE"] = "BP",
++            ["IBPS"] = "IBPS",
++            ["SBI"] = "SBI",
++            ["RBI"] = "RBI",
++            ["LIC"] = "LIC",
++            ["NABARD"] = "NABARD",
++            ["DELHI POLICE"] = "DP",
++            ["DSSSB"] = "DSSSB",
++            ["MPPSC"] = "MPPSC",
++            ["RPSC"] = "RPSC",
++            ["HSSC"] = "HSSC",
++            ["HPSC"] = "HPSC",
++            ["NTA"] = "NTA",
++            ["CTET"] = "CTET",
++            ["NDA"] = "NDA",
++            ["CDS"] = "CDS",
++        };
++
++        public static string Resolve(string? organizationName, string? examName)
++        {
++            var org = Words(organizationName);
++            var fromOrg = Lookup(org);
++            if (fromOrg != null) return fromOrg;
++
++            var fromExam = Lookup(Words(examName));
++            if (fromExam != null) return fromExam;
++
++            if (org.Count > 0)
++            {
++                var letters = LettersOnly(string.Join("", org));
++                if (letters.Length > 0)
++                    return letters.Length > BusinessIdFormats.MaxOrganizationCodeLength
++                        ? letters[..BusinessIdFormats.MaxOrganizationCodeLength]
++                        : letters;
++            }
++
++            return BusinessIdFormats.FallbackOrganizationCode;
++        }
++
++        // Only the LEADING words are tried (2 then 1): an organization is "SSC" or "SSC - Staff
++        // Selection Commission", and an exam name is "<ORG> <EXAM>" ("SSC CGL") -- the body's name
++        // is always first, never buried in the middle.
++        private static string? Lookup(List<string> words)
++        {
++            if (words.Count == 0) return null;
++            if (words.Count >= 2 && Map.TryGetValue($"{words[0]} {words[1]}", out var two)) return two;
++            return Map.TryGetValue(words[0], out var one) ? one : null;
++        }
++
++        private static List<string> Words(string? raw)
++        {
++            var sb = new StringBuilder();
++            foreach (var ch in (raw ?? string.Empty).ToUpperInvariant())
++                sb.Append(char.IsLetterOrDigit(ch) ? ch : ' ');
++            return sb.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
++        }
++
++        private static string LettersOnly(string s)
++        {
++            var sb = new StringBuilder();
++            foreach (var ch in s) if (ch is >= 'A' and <= 'Z') sb.Append(ch);
++            return sb.ToString();
++        }
++    }
++}
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Services/BusinessIdGenerator.cs work/ScoramAPI/Services/BusinessIdGenerator.cs
+--- orig/ScoramAPI/Services/BusinessIdGenerator.cs	1970-01-01 00:00:00.000000000 +0000
++++ work/ScoramAPI/Services/BusinessIdGenerator.cs	2026-10-01 08:47:59.314231179 +0000
+@@ -0,0 +1,146 @@
++using Microsoft.EntityFrameworkCore;
++using ScoramAPI.Data;
++using ScoramAPI.Models;
++
++namespace ScoramAPI.Services
++{
++    // The one place Business IDs are actually issued. Used by ScoramDbContext.SaveChangesAsync (every
++    // newly inserted Exam/Subject/Test/Mock Test/Admin, wherever in the code base it was created --
++    // controllers, bulk imports, background services) and by the one-time backfill of existing rows.
++    //
++    // HOW IT STAYS SAFE
++    //   * Concurrency: the sequence number comes from a row in BusinessIdCounters that is incremented
++    //     with a single atomic MERGE ... UPDATE inside the SAME transaction as the INSERT that uses
++    //     it. That UPDATE takes an exclusive lock on the counter row that is held until commit, so two
++    //     admins creating "an SSC exam" at the same instant are serialised: A gets 004, B waits, then
++    //     gets 005. There is no SELECT MAX(...)+1 anywhere.
++    //   * Never reused: counters only ever go up (a delete doesn't touch them), AND every issued ID
++    //     is written to BusinessIdRegistry, whose primary key means the same ID can never be inserted
++    //     twice -- even after its record is deleted/merged away, or after a SuperAdmin renumbers it.
++    //   * If the surrounding transaction rolls back, the counter increment and the registry row roll
++    //     back with it, so a failed create doesn't leave a gap-with-a-ghost or a burned number.
++    internal static class BusinessIdGenerator
++    {
++        // Sentinel row in BusinessIdCounters -- present once the one-time backfill of pre-existing
++        // records has finished. Until then new records are left with a null BusinessId (they are
++        // picked up, in creation order, by the backfill) so that pre-existing records still get the
++        // low numbers (EXMSSC001...) in the order they were created rather than being pushed behind
++        // whatever was created between deploy and backfill.
++        public const string BackfillCompleteKey = "__BACKFILL_COMPLETE__";
++
++        // Once true it stays true for the life of the process (the backfill is one-way), which keeps
++        // the hot path (every insert of one of these entities) free of an extra query.
++        private static volatile bool _backfillKnownComplete;
++
++        public static BusinessIdEntityType? TypeOf(object entity) => entity switch
++        {
++            Exam => BusinessIdEntityType.Exam,
++            QuestionBankSubject => BusinessIdEntityType.Subject,
++            PracticeTestTemplate => BusinessIdEntityType.Test,
++            MockTest => BusinessIdEntityType.MockTest,
++            Admin => BusinessIdEntityType.Admin,
++            _ => null
++        };
++
++        public static async Task<bool> IsBackfillCompleteAsync(ScoramDbContext db, CancellationToken ct)
++        {
++            if (_backfillKnownComplete) return true;
++            var done = await db.BusinessIdCounters.AsNoTracking().AnyAsync(c => c.CounterKey == BackfillCompleteKey, ct);
++            if (done) _backfillKnownComplete = true;
++            return done;
++        }
++
++        public static async Task MarkBackfillCompleteAsync(ScoramDbContext db, CancellationToken ct)
++        {
++            await db.Database.ExecuteSqlInterpolatedAsync($@"
++                IF NOT EXISTS (SELECT 1 FROM BusinessIdCounters WHERE CounterKey = {BackfillCompleteKey})
++                    INSERT INTO BusinessIdCounters (CounterKey, LastNumber) VALUES ({BackfillCompleteKey}, 1);", ct);
++        }
++
++        // Only called by the backfill service after its transaction has committed.
++        public static void RememberBackfillComplete() => _backfillKnownComplete = true;
++
++        // Assigns a BusinessId to every entity in the list (in the order given). MUST run inside an
++        // open transaction -- see the class comment for why.
++        public static async Task AssignAsync(ScoramDbContext db, IReadOnlyList<IHasBusinessId> entities, CancellationToken ct)
++        {
++            foreach (var entity in entities)
++            {
++                var type = TypeOf(entity)
++                    ?? throw new InvalidOperationException($"{entity.GetType().Name} does not take a Business ID.");
++
++                string? orgCode = null;
++                if (type == BusinessIdEntityType.Exam)
++                    orgCode = await ResolveExamOrganizationCodeAsync(db, (Exam)entity, ct);
++
++                entity.BusinessId = await IssueAsync(db, type, orgCode, entity.Id, ct);
++            }
++        }
++
++        private static async Task<string> ResolveExamOrganizationCodeAsync(ScoramDbContext db, Exam exam, CancellationToken ct)
++        {
++            var orgName = exam.Organization?.Name;
++            if (orgName == null && exam.OrganizationId.HasValue)
++            {
++                orgName = await db.Organizations.AsNoTracking()
++                    .Where(o => o.Id == exam.OrganizationId.Value)
++                    .Select(o => o.Name)
++                    .FirstOrDefaultAsync(ct);
++            }
++            return ExamOrganizationCodes.Resolve(orgName, exam.Name);
++        }
++
++        // Takes the next free number for this counter, records it in the registry (tracked -- it is
++        // written by the caller's SaveChanges, in the same batch as the entity itself) and returns it.
++        private static async Task<string> IssueAsync(
++            ScoramDbContext db, BusinessIdEntityType type, string? orgCode, Guid entityId, CancellationToken ct)
++        {
++            var counterKey = BusinessIdFormats.CounterKeyFor(type, orgCode);
++
++            // The loop only iterates when the next sequential number is already taken -- which can
++            // only happen if a SuperAdmin manually assigned that exact ID earlier (e.g. moved
++            // EXMSSC001 to EXMSSC010: when the counter reaches 010 it must skip past it). Bounded so a
++            // corrupted counter can never spin forever.
++            for (var attempt = 0; attempt < 5000; attempt++)
++            {
++                var number = await NextNumberAsync(db, counterKey, ct);
++                var candidate = BusinessIdFormats.Format(type, number, orgCode);
++
++                var taken = db.BusinessIdRegistry.Local.Any(r => r.BusinessId == candidate)
++                    || await db.BusinessIdRegistry.AsNoTracking().AnyAsync(r => r.BusinessId == candidate, ct);
++                if (taken) continue;
++
++                db.BusinessIdRegistry.Add(new BusinessIdRegistryEntry
++                {
++                    BusinessId = candidate,
++                    EntityType = type.ToString(),
++                    EntityId = entityId,
++                    IssuedAt = DateTime.UtcNow
++                });
++                return candidate;
++            }
++
++            throw new InvalidOperationException($"Could not find a free Business ID for counter '{counterKey}'.");
++        }
++
++        // Atomic increment-and-read. MERGE ... WITH (HOLDLOCK) makes "create the counter row if this
++        // is the first ID for a brand-new organization code, otherwise add 1" a single race-free
++        // statement (two first-ever SSC-style creates can't both INSERT the same key), and the row
++        // lock it takes is held until the surrounding transaction ends.
++        private static async Task<int> NextNumberAsync(ScoramDbContext db, string counterKey, CancellationToken ct)
++        {
++            if (db.Database.CurrentTransaction == null)
++                throw new InvalidOperationException("Business IDs must be issued inside a transaction.");
++
++            await db.Database.ExecuteSqlInterpolatedAsync($@"
++                MERGE BusinessIdCounters WITH (HOLDLOCK) AS t
++                USING (SELECT {counterKey} AS CounterKey) AS s ON t.CounterKey = s.CounterKey
++                WHEN MATCHED THEN UPDATE SET LastNumber = t.LastNumber + 1
++                WHEN NOT MATCHED THEN INSERT (CounterKey, LastNumber) VALUES (s.CounterKey, 1);", ct);
++
++            return await db.Database
++                .SqlQuery<int>($"SELECT LastNumber AS Value FROM BusinessIdCounters WHERE CounterKey = {counterKey}")
++                .SingleAsync(ct);
++        }
++    }
++}
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Services/BusinessIdService.cs work/ScoramAPI/Services/BusinessIdService.cs
+--- orig/ScoramAPI/Services/BusinessIdService.cs	1970-01-01 00:00:00.000000000 +0000
++++ work/ScoramAPI/Services/BusinessIdService.cs	2026-09-30 07:56:51.687407404 +0000
+@@ -0,0 +1,337 @@
++using Microsoft.Data.SqlClient;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Storage;
++using ScoramAPI.Data;
++using ScoramAPI.DTOs;
++using ScoramAPI.Enums;
++using ScoramAPI.Models;
++
++namespace ScoramAPI.Services
++{
++    // Same idea as SubjectOpException: an "expected" failure carrying the HTTP status and a stable
++    // machine-readable code, so the controller can return { message, code } instead of a raw 500.
++    public class BusinessIdException : Exception
++    {
++        public int Status { get; }
++        public string Code { get; }
++
++        public BusinessIdException(int status, string code, string message) : base(message)
++        {
++            Status = status;
++            Code = code;
++        }
++    }
++
++    public interface IBusinessIdService
++    {
++        /// <summary>SuperAdmin-only. Replaces one record's Business ID after validating format,
++        /// uniqueness and history, inside one transaction together with its audit-log row. The
++        /// record's GUID and every foreign key pointing at it are untouched.</summary>
++        Task<BusinessIdChangeResultDto> ChangeAsync(Guid actorAdminId, BusinessIdChangeRequestDto dto, CancellationToken ct);
++
++        /// <summary>Gives every record that has no Business ID yet its first one, deterministically
++        /// (oldest first, GUID as tie-break). Idempotent. With dryRun=true the whole thing runs inside
++        /// a transaction that is rolled back, so the returned plan is exactly what a real run would do.</summary>
++        Task<BusinessIdBackfillResultDto> BackfillAsync(bool dryRun, CancellationToken ct);
++    }
++
++    public class BusinessIdService : IBusinessIdService
++    {
++        private const string BackfillLockResource = "ScoramBusinessIdBackfill";
++
++        private readonly ScoramDbContext _db;
++        private readonly ILogger<BusinessIdService> _logger;
++
++        public BusinessIdService(ScoramDbContext db, ILogger<BusinessIdService> logger)
++        {
++            _db = db;
++            _logger = logger;
++        }
++
++        // ------------------------------------------------------------------------------
++        // SuperAdmin change
++        // ------------------------------------------------------------------------------
++
++        public async Task<BusinessIdChangeResultDto> ChangeAsync(Guid actorAdminId, BusinessIdChangeRequestDto dto, CancellationToken ct)
++        {
++            if (!BusinessIdFormats.TryParseEntityType(dto.EntityType, out var type))
++                throw new BusinessIdException(400, "INVALID_ENTITY_TYPE", "Unknown entity type. Use exam, subject, test, mocktest or admin.");
++
++            var newId = BusinessIdFormats.Normalize(dto.NewBusinessId);
++            if (!BusinessIdFormats.IsValid(type, newId))
++                throw new BusinessIdException(400, "INVALID_FORMAT",
++                    $"That isn't a valid {Describe(type)} Business ID. Expected a format like {BusinessIdFormats.ExampleFor(type)}.");
++
++            if (!dto.Confirm)
++                throw new BusinessIdException(400, "CONFIRMATION_REQUIRED", "Please confirm this change before continuing.");
++
++            // Authorization is enforced on the controller too ([Authorize(Roles = "SuperAdmin")]); this
++            // re-checks the LIVE account so a token issued before a demotion/deactivation can't be used.
++            var actor = await _db.Admins.AsNoTracking()
++                .Where(a => a.Id == actorAdminId)
++                .Select(a => new { a.Role, a.IsActive, a.BusinessId })
++                .FirstOrDefaultAsync(ct);
++            if (actor == null || !actor.IsActive || actor.Role != AdminRole.SuperAdmin)
++                throw new BusinessIdException(403, "SUPERADMIN_REQUIRED", "Only a SuperAdmin can change a Business ID.");
++
++            if (!await BusinessIdGenerator.IsBackfillCompleteAsync(_db, ct))
++                throw new BusinessIdException(409, "BACKFILL_PENDING",
++                    "Existing records haven't been given Business IDs yet. Run the Business ID backfill first.");
++
++            var (entity, name) = await LoadAsync(type, dto.EntityId, ct);
++            var oldId = entity.BusinessId;
++
++            if (string.Equals(oldId, newId, StringComparison.OrdinalIgnoreCase))
++                throw new BusinessIdException(400, "NO_CHANGE", $"This record already has the Business ID {newId}.");
++
++            // An ID that has EVER been issued can't go to a different record -- even if its original
++            // record was deleted, merged away or renumbered. The one exception: moving a record back to
++            // an ID that was originally its own (undoing a mistaken change).
++            var issued = await _db.BusinessIdRegistry.AsNoTracking().FirstOrDefaultAsync(r => r.BusinessId == newId, ct);
++            if (issued != null && issued.EntityId != entity.Id)
++                throw new BusinessIdException(409, "DUPLICATE_BUSINESS_ID",
++                    $"{newId} is already in use, or was used before by another record, and Business IDs are never reused.");
++            if (await HeldByAnotherAsync(type, newId, entity.Id, ct))
++                throw new BusinessIdException(409, "DUPLICATE_BUSINESS_ID", $"{newId} is already assigned to another record.");
++
++            var actorLabel = actor.BusinessId ?? actorAdminId.ToString();
++            var detail = $"Business ID changed {oldId ?? "(none)"} -> {newId} for {type} \"{Trim(name, 100)}\" (GUID {entity.Id}). Changed by {actorLabel}.";
++
++            await using var tx = await _db.Database.BeginTransactionAsync(ct);
++            try
++            {
++                _db.AllowBusinessIdChange = true;
++                entity.BusinessId = newId;
++
++                if (issued == null)
++                {
++                    _db.BusinessIdRegistry.Add(new BusinessIdRegistryEntry
++                    {
++                        BusinessId = newId,
++                        EntityType = type.ToString(),
++                        EntityId = entity.Id,
++                        IssuedAt = DateTime.UtcNow
++                    });
++                }
++
++                // Written in the same transaction as the change itself: either both exist or neither.
++                _db.AuditLogs.Add(new AuditLog
++                {
++                    AdminId = actorAdminId,
++                    Action = "BusinessId.Change",
++                    TargetType = type.ToString(),
++                    TargetId = entity.Id,
++                    Detail = Trim(detail, 1000)
++                });
++
++                await _db.SaveChangesAsync(ct);
++                await tx.CommitAsync(ct);
++            }
++            catch (DbUpdateException ex) when (IsUniqueViolation(ex))
++            {
++                await tx.RollbackAsync(CancellationToken.None);
++                // Lost a race with someone else taking the same ID between the checks and the write.
++                throw new BusinessIdException(409, "DUPLICATE_BUSINESS_ID", $"{newId} was just taken by another record. Nothing was changed.");
++            }
++            catch
++            {
++                await tx.RollbackAsync(CancellationToken.None);
++                throw;
++            }
++            finally
++            {
++                _db.AllowBusinessIdChange = false;
++            }
++
++            _logger.LogWarning("Business ID changed: {Type} {EntityId} {Old} -> {New} by admin {Actor}", type, entity.Id, oldId, newId, actorAdminId);
++
++            return new BusinessIdChangeResultDto
++            {
++                Message = $"Business ID changed to {newId}.",
++                EntityType = type.ToString(),
++                EntityId = entity.Id,
++                Name = name,
++                OldBusinessId = oldId,
++                NewBusinessId = newId
++            };
++        }
++
++        private async Task<(IHasBusinessId Entity, string Name)> LoadAsync(BusinessIdEntityType type, Guid id, CancellationToken ct)
++        {
++            switch (type)
++            {
++                case BusinessIdEntityType.Exam:
++                {
++                    var e = await _db.Exams.FirstOrDefaultAsync(x => x.Id == id, ct);
++                    if (e != null) return (e, e.Name);
++                    break;
++                }
++                case BusinessIdEntityType.Subject:
++                {
++                    var e = await _db.QuestionBankSubjects.FirstOrDefaultAsync(x => x.Id == id, ct);
++                    if (e != null) return (e, e.Name);
++                    break;
++                }
++                case BusinessIdEntityType.Test:
++                {
++                    var e = await _db.PracticeTestTemplates.FirstOrDefaultAsync(x => x.Id == id, ct);
++                    if (e != null) return (e, e.Title);
++                    break;
++                }
++                case BusinessIdEntityType.MockTest:
++                {
++                    var e = await _db.MockTests.FirstOrDefaultAsync(x => x.Id == id, ct);
++                    if (e != null) return (e, e.Title);
++                    break;
++                }
++                case BusinessIdEntityType.Admin:
++                {
++                    var e = await _db.Admins.FirstOrDefaultAsync(x => x.Id == id, ct);
++                    if (e != null) return (e, e.FullName);
++                    break;
++                }
++            }
++            throw new BusinessIdException(404, "NOT_FOUND", $"That {Describe(type)} could not be found.");
++        }
++
++        private Task<bool> HeldByAnotherAsync(BusinessIdEntityType type, string businessId, Guid exceptId, CancellationToken ct) => type switch
++        {
++            BusinessIdEntityType.Exam => _db.Exams.AnyAsync(x => x.BusinessId == businessId && x.Id != exceptId, ct),
++            BusinessIdEntityType.Subject => _db.QuestionBankSubjects.AnyAsync(x => x.BusinessId == businessId && x.Id != exceptId, ct),
++            BusinessIdEntityType.Test => _db.PracticeTestTemplates.AnyAsync(x => x.BusinessId == businessId && x.Id != exceptId, ct),
++            BusinessIdEntityType.MockTest => _db.MockTests.AnyAsync(x => x.BusinessId == businessId && x.Id != exceptId, ct),
++            BusinessIdEntityType.Admin => _db.Admins.AnyAsync(x => x.BusinessId == businessId && x.Id != exceptId, ct),
++            _ => Task.FromResult(false)
++        };
++
++        // ------------------------------------------------------------------------------
++        // One-time backfill of existing records
++        // ------------------------------------------------------------------------------
++
++        public async Task<BusinessIdBackfillResultDto> BackfillAsync(bool dryRun, CancellationToken ct)
++        {
++            if (_db.Database.CurrentTransaction != null)
++                throw new InvalidOperationException("Backfill must own its transaction.");
++
++            var result = new BusinessIdBackfillResultDto { DryRun = dryRun };
++
++            await using var tx = await _db.Database.BeginTransactionAsync(ct);
++            try
++            {
++                // Two app instances starting at the same moment must not both number the same rows:
++                // an exclusive transaction-scoped application lock makes the second one wait, then find
++                // nothing left to do.
++                await AcquireBackfillLockAsync(ct);
++
++                // Oldest first, GUID as the tie-break: the same data always produces the same IDs, and
++                // "the first exam ever created" really is EXMSSC001. No randomness anywhere.
++                var admins = await _db.Admins.Where(a => a.BusinessId == null)
++                    .OrderBy(a => a.CreatedAt).ThenBy(a => a.Id).ToListAsync(ct);
++                var subjects = await _db.QuestionBankSubjects.Where(s => s.BusinessId == null)
++                    .OrderBy(s => s.CreatedAt).ThenBy(s => s.Id).ToListAsync(ct);
++                var exams = await _db.Exams.Include(e => e.Organization).Where(e => e.BusinessId == null)
++                    .OrderBy(e => e.CreatedAt).ThenBy(e => e.Id).ToListAsync(ct);
++                var tests = await _db.PracticeTestTemplates.Where(t => t.BusinessId == null)
++                    .OrderBy(t => t.CreatedAt).ThenBy(t => t.Id).ToListAsync(ct);
++                var mocks = await _db.MockTests.Where(m => m.BusinessId == null)
++                    .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).ToListAsync(ct);
++
++                await BusinessIdGenerator.AssignAsync(_db, admins, ct);
++                await BusinessIdGenerator.AssignAsync(_db, subjects, ct);
++                await BusinessIdGenerator.AssignAsync(_db, exams, ct);
++                await BusinessIdGenerator.AssignAsync(_db, tests, ct);
++                await BusinessIdGenerator.AssignAsync(_db, mocks, ct);
++
++                await _db.SaveChangesAsync(ct);
++
++                result.Admins = admins.Count;
++                result.Subjects = subjects.Count;
++                result.Exams = exams.Count;
++                result.Tests = tests.Count;
++                result.MockTests = mocks.Count;
++
++                result.Items.AddRange(admins.Select(a => Item(BusinessIdEntityType.Admin, a, a.FullName)));
++                result.Items.AddRange(subjects.Select(s => Item(BusinessIdEntityType.Subject, s, s.Name)));
++                result.Items.AddRange(exams.Select(e => Item(BusinessIdEntityType.Exam, e, e.Name)));
++                result.Items.AddRange(tests.Select(t => Item(BusinessIdEntityType.Test, t, t.Title)));
++                result.Items.AddRange(mocks.Select(m => Item(BusinessIdEntityType.MockTest, m, m.Title)));
++
++                if (dryRun)
++                {
++                    await tx.RollbackAsync(CancellationToken.None);
++                    _db.ChangeTracker.Clear();
++                    result.Completed = await BusinessIdGenerator.IsBackfillCompleteAsync(_db, ct);
++                    return result;
++                }
++
++                await BusinessIdGenerator.MarkBackfillCompleteAsync(_db, ct);
++                await tx.CommitAsync(ct);
++                BusinessIdGenerator.RememberBackfillComplete();
++                result.Completed = true;
++            }
++            catch
++            {
++                await tx.RollbackAsync(CancellationToken.None);
++                _db.ChangeTracker.Clear();
++                throw;
++            }
++
++            _logger.LogInformation(
++                "Business ID backfill complete: {Exams} exams, {Subjects} subjects, {Tests} tests, {MockTests} mock tests, {Admins} admins.",
++                result.Exams, result.Subjects, result.Tests, result.MockTests, result.Admins);
++            return result;
++        }
++
++        private async Task AcquireBackfillLockAsync(CancellationToken ct)
++        {
++            var conn = _db.Database.GetDbConnection();
++            await using var cmd = conn.CreateCommand();
++            cmd.Transaction = _db.Database.CurrentTransaction!.GetDbTransaction();
++            cmd.CommandText =
++                "DECLARE @r int; " +
++                $"EXEC @r = sp_getapplock @Resource = N'{BackfillLockResource}', @LockMode = N'Exclusive', @LockOwner = N'Transaction', @LockTimeout = 60000; " +
++                "SELECT @r;";
++            var rc = Convert.ToInt32(await cmd.ExecuteScalarAsync(ct));
++            if (rc < 0)
++                throw new InvalidOperationException($"Could not acquire the Business ID backfill lock (sp_getapplock returned {rc}).");
++        }
++
++        // Called once at startup (Program.cs). Idempotent: on every later start there is nothing left
++        // to number and it just re-asserts the completion marker. Set BusinessIds:AutoBackfillOnStartup
++        // to false to run it manually (dry run first) via POST /api/admin/business-ids/backfill instead.
++        public static async Task RunStartupBackfillAsync(IServiceProvider services, IConfiguration config, ILogger logger)
++        {
++            if (!config.GetValue("BusinessIds:AutoBackfillOnStartup", true))
++            {
++                logger.LogInformation("Business ID backfill on startup is disabled (BusinessIds:AutoBackfillOnStartup=false).");
++                return;
++            }
++
++            using var scope = services.CreateScope();
++            var svc = scope.ServiceProvider.GetRequiredService<IBusinessIdService>();
++            await svc.BackfillAsync(dryRun: false, CancellationToken.None);
++        }
++
++        // ------------------------------------------------------------------------------
++
++        private static BusinessIdBackfillItemDto Item(BusinessIdEntityType type, IHasBusinessId e, string name) => new()
++        {
++            EntityType = type.ToString(),
++            EntityId = e.Id,
++            Name = name,
++            BusinessId = e.BusinessId ?? string.Empty
++        };
++
++        private static string Describe(BusinessIdEntityType type) => type switch
++        {
++            BusinessIdEntityType.MockTest => "mock test",
++            BusinessIdEntityType.Test => "test",
++            _ => type.ToString().ToLowerInvariant()
++        };
++
++        private static string Trim(string s, int max) => s.Length <= max ? s : s[..(max - 3)] + "...";
++
++        private static bool IsUniqueViolation(DbUpdateException ex) =>
++            ex.InnerException is SqlException sql && (sql.Number == 2601 || sql.Number == 2627);
++    }
++}
+diff -ruN -x bin -x obj -x logs orig/ScoramAPI/Services/SubjectManagementService.cs work/ScoramAPI/Services/SubjectManagementService.cs
+--- orig/ScoramAPI/Services/SubjectManagementService.cs	2026-09-29 22:29:46.000000000 +0000
++++ work/ScoramAPI/Services/SubjectManagementService.cs	2026-09-30 07:58:44.369593344 +0000
+@@ -254,6 +254,7 @@
+         private static SubjectListItemDto ToItem(QuestionBankSubject s, SubjectUsageDto usage) => new()
+         {
+             Id = s.Id,
++            BusinessId = s.BusinessId,
+             Name = s.Name,
+             IsActive = s.IsActive,
+             CreatedAt = s.CreatedAt,
+@@ -279,8 +280,12 @@
+             if (status == "active") filtered = filtered.Where(s => s.IsActive);
+             else if (status == "inactive") filtered = filtered.Where(s => !s.IsActive);
+ 
++            // Search matches the subject name (as before) OR its Business ID ("SUB003", "sub3" won't --
++            // it's a plain contains on the ID text, case-insensitive).
+             var search = NameKey(query.Search);
+-            if (search.Length > 0) filtered = filtered.Where(s => NameKey(s.Name).Contains(search));
++            if (search.Length > 0)
++                filtered = filtered.Where(s => NameKey(s.Name).Contains(search)
++                    || (s.BusinessId != null && s.BusinessId.ToLowerInvariant().Contains(search)));
+ 
+             var filteredList = filtered.ToList();
+             var usage = await ComputeUsageAsync(filteredList, includeDistinct: false, includeAttempts: false, ct);
+@@ -333,7 +338,7 @@
+             var item = ToItem(subject, usage);
+             return new SubjectDetailDto
+             {
+-                Id = item.Id, Name = item.Name, IsActive = item.IsActive, CreatedAt = item.CreatedAt,
++                Id = item.Id, BusinessId = item.BusinessId, Name = item.Name, IsActive = item.IsActive, CreatedAt = item.CreatedAt,
+                 UpdatedAt = item.UpdatedAt, Version = item.Version, Usage = item.Usage, TopicList = topicRows
+             };
+         }
+@@ -602,20 +607,24 @@
+                     if (operation == "merge") s.IsActive = false; // archived, never hard-deleted
+                 }
+ 
+-                var names = string.Join(", ", sources.Select(s => $"'{s.Name}'"));
++                // Business IDs (SUB001) are included so the audit trail reads the same way admins talk
++                // about subjects. They are never modified here: the target keeps its ID, and each
++                // deactivated source keeps its own -- which stays reserved forever (BusinessIdRegistry).
++                var names = string.Join(", ", sources.Select(s => s.BusinessId != null ? $"{s.BusinessId} '{s.Name}'" : $"'{s.Name}'"));
++                var targetLabel = target.BusinessId != null ? $"{target.BusinessId} '{target.Name}'" : $"'{target.Name}'";
+                 var breakdown = $"{moved.QuestionBank:N0} PYQ, {moved.Pyp:N0} PYP, {moved.TopicsMoved + moved.TopicsCombined:N0} topics ({moved.TopicsCombined:N0} combined), {moved.Templates:N0} practice templates";
+ 
+                 if (operation == "merge")
+                 {
+                     Audit(adminId, "Subject.Merge", target.Id,
+-                        $"Merged {names} into '{target.Name}'. Moved {breakdown}. Total {moved.Total:N0}. Sources: {string.Join(", ", sourceIds)}.");
++                        $"Merged {names} into {targetLabel}. Moved {breakdown}. Total {moved.Total:N0}. Sources: {string.Join(", ", sourceIds)}.");
+                     foreach (var s in sources)
+                         Audit(adminId, "Subject.Deactivate", s.Id, $"Deactivated after merge into '{target.Name}' ({target.Id}).");
+                 }
+                 else
+                 {
+                     Audit(adminId, "Subject.Reassign", target.Id,
+-                        $"Reassigned content from {names} to '{target.Name}'. Moved {breakdown}. Total {moved.Total:N0}. Source: {sourceIds[0]}.");
++                        $"Reassigned content from {names} to {targetLabel}. Moved {breakdown}. Total {moved.Total:N0}. Source: {sourceIds[0]}.");
+                 }
+ 
+                 await _db.SaveChangesAsync(ct);

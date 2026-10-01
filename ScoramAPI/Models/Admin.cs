@@ -3,9 +3,14 @@ using ScoramAPI.Enums;
 
 namespace ScoramAPI.Models
 {
-    public class Admin
+    public class Admin : IHasBusinessId
     {
         public Guid Id { get; set; } = Guid.NewGuid();
+
+        // Human-readable Business ID, e.g. "ADM0001". Contains no name/email/phone. See
+        // Models/BusinessIdModels.cs.
+        [MaxLength(30)]
+        public string? BusinessId { get; set; }
 
         [Required, MaxLength(100)]
         public string FullName { get; set; } = string.Empty;

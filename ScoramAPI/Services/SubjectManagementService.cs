@@ -254,6 +254,7 @@ namespace ScoramAPI.Services
         private static SubjectListItemDto ToItem(QuestionBankSubject s, SubjectUsageDto usage) => new()
         {
             Id = s.Id,
+            BusinessId = s.BusinessId,
             Name = s.Name,
             IsActive = s.IsActive,
             CreatedAt = s.CreatedAt,
@@ -279,8 +280,12 @@ namespace ScoramAPI.Services
             if (status == "active") filtered = filtered.Where(s => s.IsActive);
             else if (status == "inactive") filtered = filtered.Where(s => !s.IsActive);
 
+            // Search matches the subject name (as before) OR its Business ID ("SUB003", "sub3" won't --
+            // it's a plain contains on the ID text, case-insensitive).
             var search = NameKey(query.Search);
-            if (search.Length > 0) filtered = filtered.Where(s => NameKey(s.Name).Contains(search));
+            if (search.Length > 0)
+                filtered = filtered.Where(s => NameKey(s.Name).Contains(search)
+                    || (s.BusinessId != null && s.BusinessId.ToLowerInvariant().Contains(search)));
 
             var filteredList = filtered.ToList();
             var usage = await ComputeUsageAsync(filteredList, includeDistinct: false, includeAttempts: false, ct);
@@ -333,7 +338,7 @@ namespace ScoramAPI.Services
             var item = ToItem(subject, usage);
             return new SubjectDetailDto
             {
-                Id = item.Id, Name = item.Name, IsActive = item.IsActive, CreatedAt = item.CreatedAt,
+                Id = item.Id, BusinessId = item.BusinessId, Name = item.Name, IsActive = item.IsActive, CreatedAt = item.CreatedAt,
                 UpdatedAt = item.UpdatedAt, Version = item.Version, Usage = item.Usage, TopicList = topicRows
             };
         }
@@ -602,20 +607,24 @@ namespace ScoramAPI.Services
                     if (operation == "merge") s.IsActive = false; // archived, never hard-deleted
                 }
 
-                var names = string.Join(", ", sources.Select(s => $"'{s.Name}'"));
+                // Business IDs (SUB001) are included so the audit trail reads the same way admins talk
+                // about subjects. They are never modified here: the target keeps its ID, and each
+                // deactivated source keeps its own -- which stays reserved forever (BusinessIdRegistry).
+                var names = string.Join(", ", sources.Select(s => s.BusinessId != null ? $"{s.BusinessId} '{s.Name}'" : $"'{s.Name}'"));
+                var targetLabel = target.BusinessId != null ? $"{target.BusinessId} '{target.Name}'" : $"'{target.Name}'";
                 var breakdown = $"{moved.QuestionBank:N0} PYQ, {moved.Pyp:N0} PYP, {moved.TopicsMoved + moved.TopicsCombined:N0} topics ({moved.TopicsCombined:N0} combined), {moved.Templates:N0} practice templates";
 
                 if (operation == "merge")
                 {
                     Audit(adminId, "Subject.Merge", target.Id,
-                        $"Merged {names} into '{target.Name}'. Moved {breakdown}. Total {moved.Total:N0}. Sources: {string.Join(", ", sourceIds)}.");
+                        $"Merged {names} into {targetLabel}. Moved {breakdown}. Total {moved.Total:N0}. Sources: {string.Join(", ", sourceIds)}.");
                     foreach (var s in sources)
                         Audit(adminId, "Subject.Deactivate", s.Id, $"Deactivated after merge into '{target.Name}' ({target.Id}).");
                 }
                 else
                 {
                     Audit(adminId, "Subject.Reassign", target.Id,
-                        $"Reassigned content from {names} to '{target.Name}'. Moved {breakdown}. Total {moved.Total:N0}. Source: {sourceIds[0]}.");
+                        $"Reassigned content from {names} to {targetLabel}. Moved {breakdown}. Total {moved.Total:N0}. Source: {sourceIds[0]}.");
                 }
 
                 await _db.SaveChangesAsync(ct);

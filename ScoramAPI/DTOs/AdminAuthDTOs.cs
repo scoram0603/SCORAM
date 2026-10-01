@@ -119,6 +119,8 @@ namespace ScoramAPI.DTOs
     public class AdminResponseDto
     {
         public Guid Id { get; set; }
+        // Human-readable Business ID (e.g. "ADM0001") -- contains no personal information.
+        public string? BusinessId { get; set; }
         public string FullName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string Role { get; set; } = string.Empty;

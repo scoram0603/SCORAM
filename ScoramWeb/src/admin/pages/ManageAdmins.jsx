@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Plus, ShieldCheck, Shield, Settings2 } from "lucide-react";
+import { Plus, ShieldCheck, Shield, Settings2, Search } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { listAdmins, createAdmin, setAdminStatus, setAdminPermissions } from "../api/adminAuth";
 import { PageHeader, Card, Button, FormField, TextInput, Select, Alert } from "../components/AdminUI";
+import { BusinessIdBadge, BusinessIdChangeDialog, ChangeBusinessIdButton, matchesSearch } from "../components/BusinessId";
 
 const PERMISSIONS = [
   { key: "UploadPaper", label: "Upload Paper", hint: "Create exams and upload new PYQ papers/questions" },
@@ -26,12 +27,14 @@ const PERMISSIONS = [
 ];
 
 export default function ManageAdmins() {
-  const { token, admin: currentAdmin } = useAdminAuth();
+  const { token, admin: currentAdmin, isSuperAdmin } = useAdminAuth();
   const [admins, setAdmins] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingPermissionsId, setEditingPermissionsId] = useState(null);
+  const [search, setSearch] = useState(""); // matches Business ID (ADM0001), name or email
+  const [changingIdAdmin, setChangingIdAdmin] = useState(null);
 
   useEffect(() => {
     refresh();
@@ -80,15 +83,41 @@ export default function ManageAdmins() {
           </div>
         )}
 
+        <div className="relative mb-4 w-full max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+          <TextInput
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by ID (ADM0001), name or email…"
+            aria-label="Search admins"
+            className="!pl-9"
+          />
+        </div>
+
+        {changingIdAdmin && (
+          <BusinessIdChangeDialog
+            token={token}
+            entityType="admin"
+            entity={changingIdAdmin}
+            name={changingIdAdmin.fullName}
+            onClose={() => setChangingIdAdmin(null)}
+            onChanged={(res) => {
+              setAdmins((prev) => prev.map((x) => (x.id === res.entityId ? { ...x, businessId: res.newBusinessId } : x)));
+              setChangingIdAdmin(null);
+            }}
+          />
+        )}
+
         {isLoading && <p className="text-sm text-ink-400">Loading admins…</p>}
         {loadError && <Alert>{loadError}</Alert>}
 
         <div className="flex flex-col gap-3">
-          {admins.map((a) => (
+          {admins.filter((a) => matchesSearch(search, a.businessId, a.fullName, a.email)).map((a) => (
             <Card key={a.id}>
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2">
+                    <BusinessIdBadge id={a.businessId} />
                     <h3 className="text-sm font-bold text-ink-900">{a.fullName}</h3>
                     <span className="flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-600">
                       {a.role === "SuperAdmin" ? <ShieldCheck className="h-3 w-3" strokeWidth={2.5} /> : <Shield className="h-3 w-3" strokeWidth={2.5} />}
@@ -106,7 +135,8 @@ export default function ManageAdmins() {
                   )}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
+                  <ChangeBusinessIdButton show={isSuperAdmin} onClick={() => setChangingIdAdmin(a)} />
                   {a.role === "Admin" && (
                     <Button variant="secondary" onClick={() => setEditingPermissionsId(editingPermissionsId === a.id ? null : a.id)}>
                       <Settings2 className="h-4 w-4" strokeWidth={2.25} />

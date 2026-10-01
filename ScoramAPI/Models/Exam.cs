@@ -6,9 +6,15 @@ namespace ScoramAPI.Models
     // "choose exam / + New Exam" step of the PYQ upload wizard. Kept as its own table (rather than
     // just a free-text field on Question) so it can carry a logo and be reused as a picklist instead
     // of admins re-typing the same exam name slightly differently every time.
-    public class Exam
+    public class Exam : IHasBusinessId
     {
         public Guid Id { get; set; } = Guid.NewGuid();
+
+        // Human-readable Business ID, e.g. "EXMSSC001" (EXM + organization code + sequence). Assigned
+        // automatically on insert -- see Models/BusinessIdModels.cs. Not editable by normal admins,
+        // never a key. Stays unchanged when the exam is renamed.
+        [MaxLength(30)]
+        public string? BusinessId { get; set; }
 
         [Required, MaxLength(100)]
         public string Name { get; set; } = string.Empty; // "SSC CGL", "SSC CHSL", "Railway NTPC"

@@ -43,6 +43,9 @@ namespace ScoramAPI.DTOs
     public class ExamResponseDto
     {
         public Guid Id { get; set; }
+        // Human-readable Business ID (e.g. "EXMSSC001"). Filled in only by the ADMIN endpoints -- the
+        // public student-facing list leaves it null. Additional to Id, never a replacement for it.
+        public string? BusinessId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string? LogoUrl { get; set; }
         public bool IsBlocked { get; set; }

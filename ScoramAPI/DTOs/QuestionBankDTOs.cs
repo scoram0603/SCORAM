@@ -5,6 +5,8 @@ namespace ScoramAPI.DTOs
     public class QuestionBankSubjectDto
     {
         public Guid Id { get; set; }
+        // Human-readable Business ID (e.g. "SUB001"); filled in by the admin subject list only.
+        public string? BusinessId { get; set; }
         public string Name { get; set; } = string.Empty;
         public bool IsActive { get; set; }
         public int QuestionCount { get; set; }

@@ -47,6 +47,9 @@ namespace ScoramAPI.DTOs
     public class SubjectListItemDto
     {
         public Guid Id { get; set; }
+        // Human-readable Business ID (e.g. "SUB001"). Stays the same across rename / merge / archive /
+        // restore -- it identifies the subject record, not its current name.
+        public string? BusinessId { get; set; }
         public string Name { get; set; } = string.Empty;
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }

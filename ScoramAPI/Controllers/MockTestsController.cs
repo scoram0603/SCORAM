@@ -544,6 +544,7 @@ namespace ScoramAPI.Controllers
             return CreatedAtAction(nameof(GetById), new { id = test.Id }, new MockTestSummaryDto
             {
                 Id = test.Id,
+                BusinessId = test.BusinessId,
                 Title = test.Title,
                 ExamName = test.ExamName,
                 ExamId = test.ExamId,

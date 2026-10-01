@@ -432,7 +432,7 @@ namespace ScoramAPI.Controllers
             if (!includeInactive) q = q.Where(s => s.IsActive);
 
             var subjects = await q.OrderBy(s => s.Name)
-                .Select(s => new QuestionBankSubjectDto { Id = s.Id, Name = s.Name, IsActive = s.IsActive, QuestionCount = s.Questions.Count(x => x.IsActive) })
+                .Select(s => new QuestionBankSubjectDto { Id = s.Id, BusinessId = s.BusinessId, Name = s.Name, IsActive = s.IsActive, QuestionCount = s.Questions.Count(x => x.IsActive) })
                 .ToListAsync();
             return Ok(subjects);
         }

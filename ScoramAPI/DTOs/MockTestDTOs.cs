@@ -54,6 +54,8 @@ namespace ScoramAPI.DTOs
     public class MockTestSummaryDto
     {
         public Guid Id { get; set; }
+        // Human-readable Business ID (e.g. "MCK0001"); filled in by the admin endpoints only.
+        public string? BusinessId { get; set; }
         public string Title { get; set; } = string.Empty;
         public string ExamName { get; set; } = string.Empty;
         public Guid? ExamId { get; set; }

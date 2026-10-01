@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, X, Trash2 } from "lucide-react";
+import { Plus, X, Trash2, Search } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import {
   listPracticeTestTemplatesAdmin, getPracticeTestTemplateAdmin, createPracticeTestTemplate,
@@ -8,21 +8,25 @@ import {
 import { listSubjects, listTopics } from "../api/questionBank";
 import { listExams } from "../api/exams";
 import TestQuestionPicker from "../components/TestQuestionPicker";
+import { BusinessIdBadge, BusinessIdChangeDialog, ChangeBusinessIdButton, useDebouncedValue } from "../components/BusinessId";
 import { PageHeader, Card, Button, FormField, TextInput, Select, Alert, friendlyError } from "../components/AdminUI";
 
 export default function PracticeTestManagement() {
-  const { token } = useAdminAuth();
+  const { token, isSuperAdmin } = useAdminAuth();
   const [mode, setMode] = useState("list");
   const [editingId, setEditingId] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [search, setSearch] = useState(""); // server-side: matches Business ID (TST0001) or title
+  const debouncedSearch = useDebouncedValue(search);
+  const [changingIdTest, setChangingIdTest] = useState(null);
 
-  useEffect(refresh, [token]);
+  useEffect(refresh, [token, debouncedSearch]);
 
   function refresh() {
     setLoading(true);
-    listPracticeTestTemplatesAdmin(token, { page: 1, pageSize: 50 })
+    listPracticeTestTemplatesAdmin(token, { page: 1, pageSize: 50, search: debouncedSearch.trim() })
       .then((res) => setItems(res.items))
       .catch((err) => setError(friendlyError(err)))
       .finally(() => setLoading(false));
@@ -64,6 +68,31 @@ export default function PracticeTestManagement() {
       <div className="p-6">
         {error && <div className="mb-4"><Alert>{error}</Alert></div>}
 
+        <div className="relative mb-4 w-full max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+          <TextInput
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by ID (TST0001) or title…"
+            aria-label="Search tests"
+            className="!pl-9"
+          />
+        </div>
+
+        {changingIdTest && (
+          <BusinessIdChangeDialog
+            token={token}
+            entityType="test"
+            entity={changingIdTest}
+            name={changingIdTest.title}
+            onClose={() => setChangingIdTest(null)}
+            onChanged={(res) => {
+              setItems((prev) => prev.map((x) => (x.id === res.entityId ? { ...x, businessId: res.newBusinessId } : x)));
+              setChangingIdTest(null);
+            }}
+          />
+        )}
+
         <Card className="!p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -82,7 +111,12 @@ export default function PracticeTestManagement() {
                 {!loading && items.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-ink-400">No templates yet.</td></tr>}
                 {items.map((t) => (
                   <tr key={t.id} className="border-t border-primary-50">
-                    <td className="px-3 py-2.5 font-medium text-ink-900">{t.title}</td>
+                    <td className="px-3 py-2.5 font-medium text-ink-900">
+                      <div className="flex flex-col items-start gap-0.5">
+                        <BusinessIdBadge id={t.businessId} />
+                        <span>{t.title}</span>
+                      </div>
+                    </td>
                     <td className="px-3 py-2.5 text-ink-600">{t.isCurated ? "Curated" : "Filter-based"}</td>
                     <td className="px-3 py-2.5 text-ink-600">{t.questionCount}</td>
                     <td className="px-3 py-2.5 text-ink-600">{t.attemptCount}</td>
@@ -94,7 +128,10 @@ export default function PracticeTestManagement() {
                       </Select>
                     </td>
                     <td className="px-3 py-2.5">
-                      <button type="button" onClick={() => { setEditingId(t.id); setMode("form"); }} className="font-semibold text-secondary-500 hover:underline">Edit</button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button type="button" onClick={() => { setEditingId(t.id); setMode("form"); }} className="font-semibold text-secondary-500 hover:underline">Edit</button>
+                        <ChangeBusinessIdButton show={isSuperAdmin} onClick={() => setChangingIdTest(t)} className="!p-1" />
+                      </div>
                     </td>
                   </tr>
                 ))}
