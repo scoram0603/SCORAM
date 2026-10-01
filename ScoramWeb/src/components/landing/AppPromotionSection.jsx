@@ -42,7 +42,7 @@ export default function AppPromotionSection() {
             ))}
           </ul>
           <a
-            href="#top"
+            href="https://github.com/scoram0603/SCORAM/releases/download/scoram/SCORAM.apk"
             className="mt-7 inline-flex items-center gap-2 rounded-xl bg-primary-600 px-6 py-3.5 text-[15px] font-semibold text-white shadow-floating transition-transform hover:-translate-y-0.5 hover:bg-primary-700"
           >
             Get the SCORAM App
