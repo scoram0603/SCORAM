@@ -162,10 +162,14 @@ namespace ScoramAPI.Controllers
 
             if (!dto.ConfirmCreateDespiteDuplicate)
             {
-                var duplicate = await _db.QuestionBankQuestions
+                // Same text alone isn't a duplicate -- all four options must match too.
+                var key = _importService.BuildDuplicateKey(dto.QuestionText, dto.OptionA, dto.OptionB, dto.OptionC, dto.OptionD);
+                var candidates = await _db.QuestionBankQuestions
                     .Where(x => x.IsActive && x.NormalizedQuestionText == normalized)
-                    .Select(x => new { x.Id, x.QuestionText })
-                    .FirstOrDefaultAsync();
+                    .Select(x => new { x.Id, x.QuestionText, x.OptionA, x.OptionB, x.OptionC, x.OptionD })
+                    .ToListAsync();
+                var duplicate = candidates.FirstOrDefault(x =>
+                    _importService.BuildDuplicateKey(x.QuestionText, x.OptionA, x.OptionB, x.OptionC, x.OptionD) == key);
                 if (duplicate != null)
                 {
                     return Conflict(new

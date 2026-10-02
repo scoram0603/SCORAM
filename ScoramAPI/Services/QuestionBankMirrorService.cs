@@ -64,12 +64,27 @@ namespace ScoramAPI.Services
                 // or it was mirrored from a different paper that happens to share it), reuse that row
                 // and just make sure it's tagged for this Exam+Year too, instead of creating a
                 // visible duplicate in Question Bank search results.
-                var existing = await db.QuestionBankQuestions
-                    .FirstOrDefaultAsync(q => q.IsActive && q.NormalizedQuestionText == normalized);
+                // Duplicate = same normalized text AND same four options (a question with identical
+                // text but different options is a different question). Also looks at questions
+                // already ADDED to this DbContext but not yet saved (db.*.Local), which a plain
+                // query can't see.
+                var key = _importService.BuildDuplicateKey(question.QuestionText, question.OptionA, question.OptionB, question.OptionC, question.OptionD);
+                bool SameQuestion(QuestionBankQuestion q) =>
+                    _importService.BuildDuplicateKey(q.QuestionText, q.OptionA, q.OptionB, q.OptionC, q.OptionD) == key;
+
+                var candidates = await db.QuestionBankQuestions
+                    .Where(q => q.IsActive && q.NormalizedQuestionText == normalized)
+                    .OrderBy(q => q.CreatedAt)
+                    .ToListAsync();
+                var existing = candidates
+                    .Concat(db.QuestionBankQuestions.Local.Where(q => q.IsActive && q.NormalizedQuestionText == normalized))
+                    .FirstOrDefault(SameQuestion);
                 if (existing != null)
                 {
-                    var alreadyTagged = await db.QuestionBankExamMappings
-                        .AnyAsync(m => m.QuestionBankQuestionId == existing.Id && m.ExamId == examId && m.Year == year);
+                    var alreadyTagged =
+                        db.QuestionBankExamMappings.Local.Any(m => m.QuestionBankQuestionId == existing.Id && m.ExamId == examId && m.Year == year)
+                        || await db.QuestionBankExamMappings
+                            .AnyAsync(m => m.QuestionBankQuestionId == existing.Id && m.ExamId == examId && m.Year == year);
                     if (!alreadyTagged)
                     {
                         db.QuestionBankExamMappings.Add(new QuestionBankExamMapping

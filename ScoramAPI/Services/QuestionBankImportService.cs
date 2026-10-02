@@ -41,7 +41,20 @@ namespace ScoramAPI.Services
         /// the spec ("Who discovered Harappa?" and "Who discovered Harappa ?" must normalize equal).
         /// Shared by both bulk import and the single-question admin form's duplicate check.</summary>
         string NormalizeForDuplicateCheck(string questionText);
+
+        /// <summary>The identity of a Question Bank question for duplicate detection: normalized
+        /// QuestionText + OptionA + OptionB + OptionC + OptionD (all five must match). Two questions
+        /// with the same text but any different option are NOT duplicates. Used only for comparison --
+        /// never written back over the stored text/options.</summary>
+        string BuildDuplicateKey(string? questionText, string? optionA, string? optionB, string? optionC, string? optionD);
+
+        /// <summary>Loads (once, in chunks -- not per row) the existing active questions whose
+        /// NormalizedQuestionText matches any of the given rows, and returns them keyed by
+        /// BuildDuplicateKey. Oldest question wins if the DB already holds two with the same key.</summary>
+        Task<Dictionary<string, ExistingQuestionRef>> LoadExistingByDuplicateKeyAsync(ScoramDbContext db, IEnumerable<QuestionBankImportRow> rows);
     }
+
+    public record ExistingQuestionRef(Guid Id, string QuestionText);
 
     public class QuestionBankImportService : IQuestionBankImportService
     {
@@ -304,16 +317,9 @@ namespace ScoramAPI.Services
             // Normalize once up front -- "" (blank/omitted) counts as "not specified" for the
             // fallback below, same as null.
             var normalizedDefault = string.IsNullOrWhiteSpace(defaultLanguage) ? null : defaultLanguage.Trim();
-            // Load every existing (NormalizedText -> QuestionId/snippet) pair once, rather than one
-            // query per row -- fine up to a few hundred thousand questions; if the bank grows well
-            // past that, this can become a per-row indexed lookup instead.
-            var existing = await db.QuestionBankQuestions
-                .Where(q => q.IsActive)
-                .Select(q => new { q.Id, q.NormalizedQuestionText, q.QuestionText })
-                .ToListAsync();
-            var existingByNormalized = existing
-                .GroupBy(q => q.NormalizedQuestionText)
-                .ToDictionary(g => g.Key, g => g.First());
+            // Existing questions are matched on the FULL key (normalized text + all four options),
+            // loaded once for the whole batch -- see LoadExistingByDuplicateKeyAsync.
+            var existingByKey = await LoadExistingByDuplicateKeyAsync(db, rows);
 
             // Bulk import must never silently create a new Exam -- an Exam+Year pair can only
             // reference an exam the admin already created via Manage Exam (ExamsController.Create).
@@ -324,7 +330,7 @@ namespace ScoramAPI.Services
             var existingExamNames = await db.Exams.Select(e => e.Name).ToListAsync();
             var existingExamNameSet = new HashSet<string>(existingExamNames, StringComparer.OrdinalIgnoreCase);
 
-            var seenInBatch = new Dictionary<string, int>(); // normalized text -> first RowNumber that used it
+            var seenInBatch = new Dictionary<string, int>(); // duplicate key (text + options) -> first RowNumber that used it
 
             foreach (var row in rows)
             {
@@ -382,22 +388,22 @@ namespace ScoramAPI.Services
 
                 if (!string.IsNullOrWhiteSpace(row.QuestionText))
                 {
-                    var normalized = NormalizeForDuplicateCheck(row.QuestionText);
+                    var key = BuildDuplicateKey(row.QuestionText, row.OptionA, row.OptionB, row.OptionC, row.OptionD);
 
-                    if (existingByNormalized.TryGetValue(normalized, out var existingMatch))
+                    if (existingByKey.TryGetValue(key, out var existingMatch))
                     {
                         row.IsDuplicate = true;
                         row.DuplicateOfQuestionId = existingMatch.Id;
                         row.DuplicateOfQuestionTextSnippet = Snippet(existingMatch.QuestionText);
                     }
-                    else if (seenInBatch.TryGetValue(normalized, out var firstRowNumber))
+                    else if (seenInBatch.TryGetValue(key, out var firstRowNumber))
                     {
                         row.IsDuplicate = true;
                         row.DuplicateOfQuestionTextSnippet = $"Row {firstRowNumber} in this same file";
                     }
                     else
                     {
-                        seenInBatch[normalized] = row.RowNumber;
+                        seenInBatch[key] = row.RowNumber;
                     }
                 }
 
@@ -452,6 +458,26 @@ namespace ScoramAPI.Services
 
         public string NormalizeForDuplicateCheck(string questionText)
         {
+            var result = NormalizeTextCore(questionText);
+
+            // The NormalizedQuestionText column is nvarchar(450) (the max length SQL Server allows
+            // for an indexed nvarchar column, used here for fast duplicate lookups). Long
+            // paragraph-style questions (e.g. "rearrange these sentences...") can exceed that after
+            // normalization, which previously crashed the bulk-import commit with an unhandled
+            // SqlException ("String or binary data would be truncated"). Truncate here instead so
+            // the stored column and its prefilter lookup always agree on the same value.
+            const int MaxNormalizedLength = 450;
+            if (result.Length > MaxNormalizedLength)
+                result = result.Substring(0, MaxNormalizedLength);
+
+            return result;
+        }
+
+        // Same rules as before (lowercase, collapse whitespace, strip basic ASCII punctuation), just
+        // WITHOUT the 450-char truncation -- the duplicate KEY compares the full text, so two long
+        // questions that only differ after char 450 are not wrongly merged.
+        private static string NormalizeTextCore(string? questionText)
+        {
             if (string.IsNullOrWhiteSpace(questionText)) return string.Empty;
 
             var sb = new StringBuilder(questionText.Length);
@@ -478,17 +504,72 @@ namespace ScoramAPI.Services
                 lastWasSpace = false;
             }
 
-            var result = sb.ToString().Trim();
+            return sb.ToString().Trim();
+        }
 
-            // The NormalizedQuestionText column is nvarchar(450) (the max length SQL Server allows
-            // for an indexed nvarchar column, used here for fast duplicate lookups). Long
-            // paragraph-style questions (e.g. "rearrange these sentences...") can exceed that after
-            // normalization, which previously crashed the bulk-import commit with an unhandled
-            // SqlException ("String or binary data would be truncated"). Truncate here instead so
-            // duplicate-check and storage always agree on the same value.
-            const int MaxNormalizedLength = 450;
-            if (result.Length > MaxNormalizedLength)
-                result = result.Substring(0, MaxNormalizedLength);
+        // Options are compared MORE strictly than question text on purpose: only Unicode form
+        // (NFC) + whitespace are normalized. No case folding and no punctuation stripping, because
+        // option values are often meaning-bearing ("3.5" vs "35", "CO" vs "Co", "1,000" vs "1000").
+        // A false "different" just creates one extra question; a false "same" would silently merge
+        // two genuinely different questions -- so this errs on the safe side.
+        private static string NormalizeOptionCore(string? option)
+        {
+            if (string.IsNullOrWhiteSpace(option)) return string.Empty;
+
+            var sb = new StringBuilder(option.Length);
+            var lastWasSpace = false;
+            foreach (var ch in option.Normalize(NormalizationForm.FormC))
+            {
+                if (char.IsWhiteSpace(ch))
+                {
+                    if (!lastWasSpace && sb.Length > 0) sb.Append(' ');
+                    lastWasSpace = true;
+                    continue;
+                }
+                sb.Append(ch);
+                lastWasSpace = false;
+            }
+            return sb.ToString().TrimEnd();
+        }
+
+        private const char KeySeparator = '\u001F'; // unit separator -- can't appear in normal text, so fields can't bleed into each other
+
+        public string BuildDuplicateKey(string? questionText, string? optionA, string? optionB, string? optionC, string? optionD)
+            => string.Join(KeySeparator,
+                NormalizeTextCore(questionText),
+                NormalizeOptionCore(optionA),
+                NormalizeOptionCore(optionB),
+                NormalizeOptionCore(optionC),
+                NormalizeOptionCore(optionD));
+
+        public async Task<Dictionary<string, ExistingQuestionRef>> LoadExistingByDuplicateKeyAsync(ScoramDbContext db, IEnumerable<QuestionBankImportRow> rows)
+        {
+            var result = new Dictionary<string, ExistingQuestionRef>();
+
+            // Prefilter on the already-indexed NormalizedQuestionText column so we only pull
+            // candidate questions (same text), not the whole bank; the full key is then checked
+            // in memory against text + options.
+            var normalizedTexts = rows
+                .Where(r => !string.IsNullOrWhiteSpace(r.QuestionText))
+                .Select(r => NormalizeForDuplicateCheck(r.QuestionText))
+                .Distinct()
+                .ToList();
+
+            foreach (var chunk in normalizedTexts.Chunk(500))
+            {
+                var candidates = await db.QuestionBankQuestions
+                    .AsNoTracking()
+                    .Where(q => q.IsActive && chunk.Contains(q.NormalizedQuestionText))
+                    .OrderBy(q => q.CreatedAt)
+                    .Select(q => new { q.Id, q.QuestionText, q.OptionA, q.OptionB, q.OptionC, q.OptionD })
+                    .ToListAsync();
+
+                foreach (var q in candidates)
+                {
+                    var key = BuildDuplicateKey(q.QuestionText, q.OptionA, q.OptionB, q.OptionC, q.OptionD);
+                    result.TryAdd(key, new ExistingQuestionRef(q.Id, q.QuestionText));
+                }
+            }
 
             return result;
         }
