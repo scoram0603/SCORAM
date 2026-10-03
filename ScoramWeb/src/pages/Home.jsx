@@ -9,6 +9,8 @@ import PopularExams from "../components/home/PopularExams";
 import TodaysChallenge from "../components/home/TodaysChallenge";
 import TopDiscussions from "../components/home/TopDiscussions";
 import RecentTests from "../components/home/RecentTests";
+import MyExamsSection from "../components/home/MyExamsSection";
+import FeedbackButton from "../components/feedback/FeedbackButton";
 import { useAuth } from "../context/AuthContext";
 
 export default function Home() {
@@ -35,6 +37,10 @@ export default function Home() {
 
       <div className="mx-auto w-full lg:max-w-6xl xl:max-w-7xl">
         <HeroBanner />
+        {/* MY EXAMS -- signed-in students see their own exams (and a Choose My Exams prompt when
+            there are none); the public "Popular Exams" strip below is for signed-out visitors only,
+            since listing other exams here would contradict My Exams being a strict scope. */}
+        {isAuthenticated && <MyExamsSection className="px-4 pb-4 sm:px-6 lg:px-0" />}
         <QuickAccess />
         <StreakXPCard />
 
@@ -42,7 +48,7 @@ export default function Home() {
         <div className="lg:grid lg:grid-cols-5 lg:gap-6 lg:px-8">
           <div className="lg:col-span-3">
             <TodaysChallenge />
-            <PopularExams />
+            {!isAuthenticated && <PopularExams />}
           </div>
           <div className="lg:col-span-2">
             <TopDiscussions />
@@ -50,6 +56,9 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Floating Feedback button (signed-in students only). */}
+      {isAuthenticated && <FeedbackButton />}
     </div>
   );
 }

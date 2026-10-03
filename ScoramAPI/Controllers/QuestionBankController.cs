@@ -21,12 +21,14 @@ namespace ScoramAPI.Controllers
         private readonly ScoramDbContext _db;
         private readonly IGamificationService _gamification;
         private readonly ILogger<QuestionBankController> _logger;
+        private readonly IMyExamScopeService _myExams;
 
-        public QuestionBankController(ScoramDbContext db, IGamificationService gamification, ILogger<QuestionBankController> logger)
+        public QuestionBankController(ScoramDbContext db, IGamificationService gamification, ILogger<QuestionBankController> logger, IMyExamScopeService myExams)
         {
             _db = db;
             _gamification = gamification;
             _logger = logger;
+            _myExams = myExams;
         }
 
         // VISIBILITY FIX -- IQuestionBankMirrorService mirrors a PYP question into the Question Bank
@@ -63,6 +65,15 @@ namespace ScoramAPI.Controllers
             var hasKeyword = !string.IsNullOrWhiteSpace(query.Search);
             var term = hasKeyword ? query.Search!.Trim() : null;
 
+            // MY EXAMS -- strict scope for a signed-in student. Every Question Bank question is mapped
+            // to at least one exam (admin create/import both require an Exam + Year), so "belongs to
+            // my exams" is simply "has a mapping to one of them". A client-sent examIds can only
+            // NARROW within the scope; an exam outside it matches nothing. Applied here in the SQL
+            // query so the keyword search, counts and paging all run over in-scope rows only. Not
+            // scoped (anonymous/admin) = the old behavior, examIds filter and all.
+            var scope = await _myExams.GetScopeAsync(User);
+            var scopedExamIds = scope.IsScoped ? scope.Narrow(query.ExamIds).ToList() : null;
+
             // Builds the full filtered+sorted query. useFullTextForKeyword picks a SQL Server CONTAINS
             // predicate (word-form-aware, e.g. "running" also matches "run") vs a plain LIKE '%term%'
             // scan for the free-text Search filter specifically -- every other filter is identical
@@ -96,7 +107,9 @@ namespace ScoramAPI.Controllers
                     filtered = filtered.Where(x => subjectIds.Contains(x.SubjectId));
                 if (query.TopicIds is { Count: > 0 } topicIds)
                     filtered = filtered.Where(x => topicIds.Contains(x.TopicId));
-                if (query.ExamIds is { Count: > 0 } examIds)
+                if (scopedExamIds != null)
+                    filtered = filtered.Where(x => x.ExamMappings.Any(m => scopedExamIds.Contains(m.ExamId)));
+                else if (query.ExamIds is { Count: > 0 } examIds)
                     filtered = filtered.Where(x => x.ExamMappings.Any(m => examIds.Contains(m.ExamId)));
                 if (query.Years is { Count: > 0 } years)
                     filtered = filtered.Where(x => x.ExamMappings.Any(m => years.Contains(m.Year)));
@@ -260,6 +273,12 @@ namespace ScoramAPI.Controllers
         [HttpGet("subjects")]
         public async Task<ActionResult<List<QuestionBankSubjectDto>>> GetSubjects()
         {
+            // MY EXAMS -- a signed-in student's per-subject counts only count questions of their own
+            // exams, and a subject with nothing in scope is dropped rather than shown as a dead end.
+            var scope = await _myExams.GetScopeAsync(User);
+            var scoped = scope.IsScoped;
+            var allowedExamIds = scope.ExamIds.ToList();
+
             var subjects = await _db.QuestionBankSubjects
                 .Where(s => s.IsActive)
                 .OrderBy(s => s.Name)
@@ -274,9 +293,11 @@ namespace ScoramAPI.Controllers
                     // unpublished paper's Draft, which is exactly the leak this fixes.
                     QuestionCount = s.Questions.Count(q => q.IsActive
                         && (!_db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id)
-                            || _db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id && src.Paper!.Status == PaperStatus.Published)))
+                            || _db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id && src.Paper!.Status == PaperStatus.Published))
+                        && (!scoped || q.ExamMappings.Any(m => allowedExamIds.Contains(m.ExamId))))
                 })
                 .ToListAsync();
+            if (scoped) subjects = subjects.Where(s => s.QuestionCount > 0).ToList();
             return Ok(subjects);
         }
 
@@ -284,6 +305,11 @@ namespace ScoramAPI.Controllers
         [HttpGet("topics")]
         public async Task<ActionResult<List<QuestionBankTopicDto>>> GetTopics([FromQuery] Guid? subjectId)
         {
+            // MY EXAMS -- see GetSubjects.
+            var scope = await _myExams.GetScopeAsync(User);
+            var scoped = scope.IsScoped;
+            var allowedExamIds = scope.ExamIds.ToList();
+
             var q = _db.QuestionBankTopics.Where(t => t.IsActive).AsQueryable();
             if (subjectId.HasValue) q = q.Where(t => t.SubjectId == subjectId.Value);
 
@@ -301,9 +327,11 @@ namespace ScoramAPI.Controllers
                     // on why this is inlined here instead of reused directly.
                     QuestionCount = t.Questions.Count(q => q.IsActive
                         && (!_db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id)
-                            || _db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id && src.Paper!.Status == PaperStatus.Published)))
+                            || _db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id && src.Paper!.Status == PaperStatus.Published))
+                        && (!scoped || q.ExamMappings.Any(m => allowedExamIds.Contains(m.ExamId))))
                 })
                 .ToListAsync();
+            if (scoped) topics = topics.Where(t => t.QuestionCount > 0).ToList();
             return Ok(topics);
         }
 
@@ -316,8 +344,17 @@ namespace ScoramAPI.Controllers
             // surface an exam whose only tagged question is still sitting in a Draft paper (see
             // VisibleQuestions' own comment). Reuses the existing Exam picklist (Models/Exam.cs)
             // rather than a second one.
+            //
+            // MY EXAMS -- for a signed-in student this dropdown data is limited to THEIR exams (an
+            // empty My Exams yields an empty list), so unselected exams can never be offered as a
+            // filter option. Not scoped (anonymous/admin) = the full list as before.
+            var scope = await _myExams.GetScopeAsync(User);
+            var scoped = scope.IsScoped;
+            var allowedExamIds = scope.ExamIds.ToList();
+
             var exams = await _db.QuestionBankExamMappings
-                .Where(m => VisibleQuestions().Any(v => v.Id == m.QuestionBankQuestionId))
+                .Where(m => (!scoped || allowedExamIds.Contains(m.ExamId))
+                    && VisibleQuestions().Any(v => v.Id == m.QuestionBankQuestionId))
                 .Select(m => m.Exam)
                 .Where(e => e != null)
                 .Distinct()
@@ -332,8 +369,14 @@ namespace ScoramAPI.Controllers
         {
             // Same visibility rule as GetExams above -- a year should only show up here if it has at
             // least one question a student can actually see.
+            // MY EXAMS -- years of the student's own exams only (see GetExams above).
+            var scope = await _myExams.GetScopeAsync(User);
+            var scoped = scope.IsScoped;
+            var allowedExamIds = scope.ExamIds.ToList();
+
             var years = await _db.QuestionBankExamMappings
-                .Where(m => VisibleQuestions().Any(v => v.Id == m.QuestionBankQuestionId))
+                .Where(m => (!scoped || allowedExamIds.Contains(m.ExamId))
+                    && VisibleQuestions().Any(v => v.Id == m.QuestionBankQuestionId))
                 .Select(m => m.Year)
                 .Distinct()
                 .OrderByDescending(y => y)

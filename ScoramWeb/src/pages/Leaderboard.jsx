@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, Medal } from "lucide-react";
 import { getLeaderboard } from "../api/gamification";
-import { listExams } from "../api/exams";
+import ChooseMyExamsPrompt from "../components/exams/ChooseMyExamsPrompt";
+import { useSelectableExams } from "../hooks/useSelectableExams";
 import { API_BASE_URL } from "../api/client";
 
 const SCOPE_TABS = [
@@ -34,21 +35,17 @@ export default function Leaderboard() {
   const navigate = useNavigate();
   const [scope, setScope] = useState("global");
   const [period, setPeriod] = useState("alltime");
-  const [exams, setExams] = useState([]);
+  // "MY EXAMS" -- the exam-wise leaderboard only offers (and the API only serves) the student's own
+  // exams; Global and Friends aren't exam-specific and are unchanged.
+  const { exams, ready: examsReady, isScoped, isEmpty: noMyExams } = useSelectableExams();
   const [examName, setExamName] = useState("");
   const [data, setData] = useState(null);
   const [status, setStatus] = useState("loading");
 
   useEffect(() => {
-    listExams()
-      .then((res) => {
-        setExams(res);
-        setExamName((prev) => prev || res[0]?.name || "");
-      })
-      .catch(() => {
-        // exam-wise tab just won't have anything to pick from -- Global/Friends still work fine
-      });
-  }, []);
+    // Keep the selected exam valid for the current list (first one by default).
+    setExamName((prev) => (prev && exams.some((e) => e.name === prev) ? prev : exams[0]?.name || ""));
+  }, [exams]);
 
   useEffect(() => {
     if (scope === "exam" && !examName) return; // wait for the exam list above to resolve first
@@ -100,6 +97,12 @@ export default function Leaderboard() {
         ))}
       </div>
 
+      {scope === "exam" && isScoped && examsReady && noMyExams && (
+        <div className="mt-4">
+          <ChooseMyExamsPrompt compact title="No My Exams selected yet." message="Choose your exams to see their leaderboards." />
+        </div>
+      )}
+
       {scope === "exam" && exams.length > 0 && (
         <select
           value={examName}
@@ -131,7 +134,7 @@ export default function Leaderboard() {
         </div>
       )}
 
-      <div className="mt-4">
+      <div className={`mt-4 ${scope === "exam" && noMyExams ? "hidden" : ""}`}>
         {status === "loading" && (
           <div className="flex justify-center py-16 text-ink-400">
             <Loader2 className="h-6 w-6 animate-spin" strokeWidth={2.25} />

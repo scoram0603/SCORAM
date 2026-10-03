@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, UploadCloud, FileStack, ClipboardCheck, ListChecks, Users, MessageSquare, LogOut,
   ShieldCheck, ShieldAlert, Lightbulb, Flag, Library, ChevronsLeft, ChevronsRight, PenLine, Trophy,
-  GraduationCap, Zap, Building2, KeyRound, LockKeyhole, BookOpen,
+  GraduationCap, Zap, Building2, KeyRound, LockKeyhole, BookOpen, MessageSquareText,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import logoMark from "../../assets/scoram-logo-square.png";
@@ -59,6 +59,7 @@ const NAV_GROUPS = [
     section: "Community",
     items: [
       { to: "/admin/chat", label: "Group Chat", icon: MessageSquare },
+      { to: "/admin/feedback", label: "Feedback", icon: MessageSquareText, permission: "ManageFeedback" },
     ],
   },
   {

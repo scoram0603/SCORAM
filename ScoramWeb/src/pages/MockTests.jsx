@@ -4,9 +4,9 @@ import { ArrowLeft, Loader2, Clock, Play, RotateCcw, Users } from "lucide-react"
 import { listMockTests } from "../api/mockTests";
 import BookmarkButton from "../components/questions/BookmarkButton";
 import SearchableSelect from "../components/ui/SearchableSelect";
-import OrganizationExamFilterDropdown from "../components/exams/OrganizationExamFilterDropdown";
-import { useMyExams } from "../context/MyExamsContext";
-import { useDefaultToMyExams } from "../hooks/useDefaultToMyExams";
+import MyExamsFilter from "../components/exams/MyExamsFilter";
+import ChooseMyExamsPrompt from "../components/exams/ChooseMyExamsPrompt";
+import { useMyExamsScope } from "../hooks/useMyExamsScope";
 
 const AVAILABILITY_STYLES = {
   Upcoming: "bg-secondary-50 text-secondary-500",
@@ -26,20 +26,13 @@ export default function MockTests() {
   const [language, setLanguage] = useState([]); // SearchableSelect works with arrays; single value here
   const [examIds, setExamIds] = useState([]);
 
-  // "MY EXAMS" -- this section had no exam filter at all before; it now defaults to the student's
-  // saved exams the first time the page loads (see useDefaultToMyExams's own comment for why this
-  // only ever applies once per visit, and MockTest.ExamId's own comment in
-  // Models/MockTestModels.cs for why this is matched by exam ID rather than the ExamName string
-  // every test already carries).
-  const { examIds: myExamIds, hasLoaded: myExamsLoaded } = useMyExams();
-  useDefaultToMyExams({
-    hasExplicitFilter: false,
-    myExamIds,
-    hasLoaded: myExamsLoaded,
-    applyDefault: setExamIds,
-  });
+  // "MY EXAMS" -- strict scope: for a signed-in student the API only lists Mock Tests of their own
+  // exams, and `examIds` is just an optional narrowing within them ([] = all of My Exams).
+  const scope = useMyExamsScope();
+  const canFetch = scope.ready && !scope.isEmpty;
 
   useEffect(() => {
+    if (!canFetch) return;
     setStatus("loading");
     listMockTests({ page: 1, pageSize: 50, language: language[0], examIds })
       .then((res) => {
@@ -47,7 +40,7 @@ export default function MockTests() {
         setStatus("success");
       })
       .catch(() => setStatus("error"));
-  }, [language, examIds]);
+  }, [language, examIds, canFetch]);
 
   function handleStart(id) {
     navigate(`/tests/instructions/mock/${id}`);
@@ -55,6 +48,18 @@ export default function MockTests() {
 
   function handleBookmarkChange(id, isBookmarked) {
     setTests((prev) => prev.map((t) => (t.id === id ? { ...t, isBookmarked } : t)));
+  }
+
+  // MY EXAMS empty (skipped / cleared): no tests at all, just the prompt.
+  if (scope.isEmpty) {
+    return (
+      <div className="px-4 pb-10 pt-4 sm:px-6 lg:px-8 lg:pt-6">
+        <h1 className="text-xl font-extrabold text-ink-900 sm:text-2xl">Mock Tests</h1>
+        <div className="mt-5">
+          <ChooseMyExamsPrompt title="No My Exams selected yet." message="Choose your exams to see relevant Mock Tests." />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -71,12 +76,7 @@ export default function MockTests() {
         </div>
         <div className="flex flex-wrap gap-3">
           <div className="w-48">
-            <OrganizationExamFilterDropdown
-              label="Exam"
-              placeholder="All exams"
-              selected={examIds}
-              onChange={setExamIds}
-            />
+            <MyExamsFilter label="Exam" selected={examIds} onChange={setExamIds} />
           </div>
           <div className="w-40">
             <SearchableSelect

@@ -23,16 +23,18 @@ namespace ScoramAPI.Controllers
     {
         private readonly ScoramDbContext _db;
         private readonly ITestAttemptService _attemptService;
+        private readonly IMyExamScopeService _myExams;
 
         // No negative marking by default for a Weak Topics Quiz -- meant to be low-pressure,
         // daily-habit practice, unlike a real Paper/Mock attempt. A Daily Quiz (Phase 2) sets its
         // own NegativeMarkingRatio per quiz instead, same as MockTest/Paper do.
         private const decimal DefaultNegativeMarkingRatio = 0m;
 
-        public QuizzesController(ScoramDbContext db, ITestAttemptService attemptService)
+        public QuizzesController(ScoramDbContext db, ITestAttemptService attemptService, IMyExamScopeService myExams)
         {
             _db = db;
             _attemptService = attemptService;
+            _myExams = myExams;
         }
 
         // GET /api/quizzes/weak-topics/preview -- which subjects this student is currently weak in,
@@ -61,18 +63,16 @@ namespace ScoramAPI.Controllers
         {
             var userId = User.GetUserId();
 
-            // "MY EXAMS" -- quietly narrows the question pool to the student's selected exams when
-            // they have any configured (see TestAttemptService.SelectWeakTopicQuestionsAsync for the
-            // fallback behavior when that narrowing would leave nothing to draw from). No visible
-            // filter on this endpoint/the Quizzes page -- Quizzes have no exam concept of their own.
-            var myExamIds = await _db.UserExamPreferences
-                .Where(p => p.UserId == userId)
-                .Select(p => p.ExamId)
-                .ToListAsync();
+            // "MY EXAMS" -- the Weak Topics Quiz draws only from the student's own exams (strict
+            // scope; see TestAttemptService.SelectWeakTopicQuestionsAsync -- there is no longer any
+            // fallback to an unscoped pool). Quizzes themselves have no exam concept (global).
+            var scope = await _myExams.GetScopeAsync(User);
+            if (scope.IsEmpty)
+                return BadRequest(new { message = "Choose your exams in My Exams to get a quiz built around them." });
 
-            var refs = await _attemptService.SelectWeakTopicQuestionsAsync(_db, userId, dto.QuestionCount, myExamIds);
+            var refs = await _attemptService.SelectWeakTopicQuestionsAsync(_db, userId, dto.QuestionCount, scope.IsScoped ? scope.ExamIds : null);
             if (refs.Count == 0)
-                return BadRequest(new { message = "The Question Bank doesn't have any active questions yet -- check back once some are added." });
+                return BadRequest(new { message = "There aren't any questions for your My Exams yet -- check back once some are added." });
 
             var answers = await _attemptService.BuildSnapshotAnswersAsync(_db, refs);
 

@@ -30,11 +30,13 @@ namespace ScoramAPI.Controllers
     {
         private readonly ScoramDbContext _db;
         private readonly ITestAttemptService _attemptService;
+        private readonly IMyExamScopeService _myExams;
 
-        public StudentPapersController(ScoramDbContext db, ITestAttemptService attemptService)
+        public StudentPapersController(ScoramDbContext db, ITestAttemptService attemptService, IMyExamScopeService myExams)
         {
             _db = db;
             _attemptService = attemptService;
+            _myExams = myExams;
         }
 
         // GET /api/papers -- the main student browse/filter grid (spec section 32, "Search and
@@ -54,9 +56,19 @@ namespace ScoramAPI.Controllers
                 .Where(p => p.Status == PaperStatus.Published)
                 .AsQueryable();
 
-            // Filter precedence (spec section 37): a single explicit examId -- what every existing
-            // caller already sends -- always wins over examIds (plural), the new "My Exams" default.
-            if (examId.HasValue) query = query.Where(p => p.ExamId == examId.Value);
+            // MY EXAMS -- strict scope for a signed-in student: only papers of the student's own exams
+            // are ever returned (an empty My Exams returns nothing, never "everything"). An explicit
+            // examId/examIds from the client can only NARROW within that scope -- an exam outside it
+            // matches nothing -- so there is no way to widen back out to other exams. Anonymous
+            // visitors and admins aren't scoped and keep the old behavior (single examId wins over
+            // examIds).
+            var scope = await _myExams.GetScopeAsync(User);
+            if (scope.IsScoped)
+            {
+                var allowedExamIds = (examId.HasValue ? scope.Narrow(examId) : scope.Narrow(examIds)).ToList();
+                query = query.Where(p => allowedExamIds.Contains(p.ExamId));
+            }
+            else if (examId.HasValue) query = query.Where(p => p.ExamId == examId.Value);
             else if (examIds is { Count: > 0 }) query = query.Where(p => examIds.Contains(p.ExamId));
             if (year.HasValue) query = query.Where(p => p.Year == year.Value);
             if (!string.IsNullOrWhiteSpace(tier)) query = query.Where(p => p.Tier == tier);
@@ -127,7 +139,16 @@ namespace ScoramAPI.Controllers
             [FromQuery] Guid? examId, [FromQuery] List<Guid>? examIds, [FromQuery] int? year)
         {
             var query = _db.Papers.Where(p => p.Status == PaperStatus.Published).AsQueryable();
-            if (examId.HasValue) query = query.Where(p => p.ExamId == examId.Value);
+
+            // MY EXAMS -- same strict scope as Browse above, so the Tier/Shift/Date/Language dropdown
+            // options never reveal values that only exist on papers of exams the student hasn't selected.
+            var scope = await _myExams.GetScopeAsync(User);
+            if (scope.IsScoped)
+            {
+                var allowedExamIds = (examId.HasValue ? scope.Narrow(examId) : scope.Narrow(examIds)).ToList();
+                query = query.Where(p => allowedExamIds.Contains(p.ExamId));
+            }
+            else if (examId.HasValue) query = query.Where(p => p.ExamId == examId.Value);
             else if (examIds is { Count: > 0 }) query = query.Where(p => examIds.Contains(p.ExamId));
             if (year.HasValue) query = query.Where(p => p.Year == year.Value);
 
@@ -211,6 +232,10 @@ namespace ScoramAPI.Controllers
         [HttpGet("years")]
         public async Task<ActionResult<List<int>>> GetYears([FromQuery] Guid examId)
         {
+            // MY EXAMS -- an exam outside the student's scope has no years to show.
+            var scope = await _myExams.GetScopeAsync(User);
+            if (!scope.Allows(examId)) return Ok(new List<int>());
+
             var years = await _db.Papers
                 .Where(p => p.ExamId == examId && p.Status == PaperStatus.Published)
                 .Select(p => p.Year)
@@ -225,6 +250,10 @@ namespace ScoramAPI.Controllers
         [HttpGet("languages")]
         public async Task<ActionResult<List<string>>> GetLanguages([FromQuery] Guid examId, [FromQuery] int year)
         {
+            // MY EXAMS -- see GetYears.
+            var scope = await _myExams.GetScopeAsync(User);
+            if (!scope.Allows(examId)) return Ok(new List<string>());
+
             var languages = await _db.Papers
                 .Where(p => p.ExamId == examId && p.Year == year && p.Status == PaperStatus.Published)
                 .Select(p => p.Language)
@@ -243,6 +272,10 @@ namespace ScoramAPI.Controllers
         public async Task<ActionResult<List<PaperResponseDto>>> GetSets(
             [FromQuery] Guid examId, [FromQuery] int year, [FromQuery] PaperLanguage language)
         {
+            // MY EXAMS -- see GetYears.
+            var scope = await _myExams.GetScopeAsync(User);
+            if (!scope.Allows(examId)) return Ok(new List<PaperResponseDto>());
+
             var papers = await _db.Papers.Include(p => p.Exam).Include(p => p.CreatedByAdmin)
                 .Where(p => p.ExamId == examId && p.Year == year && p.Status == PaperStatus.Published && p.Language == language)
                 .Select(p => new { Paper = p, QuestionCount = p.Questions.Count + p.QuestionBankLinks.Count })

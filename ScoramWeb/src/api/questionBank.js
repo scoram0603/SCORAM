@@ -29,7 +29,7 @@ export function searchQuestionBank(
 ) {
   return apiFetch(
     `/api/question-bank/search${toQueryString({ search, subjectIds, topicIds, examIds, years, languages, page, pageSize })}`,
-    opts
+    { ...opts, optionalAuth: true } // sends the student token so the API can apply My Exams
   );
 }
 
@@ -40,20 +40,20 @@ export function getQuestionBankQuestion(id) {
 
 // GET /api/question-bank/subjects -- active subjects only, for the filter dropdown
 export function getQuestionBankSubjects() {
-  return apiFetch("/api/question-bank/subjects");
+  return apiFetch("/api/question-bank/subjects", { optionalAuth: true });
 }
 
 // GET /api/question-bank/topics?subjectId=... -- Topic dropdown depends on the chosen Subject
 export function getQuestionBankTopics(subjectId) {
-  return apiFetch(`/api/question-bank/topics${toQueryString({ subjectId })}`);
+  return apiFetch(`/api/question-bank/topics${toQueryString({ subjectId })}`, { optionalAuth: true });
 }
 
 // GET /api/question-bank/exams -- only exams actually used in the Question Bank
 export function getQuestionBankExams() {
-  return apiFetch("/api/question-bank/exams");
+  return apiFetch("/api/question-bank/exams", { optionalAuth: true });
 }
 
 // GET /api/question-bank/years
 export function getQuestionBankYears() {
-  return apiFetch("/api/question-bank/years");
+  return apiFetch("/api/question-bank/years", { optionalAuth: true });
 }

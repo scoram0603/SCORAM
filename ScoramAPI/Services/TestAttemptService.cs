@@ -30,9 +30,14 @@ namespace ScoramAPI.Services
         /// in their last few Practice attempts when the pool is large enough to do so (spec: "avoid
         /// unnecessary repetition... prefer other eligible questions when enough questions are
         /// available"). Returns fewer than `count` if the pool genuinely doesn't have enough.</summary>
+        /// <remarks>"MY EXAMS" -- scopedExamIds, when NOT null, is the signed-in student's strict exam
+        /// scope: the pool is limited to questions mapped to one of those exams (an empty collection
+        /// therefore yields an empty pool, never "everything"), on top of any explicit examId. Null
+        /// (the default) means unscoped, exactly the old behavior.</remarks>
         Task<List<QuestionRef>> SelectPracticeQuestionsAsync(
             ScoramDbContext db, Guid userId, Guid? subjectId, Guid? topicId, Guid? examId,
-            int? yearFrom, int? yearTo, DifficultyLevel? difficulty, int count, PaperLanguage? language = null);
+            int? yearFrom, int? yearTo, DifficultyLevel? difficulty, int count, PaperLanguage? language = null,
+            IReadOnlyCollection<Guid>? scopedExamIds = null);
 
         /// <summary>Ranks the subjects behind a student's own graded, wrong-answer-containing history
         /// (across every TestKind, most recent first) from weakest accuracy to strongest, ignoring any
@@ -46,11 +51,12 @@ namespace ScoramAPI.Services
         /// signal yet, so a brand-new student still gets a quiz instead of an error.</summary>
         /// <summary>"MY EXAMS" -- examIds optionally narrows the eligible pool to the student's
         /// selected exams (Question Bank ExamMappings) before the weak-subject filtering below,
-        /// same OR-match as QuestionBankController.Search's own examIds. Deliberately quiet/no
-        /// visible filter on the Quizzes page -- Quizzes have no exam concept of their own (see
-        /// Models/QuizModels.cs), this only shapes which questions the daily-habit Weak Topics Quiz
-        /// draws from. Null/empty (the default) means "no exam narrowing", exactly today's
-        /// behavior -- so any other caller of this method is unaffected.</summary>
+        /// same OR-match as QuestionBankController.Search's own examIds. Quizzes have no exam concept
+        /// of their own (see Models/QuizModels.cs); this only shapes which questions the
+        /// daily-habit Weak Topics Quiz draws from. NOT null = the student's STRICT My Exams scope
+        /// (an empty collection yields no questions, and there is deliberately NO fallback to an
+        /// unscoped pool -- that would leak other exams' questions). Null (the default) = no exam
+        /// narrowing at all, so any other caller of this method is unaffected.</summary>
         Task<List<QuestionRef>> SelectWeakTopicQuestionsAsync(
             ScoramDbContext db, Guid userId, int count, IReadOnlyCollection<Guid>? examIds = null);
     }
@@ -136,7 +142,8 @@ namespace ScoramAPI.Services
 
         public async Task<List<QuestionRef>> SelectPracticeQuestionsAsync(
             ScoramDbContext db, Guid userId, Guid? subjectId, Guid? topicId, Guid? examId,
-            int? yearFrom, int? yearTo, DifficultyLevel? difficulty, int count, PaperLanguage? language = null)
+            int? yearFrom, int? yearTo, DifficultyLevel? difficulty, int count, PaperLanguage? language = null,
+            IReadOnlyCollection<Guid>? scopedExamIds = null)
         {
             // Question Bank is the pool for Practice Tests (spec's own architecture diagram: Question
             // Bank -> Practice Tests) -- legacy PYQ Papers aren't included here, since those questions
@@ -147,6 +154,8 @@ namespace ScoramAPI.Services
             if (topicId.HasValue) pool = pool.Where(q => q.TopicId == topicId);
             if (difficulty.HasValue) pool = pool.Where(q => q.DifficultyLevel == difficulty);
             if (examId.HasValue) pool = pool.Where(q => q.ExamMappings.Any(m => m.ExamId == examId));
+            // MY EXAMS -- strict scope (see the interface remarks above).
+            if (scopedExamIds != null) pool = pool.Where(q => q.ExamMappings.Any(m => scopedExamIds.Contains(m.ExamId)));
             if (yearFrom.HasValue) pool = pool.Where(q => q.ExamMappings.Any(m => m.Year >= yearFrom));
             if (yearTo.HasValue) pool = pool.Where(q => q.ExamMappings.Any(m => m.Year <= yearTo));
             // A question with no medium tagged (Language == null) always stays eligible regardless of
@@ -215,7 +224,9 @@ namespace ScoramAPI.Services
         {
             var weakSubjects = await GetWeakSubjectsAsync(db, userId);
             var targetSubjects = weakSubjects.Take(WeakSubjectsPerQuiz).Select(s => s.Subject).ToHashSet();
-            var hasExamScope = examIds is { Count: > 0 };
+            // NOT null = the student's strict My Exams scope, even when that scope is empty (then the
+            // pool is empty -- see the interface remarks).
+            var hasExamScope = examIds != null;
 
             var pool = db.QuestionBankQuestions.Where(q => q.IsActive).Include(q => q.Subject).AsQueryable();
             if (hasExamScope)
@@ -227,9 +238,8 @@ namespace ScoramAPI.Services
 
             // No weak-subject signal yet (brand-new student, or the subject names above genuinely
             // matched nothing) -- fall back to a general mixed pool instead of a dead end, same idea
-            // as an ad-hoc Practice Test generated with no filters at all. Still respects exam
-            // scoping here -- "MY EXAMS" should narrow which questions come up, not silently stop
-            // applying the moment the weak-subject signal runs out.
+            // as an ad-hoc Practice Test generated with no filters at all. Still respects the My
+            // Exams scope here -- it must keep applying even once the weak-subject signal runs out.
             if (eligibleIds.Count == 0)
             {
                 var fallbackPool = db.QuestionBankQuestions.Where(q => q.IsActive).AsQueryable();
@@ -237,11 +247,9 @@ namespace ScoramAPI.Services
                     fallbackPool = fallbackPool.Where(q => q.ExamMappings.Any(m => examIds!.Contains(m.ExamId)));
                 eligibleIds = await fallbackPool.Select(q => q.Id).ToListAsync();
             }
-            // Exam scoping alone produced nothing (e.g. a newly added exam with no Question Bank
-            // content yet) -- fall back further to the fully unscoped pool rather than leave the
-            // student with no quiz at all. Quiet scoping should never make the feature stop working.
-            if (eligibleIds.Count == 0 && hasExamScope)
-                eligibleIds = await db.QuestionBankQuestions.Where(q => q.IsActive).Select(q => q.Id).ToListAsync();
+            // REMOVED: the old "scoping produced nothing -> fall back to the fully unscoped pool". My
+            // Exams is a strict scope now, so that fallback would hand a student questions from exams
+            // they never selected. No in-scope questions simply means no quiz (the caller explains why).
             if (eligibleIds.Count == 0) return new List<QuestionRef>();
 
             var recentlySeenIds = await db.StudentAnswers

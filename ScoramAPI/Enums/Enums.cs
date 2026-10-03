@@ -212,7 +212,11 @@ namespace ScoramAPI.Enums
         // automatically get to merge/reassign/delete master data, which rewrites every piece of
         // content tagged with it in one go. Stored as a string (see AdminPermissionGrant), so
         // adding a value needs no migration.
-        ManageSubjects
+        ManageSubjects,
+        // User Feedback (admin > Feedback): view the feedback students submit from the floating
+        // feedback button, and move it through New -> In Review -> Resolved/Rejected. Separate from
+        // every moderation permission -- it's product feedback, not content moderation.
+        ManageFeedback
     }
 
     // Deliberately just these two for now, per product decision -- not the free-text Language field
@@ -330,5 +334,33 @@ namespace ScoramAPI.Enums
         PyqPdf,
         ExamPdf,
         ProfileImage
+    }
+
+    // USER FEEDBACK -- what the student picked in the feedback form.
+    public enum FeedbackType
+    {
+        Suggestion,
+        Improvement,
+        BugReport,
+        ContentIssue,
+        UiUx,
+        Other
+    }
+
+    // Admin triage workflow for a piece of feedback. New is the default on submit.
+    public enum FeedbackStatus
+    {
+        New,
+        InReview,
+        Resolved,
+        Rejected
+    }
+
+    // Which client the feedback was sent from.
+    public enum FeedbackPlatform
+    {
+        Web,
+        Flutter,
+        Other
     }
 }

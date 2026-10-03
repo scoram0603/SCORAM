@@ -3,16 +3,19 @@ import * as myExamsApi from "../api/myExams";
 import { useAuth } from "./AuthContext";
 
 // "MY EXAMS" -- loads a student's saved exam preferences once per session (mirrors AuthContext's
-// own getMe() self-heal effect below) and exposes them everywhere a page needs a default exam
-// context (see AppLayout.jsx for the onboarding redirect, and QuestionBankSearch/PreviousYearPapers/
-// MockTests/PracticeTests for how each section applies `examIds` as its *default* filter -- an
-// explicit filter the student picks on that page always overrides it, never the other way around).
+// own getMe() self-heal effect below) and exposes them everywhere. My Exams is a STRICT content
+// scope, not a default filter: the API itself only returns content of these exams (see ScoramAPI
+// MyExamScopeService), and exam-specific screens use useMyExamsScope() to wait for it, show a
+// "Choose My Exams" prompt when it is empty, and only ever offer these exams as filter options.
+// See AppLayout.jsx for the first-time onboarding redirect.
 const MyExamsContext = createContext(null);
 
-// "Skip for now" on the onboarding screen doesn't set any exams -- it just needs to stop AppLayout
-// from bouncing the student straight back to /select-exams. Scoped to sessionStorage (not
-// localStorage) per user id: it clears itself when the tab/browser closes, so a student who skips
-// gets asked again next time they open the app, rather than never being asked again. Keyed by
+// "Skip for Now" on the onboarding screen doesn't set any exams (My Exams stays EMPTY -- it never
+// silently selects everything) -- it just needs to stop AppLayout from bouncing the student straight
+// back to /select-exams. Saving an empty list from the My Exams screen counts as the same deliberate
+// choice. Scoped to sessionStorage (not localStorage) per user id: it clears itself when the
+// tab/browser closes, so a student who skips gets a gentle ask again next time, rather than never
+// being asked again; in the meantime every exam screen shows a "Choose My Exams" prompt. Keyed by
 // userId so it can never leak into a different student's session on a shared device.
 const SKIP_KEY_PREFIX = "scoram_skip_exams_";
 
@@ -35,6 +38,10 @@ export function MyExamsProvider({ children }) {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [skipped, setSkipped] = useState(false);
+  // True when the last load FAILED. A failed load must not look like "no exams selected" (that would
+  // show a wrong "Choose My Exams" prompt) -- screens then just fetch normally; the API scopes by
+  // the saved selection server-side either way.
+  const [loadError, setLoadError] = useState(false);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -43,6 +50,7 @@ export function MyExamsProvider({ children }) {
       setExams(res.exams || []);
       setPrimaryExamId(res.primaryExamId || null);
       setHasLoaded(true);
+      setLoadError(false);
       return res;
     } finally {
       setIsLoading(false);
@@ -51,9 +59,9 @@ export function MyExamsProvider({ children }) {
 
   useEffect(() => {
     if (isAuthenticated) {
-      refresh().catch(() => setHasLoaded(true)); // a failed load still counts as "checked" -- don't
-      // trap a student in a redirect loop to onboarding just because one request hiccuped; the
-      // section pages simply won't have a My Exams default for the rest of this load.
+      refresh().catch(() => { setLoadError(true); setHasLoaded(true); }); // a failed load still counts as
+      // "checked" -- don't trap a student in a redirect loop to onboarding just because one request
+      // hiccuped (loadError keeps screens from treating it as an empty My Exams).
       setSkipped(readSkipped(user?.userId));
     } else {
       // Logged out (or a different student just logged in) -- clear immediately so the previous
@@ -62,6 +70,7 @@ export function MyExamsProvider({ children }) {
       setExams([]);
       setPrimaryExamId(null);
       setHasLoaded(false);
+      setLoadError(false);
       setSkipped(false);
     }
   }, [isAuthenticated, user?.userId, refresh]);
@@ -82,10 +91,16 @@ export function MyExamsProvider({ children }) {
     setExams(res.exams || []);
     setPrimaryExamId(res.primaryExamId || null);
     setHasLoaded(true);
-    setSkipped(false); // exams are configured now -- the skip flag is moot, clean it up
+    setLoadError(false);
+    // Exams chosen -> the skip flag is moot, clean it up. Saved EMPTY (the student removed every
+    // exam on purpose) -> treat it as a deliberate "none for now", so AppLayout doesn't bounce them
+    // into onboarding; screens show the Choose My Exams prompt instead.
+    const nowEmpty = (res.exams || []).length === 0;
+    setSkipped(nowEmpty);
     if (user?.userId) {
       try {
-        sessionStorage.removeItem(SKIP_KEY_PREFIX + user.userId);
+        if (nowEmpty) sessionStorage.setItem(SKIP_KEY_PREFIX + user.userId, "1");
+        else sessionStorage.removeItem(SKIP_KEY_PREFIX + user.userId);
       } catch {
         // ignore
       }
@@ -117,11 +132,11 @@ export function MyExamsProvider({ children }) {
 
   const value = useMemo(
     () => ({
-      exams, examIds, primaryExamId, hasLoaded, hasConfigured, isLoading, skipped,
+      exams, examIds, primaryExamId, hasLoaded, hasConfigured, isLoading, skipped, loadError,
       refresh, save, addExam, removeExam, setPrimary, skipOnboarding,
     }),
     [
-      exams, examIds, primaryExamId, hasLoaded, hasConfigured, isLoading, skipped,
+      exams, examIds, primaryExamId, hasLoaded, hasConfigured, isLoading, skipped, loadError,
       refresh, save, addExam, removeExam, setPrimary, skipOnboarding,
     ]
   );

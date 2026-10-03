@@ -6,10 +6,10 @@ import {
 } from "lucide-react";
 import { browsePapers, getPaperFilterOptions, getPaperYears, getMyPaperAttempts } from "../api/papers";
 import BookmarkButton from "../components/questions/BookmarkButton";
-import OrganizationExamFilterDropdown from "../components/exams/OrganizationExamFilterDropdown";
+import MyExamsFilter from "../components/exams/MyExamsFilter";
+import ChooseMyExamsPrompt from "../components/exams/ChooseMyExamsPrompt";
 import { useAuth } from "../context/AuthContext";
-import { useMyExams } from "../context/MyExamsContext";
-import { useDefaultToMyExams } from "../hooks/useDefaultToMyExams";
+import { useMyExamsScope } from "../hooks/useMyExamsScope";
 import { timeAgo, formatCount } from "../utils/format";
 
 // MASTER PROMPT -- Previous Year Paper Practice: replaces the old "PYQ Bank" nav destination.
@@ -35,11 +35,9 @@ export default function PreviousYearPapers() {
   const [searchParams] = useSearchParams();
   const presetExamId = searchParams.get("examId") || "";
 
-  // "MY EXAMS" -- upgraded from a single examId to a multi-select examIds array (spec section 37:
-  // this section should default to ALL of a student's selected exams at once, not just one) -- see
-  // StudentPapersController.Browse/GetFilterOptions, which now accept examIds alongside the
-  // original single examId. A deep link with ?examId=X (e.g. from PopularExams) still seeds this
-  // as a one-exam explicit selection.
+  // "MY EXAMS" -- for a signed-in student the API only returns papers of their own exams (strict
+  // scope), so `examIds` here is just an optional NARROWING within My Exams ([] = all of them).
+  // A deep link with ?examId=X seeds it; an exam outside My Exams is dropped by the effect below.
   const [examIds, setExamIds] = useState(presetExamId ? [presetExamId] : []);
   const [year, setYear] = useState("");
   const [tier, setTier] = useState("");
@@ -67,16 +65,24 @@ export default function PreviousYearPapers() {
 
   const hasActiveFilters = examIds.length > 0 || year || tier || examDate || shift || paperLabel || language || search;
 
-  // "MY EXAMS" -- defaults the Exam filter to the student's saved exams the first time this page is
-  // opened with no explicit exam already selected (i.e. no ?examId= deep link) -- see
-  // useDefaultToMyExams's own comment for why this only ever applies once per visit.
-  const { examIds: myExamIds, hasLoaded: myExamsLoaded } = useMyExams();
-  useDefaultToMyExams({
-    hasExplicitFilter: Boolean(presetExamId),
-    myExamIds,
-    hasLoaded: myExamsLoaded,
-    applyDefault: setExamIds,
-  });
+  // "MY EXAMS" -- strict scope: wait for it before fetching, show the prompt when it's empty.
+  const scope = useMyExamsScope();
+  const canFetch = scope.ready && !scope.isEmpty;
+
+  // Drop any narrowing exam (e.g. from a stale ?examId= link) that isn't one of My Exams.
+  useEffect(() => {
+    if (!scope.isScoped || !scope.ready || scope.isEmpty) return;
+    setExamIds((prev) => {
+      const allowed = prev.filter((id) => scope.examIds.includes(id));
+      return allowed.length === prev.length ? prev : allowed;
+    });
+  }, [scope.isScoped, scope.ready, scope.isEmpty, scope.examIds]);
+
+  // The single exam whose Year list applies: the one picked, or the student's only exam.
+  const effectiveExamId =
+    examIds.length === 1 ? examIds[0]
+      : examIds.length === 0 && scope.isScoped && scope.examIds.length === 1 ? scope.examIds[0]
+        : null;
 
   // ---------- Reference data ----------
   // GetYears is still single-exam only (see StudentPapersController -- it's part of the older
@@ -84,15 +90,17 @@ export default function PreviousYearPapers() {
   // selected there's no single "years" list to show, so the Year refinement filter simply clears
   // and disables itself rather than showing years for only one of several selected exams.
   useEffect(() => {
-    if (examIds.length !== 1) { setYears([]); setYear(""); return; }
-    getPaperYears(examIds[0]).then(setYears).catch(() => setYears([]));
-  }, [examIds]);
+    if (!canFetch) return;
+    if (!effectiveExamId) { setYears([]); setYear(""); return; }
+    getPaperYears(effectiveExamId).then(setYears).catch(() => setYears([]));
+  }, [effectiveExamId, canFetch]);
 
   useEffect(() => {
+    if (!canFetch) return;
     getPaperFilterOptions({ examIds, year: year || undefined })
       .then(setFilterOptions)
       .catch(() => setFilterOptions({ tiers: [], examDates: [], shifts: [], paperLabels: [], languages: [] }));
-  }, [examIds, year]);
+  }, [examIds, year, canFetch]);
 
   // Debounce the free-text search box -- everything else re-fetches immediately on change.
   useEffect(() => {
@@ -120,8 +128,9 @@ export default function PreviousYearPapers() {
   }, [examIds, year, tier, examDate, shift, paperLabel, language, search, sort]);
 
   useEffect(() => {
+    if (!canFetch) return;
     fetchPapers(1, false);
-  }, [fetchPapers]);
+  }, [fetchPapers, canFetch]);
 
   function handleClearFilters() {
     setExamIds([]); setYear(""); setTier(""); setExamDate(""); setShift(""); setPaperLabel(""); setLanguage("");
@@ -138,6 +147,18 @@ export default function PreviousYearPapers() {
 
   function handleBookmarkChange(paperId, isBookmarked) {
     setPapers((prev) => prev.map((p) => (p.id === paperId ? { ...p, isBookmarked } : p)));
+  }
+
+  // MY EXAMS empty (skipped / cleared): no papers at all, just the prompt -- never every exam's papers.
+  if (scope.isEmpty) {
+    return (
+      <div className="px-4 pb-10 pt-4 sm:px-6 lg:px-8 lg:pt-6">
+        <h1 className="text-xl font-extrabold text-ink-900 sm:text-2xl">Previous Year Paper Practice</h1>
+        <div className="mt-5">
+          <ChooseMyExamsPrompt title="No My Exams selected yet." message="Choose your exams to see relevant PYP papers." />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -161,9 +182,8 @@ export default function PreviousYearPapers() {
       {/* ---------- Filters ---------- */}
       <div className="mt-5 rounded-xl2 border border-primary-100 bg-white p-4 shadow-card">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          <OrganizationExamFilterDropdown
+          <MyExamsFilter
             label="Exam"
-            placeholder="All exams"
             selected={examIds}
             onChange={(v) => { setExamIds(v); setYear(""); }}
           />
@@ -172,7 +192,7 @@ export default function PreviousYearPapers() {
             value={year}
             onChange={setYear}
             placeholder="All years"
-            disabled={examIds.length !== 1}
+            disabled={!effectiveExamId}
           >
             {years.map((y) => <option key={y} value={y}>{y}</option>)}
           </Dropdown>

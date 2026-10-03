@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, ChevronDown, Sparkles, Play } from "lucide-react";
 import { getQuestionBankSubjects, getQuestionBankTopics, getQuestionBankExams } from "../api/questionBank";
 import { listPracticeTestTemplates, DIFFICULTY_OPTIONS, LANGUAGE_OPTIONS } from "../api/practiceTests";
-import { useMyExams } from "../context/MyExamsContext";
-import { useDefaultToMyExams } from "../hooks/useDefaultToMyExams";
+import ChooseMyExamsPrompt from "../components/exams/ChooseMyExamsPrompt";
+import { useMyExamsScope } from "../hooks/useMyExamsScope";
 
 const QUESTION_COUNT_OPTIONS = [10, 20, 30, 50];
 const DURATION_OPTIONS = [10, 20, 30, 45, 60];
@@ -26,28 +26,22 @@ export default function PracticeTests() {
   const [error, setError] = useState(null);
 
   const [templates, setTemplates] = useState(null);
-  const [templateExamIds, setTemplateExamIds] = useState([]); // "My Exams" default for Curated Practice Tests below (PracticeTestsController.ListTemplates) -- separate from examId above, which scopes one ad-hoc generated test to a single exam by design and is left untouched
   const [startingTemplateId, setStartingTemplateId] = useState(null);
 
-  // "MY EXAMS" -- see templateExamIds' own comment just above.
-  const { examIds: myExamIds, hasLoaded: myExamsLoaded } = useMyExams();
-  useDefaultToMyExams({
-    hasExplicitFilter: false,
-    myExamIds,
-    hasLoaded: myExamsLoaded,
-    applyDefault: setTemplateExamIds,
-  });
+  // "MY EXAMS" -- strict scope. For a signed-in student the API itself limits the Exam dropdown data
+  // (getQuestionBankExams), the Subject/Topic counts, the Curated Practice Tests and the questions a
+  // generated test draws from to their own exams. Wait for the scope; show the prompt when empty.
+  const scope = useMyExamsScope();
+  const canFetch = scope.ready && !scope.isEmpty;
 
   useEffect(() => {
+    if (!canFetch) return;
     getQuestionBankSubjects().then(setSubjects).catch(() => {});
     getQuestionBankExams().then(setExams).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    listPracticeTestTemplates({ examIds: templateExamIds, page: 1, pageSize: 10 })
+    listPracticeTestTemplates({ page: 1, pageSize: 10 })
       .then((res) => setTemplates(res.items))
       .catch(() => setTemplates([]));
-  }, [templateExamIds]);
+  }, [canFetch]);
 
   useEffect(() => {
     if (!subjectId) {
@@ -87,6 +81,22 @@ export default function PracticeTests() {
     navigate(`/tests/instructions/practice-template/${id}`);
   }
 
+  // MY EXAMS empty (skipped / cleared): practice questions come only from My Exams, so just the prompt.
+  if (scope.isEmpty) {
+    return (
+      <div className="px-4 pb-10 pt-4 sm:px-6 lg:px-8 lg:pt-6">
+        <button type="button" onClick={() => navigate("/tests")} className="flex items-center gap-1.5 text-sm font-semibold text-secondary-500">
+          <ArrowLeft className="h-4 w-4" strokeWidth={2.5} />
+          Tests
+        </button>
+        <h1 className="mt-3 text-xl font-extrabold text-ink-900 sm:text-2xl">Practice Tests</h1>
+        <div className="mt-5">
+          <ChooseMyExamsPrompt title="No My Exams selected yet." message="Choose your exams to practice questions for them." />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 pb-10 pt-4 sm:px-6 lg:px-8 lg:pt-6">
       <button type="button" onClick={() => navigate("/tests")} className="flex items-center gap-1.5 text-sm font-semibold text-secondary-500">
@@ -105,7 +115,7 @@ export default function PracticeTests() {
           <Dropdown label="Topic" value={topicId} onChange={setTopicId} placeholder="Any topic" disabled={!subjectId}>
             {topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </Dropdown>
-          <Dropdown label="Exam" value={examId} onChange={setExamId} placeholder="Any exam">
+          <Dropdown label="Exam" value={examId} onChange={setExamId} placeholder={scope.isScoped ? "All my exams" : "Any exam"}>
             {exams.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
           </Dropdown>
           <Dropdown label="Difficulty" value={difficulty} onChange={setDifficulty} placeholder={DIFFICULTY_OPTIONS[0].label}>

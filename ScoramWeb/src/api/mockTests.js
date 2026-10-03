@@ -19,7 +19,7 @@ function toQueryString(params = {}) {
 
 // GET /api/mocktests?examName=&examIds=&testType=&page=&pageSize=
 export function listMockTests(params = {}, opts = {}) {
-  return apiFetch(`/api/mocktests${toQueryString(params)}`, opts);
+  return apiFetch(`/api/mocktests${toQueryString(params)}`, { ...opts, optionalAuth: true });
 }
 
 // GET /api/mocktests/{id}/summary -- Title/Duration/NegativeMarking/QuestionCount/Instructions only,

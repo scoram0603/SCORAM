@@ -30,9 +30,11 @@ namespace ScoramAPI.Controllers
         private readonly IHubContext<ChatHub> _hub;
         private readonly INotificationService _notifications;
         private readonly IChatPresenceService _presence;
+        private readonly IMyExamScopeService _myExams;
 
-        public ChatController(ScoramDbContext db, IFileStorageService fileStorage, IHubContext<ChatHub> hub, INotificationService notifications, IChatPresenceService presence)
+        public ChatController(ScoramDbContext db, IFileStorageService fileStorage, IHubContext<ChatHub> hub, INotificationService notifications, IChatPresenceService presence, IMyExamScopeService myExams)
         {
+            _myExams = myExams;
             _db = db;
             _fileStorage = fileStorage;
             _hub = hub;
@@ -54,6 +56,17 @@ namespace ScoramAPI.Controllers
             var normalizedSearch = search?.Trim();
 
             var query = _db.ChatRooms.Include(r => r.Exam).AsQueryable();
+
+            // MY EXAMS -- strict scope: an exam-linked group is listed (and searchable) only when its
+            // exam is one of the student's. Standalone groups (ExamId null: "Daily Doubt Room",
+            // "Current Affairs Room", ...) belong to no exam, are intentionally global, and always
+            // stay visible. A group the student already joined but whose exam they have since removed
+            // is hidden from the list too (their membership is kept, so it returns when they re-add
+            // the exam). An empty My Exams therefore lists only the standalone groups.
+            var scope = await _myExams.GetScopeAsync(User);
+            var scopedExamIds = scope.ExamIds.ToList();
+            query = query.Where(r => r.ExamId == null || scopedExamIds.Contains(r.ExamId.Value));
+
             if (!string.IsNullOrWhiteSpace(normalizedSearch))
                 query = query.Where(r => r.Name.Contains(normalizedSearch));
 
@@ -106,6 +119,15 @@ namespace ScoramAPI.Controllers
                 if (membership.IsBanned)
                     return Forbid();
                 return Ok(new { message = "Already a member." });
+            }
+
+            // MY EXAMS -- a NEW membership in an exam-linked group requires that exam to be in My
+            // Exams (the list above already hides such groups; this stops a direct call).
+            if (room.ExamId.HasValue)
+            {
+                var scope = await _myExams.GetScopeAsync(User);
+                if (!scope.Allows(room.ExamId.Value))
+                    return StatusCode(403, new { message = "Add this exam to My Exams to join its group." });
             }
 
             _db.ChatRoomMemberships.Add(new ChatRoomMembership { ChatRoomId = id, UserId = userId, JoinedAt = DateTime.UtcNow });

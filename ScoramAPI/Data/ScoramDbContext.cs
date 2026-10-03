@@ -39,6 +39,7 @@ namespace ScoramAPI.Data
         public DbSet<Organization> Organizations => Set<Organization>();
         // "MY EXAMS" -- see Models/UserExamPreference.cs.
         public DbSet<UserExamPreference> UserExamPreferences => Set<UserExamPreference>();
+        public DbSet<UserFeedback> UserFeedbacks => Set<UserFeedback>();
         public DbSet<Question> Questions => Set<Question>();
         public DbSet<QuestionSolution> QuestionSolutions => Set<QuestionSolution>();
         public DbSet<QuestionReport> QuestionReports => Set<QuestionReport>();
@@ -1367,6 +1368,29 @@ namespace ScoramAPI.Data
                 .HasIndex(p => p.UserId)
                 .IsUnique()
                 .HasFilter("[IsPrimary] = 1");
+
+            // ==========================================================================
+            // USER FEEDBACK (floating Feedback button -> Admin > Feedback)
+            // ==========================================================================
+            modelBuilder.Entity<UserFeedback>().Property(f => f.FeedbackType).HasConversion<string>().HasMaxLength(20);
+            modelBuilder.Entity<UserFeedback>().Property(f => f.Status).HasConversion<string>().HasMaxLength(20);
+            modelBuilder.Entity<UserFeedback>().Property(f => f.Platform).HasConversion<string>().HasMaxLength(20);
+
+            // Cascade: feedback is the student's own submission; if the account is ever deleted the
+            // feedback goes with it (same as Bookmark / UserExamPreference).
+            modelBuilder.Entity<UserFeedback>()
+                .HasOne(f => f.User)
+                .WithMany()
+                .HasForeignKey(f => f.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // FeedbackNumber is a SQL Server IDENTITY column on a non-key property (the key stays the
+            // Guid): [DatabaseGenerated(Identity)] on the model + this model's default identity strategy.
+            modelBuilder.Entity<UserFeedback>().HasIndex(f => f.FeedbackNumber).IsUnique();
+
+            // Admin list: filter by status/type/platform, newest first.
+            modelBuilder.Entity<UserFeedback>().HasIndex(f => new { f.Status, f.CreatedAt });
+            modelBuilder.Entity<UserFeedback>().HasIndex(f => f.UserId);
         }
     }
 

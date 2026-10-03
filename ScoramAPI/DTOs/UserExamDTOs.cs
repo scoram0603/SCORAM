@@ -20,17 +20,15 @@ namespace ScoramAPI.DTOs
         public Guid? PrimaryExamId { get; set; }
     }
 
-    // PUT /api/user/exams -- full replace, used by the onboarding screen ("select all exams you're
-    // preparing for" -> Continue) and the My Exams management screen's "Save Changes". Minimum one
-    // exam (spec section 4).
+    // PUT /api/user/exams -- full replace, used by the onboarding screen ("Continue") and Profile ->
+    // "Update My Exams". An empty list is allowed and clears My Exams.
     public class SetMyExamsDto
     {
         public List<Guid> ExamIds { get; set; } = new();
 
         // Optional -- if omitted, the previous Primary Exam is kept when it's still in the new
-        // list, otherwise the first exam in ExamIds becomes Primary (spec section 5: a Primary Exam
-        // is optional to ask for up front, but the system always ends up with exactly one once more
-        // than one exam is selected, per the filtered unique index in ScoramDbContext).
+        // list, otherwise the first exam in ExamIds becomes Primary (a non-empty selection always
+        // ends up with exactly one Primary, per the filtered unique index in ScoramDbContext).
         public Guid? PrimaryExamId { get; set; }
     }
 }

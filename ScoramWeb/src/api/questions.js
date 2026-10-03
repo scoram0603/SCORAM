@@ -12,18 +12,18 @@ export function searchQuestions(params = {}, { signal } = {}) {
   });
 
   const qs = query.toString();
-  return apiFetch(`/api/questions${qs ? `?${qs}` : ""}`, { signal });
+  return apiFetch(`/api/questions${qs ? `?${qs}` : ""}`, { signal, optionalAuth: true });
 }
 
 // GET /api/questions/instant-search?q=... -- typo-tolerant, Meilisearch-backed search bar
 export function instantSearch(q, { signal } = {}) {
   if (!q?.trim()) return Promise.resolve([]);
-  return apiFetch(`/api/questions/instant-search?q=${encodeURIComponent(q)}`, { signal });
+  return apiFetch(`/api/questions/instant-search?q=${encodeURIComponent(q)}`, { signal, optionalAuth: true });
 }
 
 // GET /api/questions/today -- deterministic daily pick, same for everyone, changes at midnight UTC
 export function getTodaysChallenge({ signal } = {}) {
-  return apiFetch("/api/questions/today", { signal });
+  return apiFetch("/api/questions/today", { signal, optionalAuth: true });
 }
 
 // GET /api/questions/{id} — id is a GUID string, e.g. "8f14e45f-ceea-467e-add1-000000000001"

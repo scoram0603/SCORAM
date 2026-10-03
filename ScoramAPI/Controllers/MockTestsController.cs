@@ -16,11 +16,13 @@ namespace ScoramAPI.Controllers
     {
         private readonly ScoramDbContext _db;
         private readonly ITestAttemptService _attemptService;
+        private readonly IMyExamScopeService _myExams;
 
-        public MockTestsController(ScoramDbContext db, ITestAttemptService attemptService)
+        public MockTestsController(ScoramDbContext db, ITestAttemptService attemptService, IMyExamScopeService myExams)
         {
             _db = db;
             _attemptService = attemptService;
+            _myExams = myExams;
         }
 
         // GET /api/mocktests?examName=&testType=&page=&pageSize=
@@ -36,6 +38,23 @@ namespace ScoramAPI.Controllers
             pageSize = Math.Clamp(pageSize, 1, 100);
 
             var query = _db.MockTests.Where(t => t.Status == TestPublishStatus.Published).AsQueryable();
+
+            // MY EXAMS -- strict scope for a signed-in student: only Mock Tests of their own exams are
+            // listed (none at all while My Exams is empty). Matched by the real ExamId FK; a row that
+            // predates the FK and was never backfilled (ExamId null) falls back to its legacy
+            // ExamName text, so those tests don't silently vanish for the right students. The explicit
+            // examName/examIds filters below are applied on top (AND) and can therefore only narrow
+            // within the scope. Anonymous visitors/admins aren't scoped -- unchanged.
+            var scope = await _myExams.GetScopeAsync(User);
+            if (scope.IsScoped)
+            {
+                var scopedExamIds = scope.ExamIds.ToList();
+                var scopedExamNames = scope.ExamNames.ToList();
+                query = query.Where(t =>
+                    (t.ExamId != null && scopedExamIds.Contains(t.ExamId.Value))
+                    || (t.ExamId == null && scopedExamNames.Contains(t.ExamName)));
+            }
+
             // Filter precedence (spec section 37): an explicit single examName -- what every
             // existing caller already sends -- always wins. examIds (plural) is the new "My Exams"
             // default, OR-matched by the real ExamId FK rather than the ExamName string (see

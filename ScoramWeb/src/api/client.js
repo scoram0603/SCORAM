@@ -170,12 +170,17 @@ async function refreshAdminSession() {
  *
  * `auth: true` attaches the *student* token via getStoredToken(). Admin API calls pass an explicit
  * `token` (their own admin token) instead -- see src/admin/api/*.js.
+ *
+ * `optionalAuth: true` attaches the student token IF one is stored, and otherwise sends the request
+ * anonymously. It is for public endpoints whose result depends on WHO is asking -- "MY EXAMS" scopes
+ * PYP / Question Bank / Mock Tests / Practice templates / discussions to a signed-in student's own
+ * exams, and the API can only do that if it receives the token. (Signed-out visitors are unchanged.)
  */
-export async function apiFetch(path, { method = "GET", body, auth = false, token, signal, _isRetry = false } = {}) {
+export async function apiFetch(path, { method = "GET", body, auth = false, optionalAuth = false, token, signal, _isRetry = false } = {}) {
   const headers = { "Content-Type": "application/json" };
 
   const isAdminCall = token !== undefined && token !== null;
-  const resolvedToken = token ?? (auth ? getStoredToken() : null);
+  const resolvedToken = token ?? (auth || optionalAuth ? getStoredToken() : null);
   if (resolvedToken) headers.Authorization = `Bearer ${resolvedToken}`;
 
   let response;
@@ -203,6 +208,7 @@ export async function apiFetch(path, { method = "GET", body, auth = false, token
         method,
         body,
         auth,
+        optionalAuth,
         token: isAdminCall ? newToken : undefined,
         signal,
         _isRetry: true,

@@ -10,7 +10,7 @@ import { checkUsername } from "../api/auth";
 import { enablePushNotifications, disablePushNotifications, getPushSubscriptionStatus, isPushSupported } from "../utils/push";
 import { API_BASE_URL } from "../api/client";
 import ImageCropModal from "../components/profile/ImageCropModal";
-import PreparingFor from "../components/home/PreparingFor";
+import MyExamsSection from "../components/home/MyExamsSection";
 
 const USERNAME_PATTERN = /^[a-z0-9._]+$/;
 
@@ -43,7 +43,7 @@ export default function Profile() {
 
       <GamificationSnapshot />
 
-      <PreparingFor />
+      <MyExamsSection className="mt-6 w-full max-w-sm" />
 
       <button
         type="button"
@@ -54,8 +54,8 @@ export default function Profile() {
           <GraduationCap className="h-4 w-4" strokeWidth={2} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-bold text-ink-900">My Exams</span>
-          <span className="block text-xs text-ink-400">Choose which exams PYP, Question Bank, and Tests default to</span>
+          <span className="block text-sm font-bold text-ink-900">Update My Exams</span>
+          <span className="block text-xs text-ink-400">View, add or remove the exams you're preparing for</span>
         </span>
         <ChevronRight className="h-4 w-4 shrink-0 text-ink-300" strokeWidth={2.5} />
       </button>

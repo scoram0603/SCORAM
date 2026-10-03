@@ -9,7 +9,7 @@ function basePath(questionType) {
 // GET /api/discussions?page=&pageSize= — global top-voted comment feed across all questions
 export function getTopDiscussions({ page = 1, pageSize = 20 } = {}, opts = {}) {
   const query = new URLSearchParams({ page, pageSize }).toString();
-  return apiFetch(`/api/discussions?${query}`, opts);
+  return apiFetch(`/api/discussions?${query}`, { ...opts, optionalAuth: true });
 }
 
 // GET /api/questions/{questionId}/comments or /api/question-bank/{questionId}/comments -- full

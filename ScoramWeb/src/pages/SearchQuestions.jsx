@@ -4,10 +4,12 @@ import {
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { searchQuestions, instantSearch, getQuestionById } from "../api/questions";
-import { listExams } from "../api/exams";
 import { getPaperYears, getPaperLanguages } from "../api/papers";
 import { ApiError, API_BASE_URL } from "../api/client";
 import QuestionCard from "../components/questions/QuestionCard";
+import ChooseMyExamsPrompt from "../components/exams/ChooseMyExamsPrompt";
+import { useMyExamsScope } from "../hooks/useMyExamsScope";
+import { useSelectableExams } from "../hooks/useSelectableExams";
 
 const PAGE_SIZE = 10;
 
@@ -21,6 +23,10 @@ export default function SearchQuestions() {
   const keyword = searchParams.get("q") || "";
   const examId = searchParams.get("examId") || "";
   const isSearching = keyword.trim().length > 0;
+
+  // "MY EXAMS" -- strict scope: instant search and browsing only return questions of the student's
+  // own exams (enforced by the API). With no exams selected there is nothing to search -- ask.
+  const scope = useMyExamsScope();
 
   function handleKeywordChange(value) {
     setSearchParams(
@@ -41,6 +47,12 @@ export default function SearchQuestions() {
         Search any question instantly, or filter by exam, year, subject, and difficulty.
       </p>
 
+      {scope.isEmpty ? (
+        <div className="mt-5">
+          <ChooseMyExamsPrompt title="No My Exams selected yet." message="Choose your exams to search and browse their PYQs." />
+        </div>
+      ) : (
+      <>
       <label className="relative mt-5 block">
         <span className="sr-only">Search questions</span>
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-ink-400" strokeWidth={2} />
@@ -56,6 +68,8 @@ export default function SearchQuestions() {
       <div className="mt-5">
         {isSearching ? <InstantSearchResults keyword={keyword} /> : <BrowseByExam presetExamId={examId} />}
       </div>
+      </>
+      )}
     </div>
   );
 }
@@ -242,8 +256,10 @@ function ExpandedQuestion({ questionId, onCollapse }) {
 const DIFFICULTIES = ["Easy", "Medium", "Hard"];
 
 function BrowseByExam({ presetExamId }) {
-  const [exams, setExams] = useState([]);
-  const [examId, setExamId] = useState(presetExamId || "");
+  // "MY EXAMS" -- the Exam dropdown offers ONLY the student's own exams (the public catalog for a
+  // signed-out visitor); see useSelectableExams.
+  const { exams, isScoped } = useSelectableExams();
+  const [examId, setExamId] = useState("");
 
   const [years, setYears] = useState([]);
   const [year, setYear] = useState("");
@@ -260,14 +276,21 @@ function BrowseByExam({ presetExamId }) {
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState("idle");
 
+  // Adopt ?examId= from the URL -- e.g. a Popular Exam card on Home, or a shared link -- but only
+  // when it is one of the offered exams (a scoped student can't deep-link into an exam outside My
+  // Exams). Adopted once per link value so it never fights a choice the student makes afterwards.
+  const adoptedPresetRef = useRef("");
   useEffect(() => {
-    listExams().then(setExams).catch(() => setExams([]));
-  }, []);
+    if (!presetExamId || adoptedPresetRef.current === presetExamId) return;
+    if (isScoped && exams.length === 0) return; // My Exams not ready yet -- try again when it is
+    adoptedPresetRef.current = presetExamId;
+    if (!isScoped || exams.some((e) => e.id === presetExamId)) setExamId(presetExamId);
+  }, [presetExamId, exams, isScoped]);
 
-  // Adopt ?examId= from the URL -- e.g. a Popular Exam card on Home, or a shared link.
+  // A student with exactly one exam has nothing to choose between -- open straight onto its questions.
   useEffect(() => {
-    if (presetExamId) setExamId(presetExamId);
-  }, [presetExamId]);
+    if (isScoped && !examId && !presetExamId && exams.length === 1) setExamId(exams[0].id);
+  }, [isScoped, examId, presetExamId, exams]);
 
   // Year options only need examId. Language options need examId+year too -- but that's just to
   // populate valid *choices* in the dropdown, it never blocks results.

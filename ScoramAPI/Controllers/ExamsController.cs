@@ -40,7 +40,7 @@ namespace ScoramAPI.Controllers
         // blocked exams -- see IsBlocked -- for non-admin callers; GET /api/admin/exams below is the
         // unfiltered version admins manage from.
         [HttpGet]
-        public async Task<ActionResult<List<ExamResponseDto>>> List([FromQuery] Guid? organizationId)
+        public async Task<ActionResult<List<ExamResponseDto>>> List([FromQuery] Guid? organizationId, [FromQuery] string? search = null)
         {
             // ORGANIZATION HIERARCHY -- a blocked Organization hides every exam under it from this
             // public list too, without touching each exam's own IsBlocked flag (see
@@ -49,6 +49,21 @@ namespace ScoramAPI.Controllers
             var query = _db.Exams
                 .Where(e => !e.IsBlocked && (e.Organization == null || !e.Organization.IsBlocked));
             if (organizationId.HasValue) query = query.Where(e => e.OrganizationId == organizationId.Value);
+
+            // MY EXAMS -- server-side, case-insensitive exam search for the exam picker (first-time
+            // selection + Profile -> My Exams). Matches the exam name OR its Organization's name, so
+            // "RRB" finds every RRB exam even when the exam itself is called "NTPC UG". SQL Server's
+            // default collation is case-insensitive; LIKE keeps this a single indexed-friendly
+            // predicate instead of loading the exam list to filter in memory. Optional -- every
+            // existing caller sends no `search` and gets exactly the old result.
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim();
+                if (term.Length > 100) term = term.Substring(0, 100);
+                var pattern = "%" + term.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]") + "%";
+                query = query.Where(e => EF.Functions.Like(e.Name, pattern)
+                    || (e.Organization != null && EF.Functions.Like(e.Organization.Name, pattern)));
+            }
 
             var exams = await query
                 .OrderBy(e => e.Name)

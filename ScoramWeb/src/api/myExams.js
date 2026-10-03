@@ -1,6 +1,6 @@
 import { apiFetch } from "./client";
 
-// "MY EXAMS" -- see Controllers/UserExamsController.cs. Every call here is per-student and
+// "MY EXAMS" (formerly "Preparing For") -- see Controllers/UserExamsController.cs. Every call here is per-student and
 // requires auth, same as the rest of this file's shape (auth: true everywhere).
 
 // GET /api/user/exams -- current selections. An empty `exams` array is the "not configured yet"
@@ -10,7 +10,8 @@ export function getMyExams({ signal } = {}) {
 }
 
 // PUT /api/user/exams -- full replace. Used by onboarding ("Continue") and the My Exams management
-// screen's "Save Changes". examIds: array of exam ids (min 1). primaryExamId: optional.
+// screen's "Update My Exams". examIds: array of exam ids -- an EMPTY array is allowed and clears
+// My Exams. primaryExamId: optional.
 export function setMyExams({ examIds, primaryExamId }) {
   return apiFetch("/api/user/exams", {
     method: "PUT",
@@ -24,8 +25,7 @@ export function addMyExam(examId) {
   return apiFetch(`/api/user/exams/${examId}`, { method: "POST", auth: true });
 }
 
-// DELETE /api/user/exams/{examId} -- remove a single exam. Rejected by the backend if it's the
-// student's only remaining exam.
+// DELETE /api/user/exams/{examId} -- remove a single exam (removing the last one is allowed).
 export function removeMyExam(examId) {
   return apiFetch(`/api/user/exams/${examId}`, { method: "DELETE", auth: true });
 }

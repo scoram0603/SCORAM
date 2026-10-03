@@ -22,11 +22,13 @@ namespace ScoramAPI.Controllers
     {
         private readonly ScoramDbContext _db;
         private readonly ITestAttemptService _attemptService;
+        private readonly IMyExamScopeService _myExams;
 
-        public PracticeTestsController(ScoramDbContext db, ITestAttemptService attemptService)
+        public PracticeTestsController(ScoramDbContext db, ITestAttemptService attemptService, IMyExamScopeService myExams)
         {
             _db = db;
             _attemptService = attemptService;
+            _myExams = myExams;
         }
 
         // GET /api/practice-tests/templates?subjectId=&examId=&page=&pageSize= -- published only,
@@ -45,6 +47,19 @@ namespace ScoramAPI.Controllers
                 .AsQueryable();
 
             if (subjectId.HasValue) query = query.Where(t => t.SubjectId == subjectId);
+
+            // MY EXAMS -- strict scope for a signed-in student: templates tied to one of their own
+            // exams, PLUS templates with no exam at all (ExamId null = an intentionally exam-agnostic
+            // template, global content that must not be hidden). A template tied to any other exam is
+            // never listed. The explicit examId/examIds below apply on top (AND), so they can only
+            // narrow. Anonymous visitors/admins aren't scoped -- unchanged.
+            var scope = await _myExams.GetScopeAsync(User);
+            if (scope.IsScoped)
+            {
+                var scopedExamIds = scope.ExamIds.ToList();
+                query = query.Where(t => t.ExamId == null || scopedExamIds.Contains(t.ExamId.Value));
+            }
+
             // Filter precedence (spec section 37): explicit single examId wins over examIds
             // (plural), the "My Exams" default -- same pattern as StudentPapersController.Browse.
             if (examId.HasValue) query = query.Where(t => t.ExamId == examId);
@@ -97,8 +112,19 @@ namespace ScoramAPI.Controllers
 
             var userId = User.GetUserId();
             var languageFilter = MockTestsController.ParseLanguage(dto.Language);
+
+            // MY EXAMS -- Practice questions only ever come from the student's own exams. Choosing a
+            // specific exam is allowed only among those; an exam outside My Exams is rejected rather
+            // than silently ignored, and the pool is restricted server-side either way.
+            var scope = await _myExams.GetScopeAsync(User);
+            if (scope.IsEmpty)
+                return BadRequest(new { message = "Choose your exams in My Exams to practice questions for them." });
+            if (dto.ExamId.HasValue && !scope.Allows(dto.ExamId.Value))
+                return BadRequest(new { message = "That exam isn't in your My Exams. Add it to My Exams to practice it." });
+
             var refs = await _attemptService.SelectPracticeQuestionsAsync(
-                _db, userId, dto.SubjectId, dto.TopicId, dto.ExamId, dto.YearFrom, dto.YearTo, difficulty, dto.QuestionCount, languageFilter);
+                _db, userId, dto.SubjectId, dto.TopicId, dto.ExamId, dto.YearFrom, dto.YearTo, difficulty, dto.QuestionCount, languageFilter,
+                scope.IsScoped ? scope.ExamIds : null);
 
             if (refs.Count == 0)
                 return BadRequest(new { message = "No questions match those filters yet. Try widening Subject/Topic/Exam/Year/Difficulty." });
@@ -152,9 +178,13 @@ namespace ScoramAPI.Controllers
             }
             else
             {
+                // MY EXAMS -- a filter-based template with no exam of its own still draws only from
+                // the student's own exams (a template tied to an exam outside My Exams yields nothing).
+                var startScope = await _myExams.GetScopeAsync(User);
                 refs = await _attemptService.SelectPracticeQuestionsAsync(
                     _db, userId, template.SubjectId, template.TopicId, template.ExamId,
-                    template.YearFrom, template.YearTo, template.Difficulty, template.QuestionCount);
+                    template.YearFrom, template.YearTo, template.Difficulty, template.QuestionCount,
+                    scopedExamIds: startScope.IsScoped ? startScope.ExamIds : null);
                 if (refs.Count == 0)
                     return BadRequest(new { message = "This Practice Test's question pool is empty right now. Please try again later." });
             }

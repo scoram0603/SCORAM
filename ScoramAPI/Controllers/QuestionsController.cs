@@ -26,12 +26,15 @@ namespace ScoramAPI.Controllers
         private readonly ILogger<QuestionsController> _logger;
         private readonly IAuditLogService _audit;
         private readonly IQuestionBankMirrorService _mirror;
+        private readonly IMyExamScopeService _myExams;
 
         public QuestionsController(
             ScoramDbContext db, IAdminPermissionService permissions, IFileStorageService fileStorage,
             IInstantSearchService instantSearch, IFallbackSearchService fallbackSearch, IMemoryCache cache,
-            ILogger<QuestionsController> logger, IAuditLogService audit, IQuestionBankMirrorService mirror)
+            ILogger<QuestionsController> logger, IAuditLogService audit, IQuestionBankMirrorService mirror,
+            IMyExamScopeService myExams)
         {
+            _myExams = myExams;
             _db = db;
             _permissions = permissions;
             _fileStorage = fileStorage;
@@ -51,12 +54,31 @@ namespace ScoramAPI.Controllers
         [HttpGet("today")]
         public async Task<ActionResult<QuestionDetailDto>> GetTodaysChallenge()
         {
-            var cacheKey = $"todays-challenge-{DateTime.UtcNow:yyyy-MM-dd}";
+            // MY EXAMS -- a signed-in student's challenge is drawn only from papers of THEIR exams
+            // (no exams selected = no challenge, the Home screen shows its "choose My Exams" prompt
+            // instead). The cache key carries a fingerprint of the scope so one student's cached pick
+            // can never be served to a student with different exams; unscoped callers (anonymous/
+            // admin) keep sharing the single global entry exactly as before.
+            var scope = await _myExams.GetScopeAsync(User);
+            if (scope.IsEmpty)
+                return NotFound(new { message = "Choose your exams to get a daily challenge." });
+
+            var scopeKey = scope.IsScoped
+                ? "-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(string.Join(",", scope.ExamIds.OrderBy(id => id)))))[..16]
+                : string.Empty;
+            var cacheKey = $"todays-challenge-{DateTime.UtcNow:yyyy-MM-dd}{scopeKey}";
             if (_cache.TryGetValue(cacheKey, out QuestionDetailDto? cached) && cached != null)
                 return Ok(cached);
 
-            var publishedIds = await _db.Questions
-                .Where(q => q.PaperId != null && q.Paper!.Status == PaperStatus.Published)
+            var publishedQuery = _db.Questions
+                .Where(q => q.PaperId != null && q.Paper!.Status == PaperStatus.Published);
+            if (scope.IsScoped)
+            {
+                var scopedExamIds = scope.ExamIds.ToList();
+                publishedQuery = publishedQuery.Where(q => scopedExamIds.Contains(q.Paper!.ExamId));
+            }
+            var publishedIds = await publishedQuery
                 .Select(q => q.Id)
                 .ToListAsync();
 
@@ -94,16 +116,33 @@ namespace ScoramAPI.Controllers
         {
             if (string.IsNullOrWhiteSpace(q)) return Ok(new List<QuestionSearchDocument>());
 
+            // MY EXAMS -- a signed-in student only ever gets hits from their own exams. The search
+            // index documents carry the exam NAME (not id), so the scope is applied to the engine's
+            // answer here, server-side, before anything is returned; the engine is asked for its
+            // maximum page (50) first so filtering still leaves a useful number of in-scope hits. The
+            // CACHE holds the engine's UNFILTERED answer (same for everyone), and each caller's scope
+            // is applied after reading it -- so one student's scope can never leak through the cache.
+            // An empty My Exams returns no hits at all. Anonymous/admin callers are unchanged.
+            var scope = await _myExams.GetScopeAsync(User);
+            if (scope.IsEmpty) return Ok(new List<QuestionSearchDocument>());
+
+            var requestedLimit = Math.Clamp(limit, 1, 50);
+            var fetchLimit = scope.IsScoped ? 50 : requestedLimit;
+            List<QuestionSearchDocument> ApplyScope(List<QuestionSearchDocument> docs) =>
+                scope.IsScoped
+                    ? docs.Where(d => scope.AllowsName(d.ExamName)).Take(requestedLimit).ToList()
+                    : docs;
+
             var normalizedQuery = q.Trim().ToLowerInvariant();
-            var cacheKey = $"instant-search:{normalizedQuery}:{limit}";
+            var cacheKey = $"instant-search:{normalizedQuery}:{fetchLimit}";
             if (_cache.TryGetValue(cacheKey, out List<QuestionSearchDocument>? cached) && cached != null)
-                return Ok(cached);
+                return Ok(ApplyScope(cached));
 
             try
             {
-                var results = await _instantSearch.SearchAsync(q, Math.Clamp(limit, 1, 50));
+                var results = await _instantSearch.SearchAsync(q, fetchLimit);
                 _cache.Set(cacheKey, results, TimeSpan.FromSeconds(30));
-                return Ok(results);
+                return Ok(ApplyScope(results));
             }
             catch (Exception ex)
             {
@@ -112,10 +151,10 @@ namespace ScoramAPI.Controllers
 
             try
             {
-                var (results, source) = await _fallbackSearch.SearchAsync(q, Math.Clamp(limit, 1, 50));
+                var (results, source) = await _fallbackSearch.SearchAsync(q, fetchLimit);
                 _logger.LogInformation("Instant search answered by fallback ({Source}) for query {Query}", source, q);
                 _cache.Set(cacheKey, results, TimeSpan.FromSeconds(30));
-                return Ok(results);
+                return Ok(ApplyScope(results));
             }
             catch (Exception ex)
             {
@@ -135,6 +174,23 @@ namespace ScoramAPI.Controllers
                 .Include(x => x.Paper).ThenInclude(p => p!.Exam)
                 .Where(x => x.PaperId == null || x.Paper!.Status == PaperStatus.Published)
                 .AsQueryable();
+
+            // MY EXAMS -- strict scope for a signed-in student. A question's exam is its Paper's exam
+            // when it belongs to a Paper, otherwise its legacy ExamId, otherwise (oldest rows) its
+            // legacy ExamName text matched against the student's exam names. A legacy row with NO exam
+            // information at all can't be attributed to any exam, so it isn't shown to a scoped
+            // student. The explicit ExamId/ExamName filters below still apply on top (AND), so they
+            // can only narrow within the scope, never widen it. Unscoped callers: unchanged.
+            var scope = await _myExams.GetScopeAsync(User);
+            if (scope.IsScoped)
+            {
+                var scopedExamIds = scope.ExamIds.ToList();
+                var scopedExamNames = scope.ExamNames.ToList();
+                q = q.Where(x =>
+                    (x.PaperId != null && scopedExamIds.Contains(x.Paper!.ExamId))
+                    || (x.PaperId == null && x.ExamId != null && scopedExamIds.Contains(x.ExamId.Value))
+                    || (x.PaperId == null && x.ExamId == null && x.ExamName != null && scopedExamNames.Contains(x.ExamName)));
+            }
 
             if (!string.IsNullOrWhiteSpace(query.ExamName))
                 q = q.Where(x => x.ExamName == query.ExamName || (x.Paper != null && x.Paper.Exam!.Name == query.ExamName));

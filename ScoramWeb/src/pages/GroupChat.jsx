@@ -14,6 +14,8 @@ import { API_BASE_URL } from "../api/client";
 import ConversationsList from "../components/directMessages/ConversationsList";
 import ConversationThread from "../components/directMessages/ConversationThread";
 import RoomInfoPanel from "../components/chat/RoomInfoPanel";
+import ChooseMyExamsPrompt from "../components/exams/ChooseMyExamsPrompt";
+import { useMyExamsScope } from "../hooks/useMyExamsScope";
 import NotificationBell from "../components/layout/NotificationBell";
 
 function fileSrc(url) {
@@ -170,6 +172,10 @@ function TabButton({ active, onClick, icon: Icon, children }) {
 
 // ---------- Rooms list ----------
 function RoomsList({ onOpenRoom }) {
+  // "MY EXAMS" -- the API only lists exam-linked communities of the student's own exams (plus
+  // standalone communities that belong to no exam). With none selected, say so instead of implying
+  // there simply aren't any exam groups.
+  const myExamsScope = useMyExamsScope();
   const [rooms, setRooms] = useState([]);
   const [status, setStatus] = useState("loading");
   const [joiningId, setJoiningId] = useState(null);
@@ -233,9 +239,15 @@ function RoomsList({ onOpenRoom }) {
       )}
       {status === "error" && <p className="py-16 text-center text-sm text-red-600">Couldn't load rooms right now.</p>}
 
-      {status === "ready" && rooms.length === 0 && (
+      {myExamsScope.isEmpty && status !== "loading" && (
+        <div className="mt-4">
+          <ChooseMyExamsPrompt compact title="No My Exams selected yet." message="Choose your exams to see their groups." />
+        </div>
+      )}
+
+      {status === "ready" && rooms.length === 0 && !myExamsScope.isEmpty && (
         <p className="py-16 text-center text-sm text-ink-400">
-          {query.trim() ? `No room matches "${query.trim()}".` : "No rooms yet -- search for your exam above."}
+          {query.trim() ? `No room matches "${query.trim()}".` : "No communities for your exams yet -- search for one above."}
         </p>
       )}
 

@@ -13,7 +13,7 @@ import { sidebarNavItems, bottomNavItems } from "../data/mockData";
 
 export default function AppLayout() {
   const { isAuthenticated, user, logout } = useAuth();
-  const { hasLoaded, hasConfigured, skipped } = useMyExams();
+  const { hasLoaded, hasConfigured, skipped, loadError } = useMyExams();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [hasUnseenChat, setHasUnseenChat] = useState(false);
@@ -32,18 +32,18 @@ export default function AppLayout() {
     return <Landing />;
   }
 
-  // "MY EXAMS" onboarding (spec section 4) -- once MyExamsContext has actually finished checking
-  // (hasLoaded), an authenticated student with zero exams configured is sent to "What are you
-  // preparing for?" before anything else, from any route they land on (a fresh login, a deep
-  // link, reopening the app). Checked before the fullscreen-attempt branch below since a test
-  // attempt link itself would never be reachable without exams configured in the first place.
-  // Excludes /select-exams itself (avoid a redirect loop) and /my-exams (a student already deep
-  // in the management screen removing their way down isn't blocked mid-edit by this check --
-  // though the backend's own last-exam guard means they can never actually reach zero that way).
-  // Also excluded once `skipped` is set (student tapped "I'll choose later" on the onboarding
-  // screen) -- see MyExamsContext for how that flag is scoped and cleared.
+  // "MY EXAMS" first-time selection -- once MyExamsContext has actually finished checking
+  // (hasLoaded), an authenticated student with zero exams is sent to the "My Exams" selection
+  // screen before anything else, from any route they land on (a fresh login, a deep link,
+  // reopening the app). Students who already chose exams (under the old "Preparing For" name or
+  // the new one) are never sent here -- it is the same saved data. Checked before the
+  // fullscreen-attempt branch below.
+  // Excludes /select-exams itself (avoid a redirect loop) and /my-exams (the management screen).
+  // Also excluded once `skipped` is set ("Skip for Now", or a deliberate empty save) -- My Exams
+  // then stays empty and exam screens show a "Choose My Exams" prompt -- and when the My Exams
+  // load itself FAILED (loadError): that isn't "no exams", so don't onboard on a network hiccup.
   if (
-    isAuthenticated && hasLoaded && !hasConfigured && !skipped &&
+    isAuthenticated && hasLoaded && !loadError && !hasConfigured && !skipped &&
     location.pathname !== "/select-exams" && location.pathname !== "/my-exams"
   ) {
     const target = location.pathname + location.search;

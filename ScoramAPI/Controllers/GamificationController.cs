@@ -17,10 +17,12 @@ namespace ScoramAPI.Controllers
         private const int LeaderboardTopN = 20;
 
         private readonly ScoramDbContext _db;
+        private readonly IMyExamScopeService _myExams;
 
-        public GamificationController(ScoramDbContext db)
+        public GamificationController(ScoramDbContext db, IMyExamScopeService myExams)
         {
             _db = db;
+            _myExams = myExams;
         }
 
         // GET /api/gamification/me
@@ -169,6 +171,15 @@ namespace ScoramAPI.Controllers
 
             if (scope == "exam" && string.IsNullOrWhiteSpace(examName))
                 return BadRequest(new { message = "examName is required when scope=exam." });
+
+            // MY EXAMS -- the per-exam leaderboard is only available for exams in the student's own
+            // My Exams (global and friends boards aren't exam-specific and are untouched).
+            if (scope == "exam")
+            {
+                var myScope = await _myExams.GetScopeAsync(User);
+                if (!myScope.AllowsName(examName))
+                    return BadRequest(new { message = "That exam isn't in your My Exams. Add it to see its leaderboard." });
+            }
 
             List<(Guid UserId, int Xp)> ranked;
 

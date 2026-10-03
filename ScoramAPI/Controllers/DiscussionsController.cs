@@ -22,9 +22,11 @@ namespace ScoramAPI.Controllers
         private readonly IAdminPermissionService _permissions;
         private readonly INotificationService _notifications;
         private readonly IAuditLogService _audit;
+        private readonly IMyExamScopeService _myExams;
 
-        public DiscussionsController(ScoramDbContext db, IAdminPermissionService permissions, INotificationService notifications, IAuditLogService audit)
+        public DiscussionsController(ScoramDbContext db, IAdminPermissionService permissions, INotificationService notifications, IAuditLogService audit, IMyExamScopeService myExams)
         {
+            _myExams = myExams;
             _db = db;
             _permissions = permissions;
             _notifications = notifications;
@@ -50,7 +52,23 @@ namespace ScoramAPI.Controllers
                 .Where(c => c.ParentCommentId == null && c.QuestionId != null)
                 .Include(c => c.Question).ThenInclude(q => q!.Paper).ThenInclude(p => p!.Exam)
                 .Include(c => c.User)
-                .Include(c => c.SubmittedByAdmin);
+                .Include(c => c.SubmittedByAdmin)
+                .AsQueryable();
+
+            // MY EXAMS -- this feed is exam-linked (each item is a comment on a question of some
+            // exam), so a signed-in student only sees discussions on questions of their own exams.
+            // Same exam attribution as QuestionsController.Search (Paper's exam, else the question's
+            // own legacy ExamId/ExamName). Anonymous visitors/admins aren't scoped -- unchanged.
+            var scope = await _myExams.GetScopeAsync(User);
+            if (scope.IsScoped)
+            {
+                var scopedExamIds = scope.ExamIds.ToList();
+                var scopedExamNames = scope.ExamNames.ToList();
+                query = query.Where(c =>
+                    (c.Question!.PaperId != null && scopedExamIds.Contains(c.Question.Paper!.ExamId))
+                    || (c.Question.PaperId == null && c.Question.ExamId != null && scopedExamIds.Contains(c.Question.ExamId.Value))
+                    || (c.Question.PaperId == null && c.Question.ExamId == null && c.Question.ExamName != null && scopedExamNames.Contains(c.Question.ExamName)));
+            }
 
             var totalCount = await query.CountAsync();
 

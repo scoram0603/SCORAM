@@ -28,6 +28,7 @@ import QuestionBankReportsQueue from "./pages/QuestionBankReportsQueue";
 import MockTestManagement from "./pages/MockTestManagement";
 import PracticeTestManagement from "./pages/PracticeTestManagement";
 import QuizManagement from "./pages/QuizManagement";
+import FeedbackManagement from "./pages/FeedbackManagement";
 import AdminSecuritySettings from "./pages/AdminSecuritySettings";
 import AdminNotFound from "./pages/AdminNotFound";
 
@@ -84,6 +85,11 @@ function AdminRoutes() {
           {/* Subject Management: master-data admin (rename / merge / reassign / delete Subjects) */}
           <Route element={<RequireAdminPermission permission="ManageSubjects" />}>
             <Route path="subjects" element={<SubjectManagement />} />
+          </Route>
+
+          {/* USER FEEDBACK: submissions from the floating Feedback button on the student app */}
+          <Route element={<RequireAdminPermission permission="ManageFeedback" />}>
+            <Route path="feedback" element={<FeedbackManagement />} />
           </Route>
 
           {/* SCORAM_TESTS */}

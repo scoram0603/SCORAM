@@ -9,9 +9,9 @@ import QuestionBankFeedCard from "../components/questions/QuestionBankFeedCard";
 import QuestionBankFeedCardSkeleton from "../components/questions/QuestionBankFeedCardSkeleton";
 import QuestionBankSidebar from "../components/questions/QuestionBankSidebar";
 import SearchableSelect from "../components/ui/SearchableSelect";
-import OrganizationExamFilterDropdown from "../components/exams/OrganizationExamFilterDropdown";
-import { useMyExams } from "../context/MyExamsContext";
-import { useDefaultToMyExams } from "../hooks/useDefaultToMyExams";
+import MyExamsFilter from "../components/exams/MyExamsFilter";
+import ChooseMyExamsPrompt from "../components/exams/ChooseMyExamsPrompt";
+import { useMyExamsScope } from "../hooks/useMyExamsScope";
 
 const PAGE_SIZE = 10;
 const RECENT_SEARCHES_KEY = "scoram:qb:recent-searches";
@@ -73,16 +73,19 @@ export default function QuestionBankSearch() {
   const languages = useMemo(() => readListParam(searchParams, "languages"), [searchParams]);
   const browseMode = searchParams.get("mode") === "slide" ? "slide" : "scroll";
 
-  // "MY EXAMS" -- defaults the Exam filter to the student's saved exams the first time this page
-  // is opened with none already specified (e.g. from the sidebar, not a deep link) -- see
-  // useDefaultToMyExams's own comment for why this only ever applies once per visit.
-  const { examIds: myExamIds, hasLoaded: myExamsLoaded } = useMyExams();
-  useDefaultToMyExams({
-    hasExplicitFilter: searchParams.has("examIds"),
-    myExamIds,
-    hasLoaded: myExamsLoaded,
-    applyDefault: (ids) => updateListParam("examIds", ids),
-  });
+  // "MY EXAMS" -- strict scope. The API only returns questions of the student's own exams (and
+  // only their exams in the Exam/Year filter data), so the Exam filter below is just an optional
+  // NARROWING within My Exams. Wait for the scope before fetching; show the prompt when it's empty.
+  const scope = useMyExamsScope();
+  const canFetch = scope.ready && !scope.isEmpty;
+
+  // Drop any ?examIds= value that isn't one of My Exams (e.g. a stale/shared link).
+  useEffect(() => {
+    if (!scope.isScoped || !scope.ready || scope.isEmpty || examIds.length === 0) return;
+    const allowed = examIds.filter((id) => scope.examIds.includes(id));
+    if (allowed.length !== examIds.length) updateListParam("examIds", allowed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope.isScoped, scope.ready, scope.isEmpty, scope.examIds, examIds.join(",")]);
 
   const [subjects, setSubjects] = useState([]);
   const [topics, setTopics] = useState([]);
@@ -107,12 +110,13 @@ export default function QuestionBankSearch() {
   const pendingSlideAdvanceRef = useRef(false);
 
   useEffect(() => {
+    if (!canFetch) return;
     getQuestionBankSubjects().then(setSubjects).catch(() => {});
     getQuestionBankExams().then(setExams).catch(() => {});
     getQuestionBankYears().then(setAllYears).catch(() => {});
     // Real total, unfiltered -- powers the "X Questions" stat card regardless of active filters.
     searchQuestionBank({ page: 1, pageSize: 1 }).then((d) => setTotalQuestionCount(d.totalCount)).catch(() => {});
-  }, []);
+  }, [canFetch]);
 
   // Topic dropdown depends on the chosen Subject(s) (spec section 18) -- with several subjects
   // selected, the Topic list is the union of each subject's topics.
@@ -163,6 +167,7 @@ export default function QuestionBankSearch() {
 
   // Filters/search changed -- start over from page 1.
   useEffect(() => {
+    if (!canFetch) return undefined;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     let controller;
     debounceRef.current = setTimeout(() => {
@@ -179,7 +184,7 @@ export default function QuestionBankSearch() {
       controller?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadPage]);
+  }, [loadPage, canFetch]);
 
   // Infinite scroll -- observes a sentinel div just past the last card; fetches the next page once
   // it enters the viewport (rootMargin gives it a head start). Only active in Scroll mode -- Slide
@@ -335,6 +340,18 @@ export default function QuestionBankSearch() {
   const hasActiveFilters = activeFilterChips.length > 0;
   const currentSlideItem = items[slideIndex];
 
+  // MY EXAMS empty (skipped / cleared): no questions at all, just the prompt -- never every exam's.
+  if (scope.isEmpty) {
+    return (
+      <div className="mx-auto w-full max-w-6xl px-4 pb-8 pt-4 sm:px-6 lg:pt-6">
+        <h1 className="text-2xl font-extrabold text-ink-900 sm:text-3xl">PYQs</h1>
+        <div className="mt-5">
+          <ChooseMyExamsPrompt title="No My Exams selected yet." message="Choose your exams to see relevant PYQs and questions." />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-8 pt-4 sm:px-6 lg:flex lg:items-start lg:gap-6 lg:pt-6">
       <div className="min-w-0 lg:max-w-3xl lg:flex-1">
@@ -449,9 +466,8 @@ export default function QuestionBankSearch() {
           onChange={(v) => updateListParam("topicIds", v)}
           disabled={subjectIds.length === 0}
         />
-        <OrganizationExamFilterDropdown
+        <MyExamsFilter
           label="Exam"
-          placeholder="Any exam"
           selected={examIds}
           onChange={(v) => updateListParam("examIds", v)}
         />

@@ -22,13 +22,13 @@ function qs(params) {
 
 // GET /api/papers -- the main filterable/sortable browse grid (reference: "PYP Practice" page).
 export function browsePapers(params = {}, { signal } = {}) {
-  return apiFetch(`/api/papers${qs(params)}`, { signal });
+  return apiFetch(`/api/papers${qs(params)}`, { signal, optionalAuth: true });
 }
 
 // GET /api/papers/filter-options?examId=&year= -- which Tier/Date/Shift/Paper-label/Language values
 // actually exist right now, so the filter row only shows a dropdown for a filter that's meaningful.
 export function getPaperFilterOptions(params = {}, { signal } = {}) {
-  return apiFetch(`/api/papers/filter-options${qs(params)}`, { signal });
+  return apiFetch(`/api/papers/filter-options${qs(params)}`, { signal, optionalAuth: true });
 }
 
 // GET /api/papers/my-attempts?status=InProgress|Completed -- "Continue Attempting" / "Completed
@@ -39,18 +39,18 @@ export function getMyPaperAttempts(status, { signal } = {}) {
 
 // GET /api/papers/years?examId=
 export function getPaperYears(examId, { signal } = {}) {
-  return apiFetch(`/api/papers/years?examId=${examId}`, { signal });
+  return apiFetch(`/api/papers/years?examId=${examId}`, { signal, optionalAuth: true });
 }
 
 // GET /api/papers/languages?examId=&year=
 export function getPaperLanguages(examId, year, { signal } = {}) {
-  return apiFetch(`/api/papers/languages?examId=${examId}&year=${year}`, { signal });
+  return apiFetch(`/api/papers/languages?examId=${examId}&year=${year}`, { signal, optionalAuth: true });
 }
 
 // GET /api/papers/sets?examId=&year=&language= -- usually one result; more than one means this
 // Exam/Year/Language has multiple question Sets (Set A / Set B / ...).
 export function getPaperSets(examId, year, language, { signal } = {}) {
-  return apiFetch(`/api/papers/sets?examId=${examId}&year=${year}&language=${language}`, { signal });
+  return apiFetch(`/api/papers/sets?examId=${examId}&year=${year}&language=${language}`, { signal, optionalAuth: true });
 }
 
 // GET /api/papers/{id} -- single paper's info (question count / duration / negative marking /

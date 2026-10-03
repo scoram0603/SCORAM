@@ -5,6 +5,8 @@ import {
 } from "lucide-react";
 import { previewWeakTopics, listDailyQuizzes } from "../api/quizzes";
 import { getMyQuizChallenges, declineQuizChallenge } from "../api/quizChallenges";
+import ChooseMyExamsPrompt from "../components/exams/ChooseMyExamsPrompt";
+import { useMyExamsScope } from "../hooks/useMyExamsScope";
 
 // Quizzes (Phase 1: Weak Topics Quiz) -- deliberately NOT another filter form like Practice Tests.
 // PYP/Practice/Mock are all "sit down for a real session" modes; this is the opposite -- a quick,
@@ -16,6 +18,9 @@ const COUNT_OPTIONS = [5, 8, 12, 15];
 
 export default function Quizzes() {
   const navigate = useNavigate();
+  // "MY EXAMS" -- Quizzes themselves are global (no exam), but the Weak Topics Quiz draws its
+  // questions from My Exams only, so with none selected it can't build a quiz -- ask instead.
+  const myExamsScope = useMyExamsScope();
   const [weakSubjects, setWeakSubjects] = useState(null);
   const [previewStatus, setPreviewStatus] = useState("loading");
   const [questionCount, setQuestionCount] = useState(8);
@@ -23,13 +28,14 @@ export default function Quizzes() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (myExamsScope.isEmpty) return;
     previewWeakTopics()
       .then((subjects) => {
         setWeakSubjects(subjects);
         setPreviewStatus("success");
       })
       .catch(() => setPreviewStatus("error"));
-  }, []);
+  }, [myExamsScope.isEmpty]);
 
   function handleStart() {
     navigate("/tests/instructions/quiz-weak/adhoc", { state: { questionCount } });
@@ -52,7 +58,13 @@ export default function Quizzes() {
 
       <DailyQuizzesSection />
 
-      <div className="mt-6 rounded-xl2 border border-primary-100 bg-white p-5 shadow-card">
+      {myExamsScope.isEmpty && (
+        <div className="mt-6">
+          <ChooseMyExamsPrompt title="No My Exams selected yet." message="Choose your exams to get a Weak Topics Quiz built around them." />
+        </div>
+      )}
+
+      <div className={`mt-6 rounded-xl2 border border-primary-100 bg-white p-5 shadow-card ${myExamsScope.isEmpty ? "hidden" : ""}`}>
         <div className="flex items-center gap-2">
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary-50 text-secondary-500">
             <Zap className="h-5 w-5" strokeWidth={2.25} />

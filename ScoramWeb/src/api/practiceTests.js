@@ -19,7 +19,7 @@ function toQueryString(params = {}) {
 
 // GET /api/practice-tests/templates?subjectId=&examId=&examIds=&page=&pageSize= -- admin-curated, browsable
 export function listPracticeTestTemplates(params = {}, opts = {}) {
-  return apiFetch(`/api/practice-tests/templates${toQueryString(params)}`, opts);
+  return apiFetch(`/api/practice-tests/templates${toQueryString(params)}`, { ...opts, optionalAuth: true });
 }
 
 export function getPracticeTestTemplate(id, opts = {}) {

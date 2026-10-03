@@ -64,6 +64,7 @@ builder.Services.AddScoped<ITestAttemptService, TestAttemptService>(); // SCORAM
 builder.Services.AddScoped<ISubjectManagementService, SubjectManagementService>(); // Subject Management (admin)
 builder.Services.AddScoped<IBusinessIdService, BusinessIdService>(); // Business IDs (EXMSSC001, SUB001, ...) -- SuperAdmin change + one-time backfill
 builder.Services.AddScoped<IGamificationService, GamificationService>(); // GAMIFICATION
+builder.Services.AddScoped<IMyExamScopeService, MyExamScopeService>(); // MY EXAMS -- strict per-student exam content scope, see MyExamScopeService
 // ---------- Redis (optional -- see ConnectionStrings:Redis) ----------
 // Everything below degrades gracefully to today's single-instance-only behavior when this isn't
 // configured, or when it's configured but unreachable at startup: SignalR keeps working exactly as
@@ -198,6 +199,17 @@ builder.Services.AddRateLimiter(options =>
         {
             PermitLimit = 5,
             Window = TimeSpan.FromMinutes(10),
+            QueueLimit = 0
+        }));
+
+    // Feedback form submissions -- a real student sends a handful at most. Partitioned by user id
+    // (not IP) for the same NAT/college-wifi reason as the policies above.
+    options.AddPolicy("feedback", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: GetRateLimitPartitionKey(httpContext),
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromHours(1),
             QueueLimit = 0
         }));
 
@@ -441,6 +453,37 @@ app.UseStaticFiles();
 app.UseCors("FrontendDev");
 app.UseHttpsRedirection();
 app.UseAuthentication();
+
+// MY EXAMS -- fail CLOSED on the exam-scoped public routes. These endpoints stay open to anonymous
+// visitors (public catalog), and a signed-in student's exam scope is applied from their token. If a
+// request carries a Bearer token that FAILS validation (typically an expired short-lived access
+// token), ASP.NET would otherwise quietly treat the caller as anonymous -- and an anonymous caller is
+// unscoped, so an idle student would briefly see every exam's content. Answer 401 instead: the web
+// and Flutter clients already refresh the session and retry once on a 401 when they sent a token.
+// A request with NO Authorization header is untouched (genuine anonymous browsing).
+var myExamsScopedPublicPrefixes = new[]
+{
+    "/api/papers", "/api/question-bank", "/api/questions", "/api/mocktests",
+    "/api/practice-tests/templates", "/api/discussions"
+};
+app.Use(async (context, next) =>
+{
+    var hasBearer = context.Request.Headers.Authorization.ToString()
+        .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase);
+    if (hasBearer && context.User.Identity?.IsAuthenticated != true)
+    {
+        var path = context.Request.Path;
+        if (myExamsScopedPublicPrefixes.Any(prefix => path.StartsWithSegments(prefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync("{\"message\":\"Your session has expired. Please sign in again.\"}");
+            return;
+        }
+    }
+    await next();
+});
+
 app.UseRateLimiter();
 app.UseAuthorization();
 
