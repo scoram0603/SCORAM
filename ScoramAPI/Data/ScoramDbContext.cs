@@ -349,7 +349,7 @@ namespace ScoramAPI.Data
             modelBuilder.Entity<Paper>().Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<Paper>().Property(p => p.Language).HasConversion<string>().HasMaxLength(10);
             modelBuilder.Entity<AdminPermissionGrant>().Property(g => g.Permission).HasConversion<string>().HasMaxLength(30);
-            modelBuilder.Entity<Notification>().Property(n => n.Type).HasConversion<string>().HasMaxLength(20);
+            modelBuilder.Entity<Notification>().Property(n => n.Type).HasConversion<string>().HasMaxLength(40);
             modelBuilder.Entity<ChatMessage>().Property(m => m.MessageType).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<DirectMessage>().Property(m => m.MessageType).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<ChatReport>().Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
@@ -905,6 +905,29 @@ namespace ScoramAPI.Data
                 .HasIndex(n => new { n.UserId, n.CreatedAt });
             modelBuilder.Entity<Notification>()
                 .HasIndex(n => new { n.UserId, n.IsRead });
+
+            modelBuilder.Entity<Notification>().Property(n => n.EntityType).HasMaxLength(50);
+            modelBuilder.Entity<Notification>().Property(n => n.EntityId).HasMaxLength(64);
+            modelBuilder.Entity<Notification>().Property(n => n.DedupKey).HasMaxLength(150);
+
+            // Idempotency: one notification per (user, logical event). Filtered so the many rows with
+            // no DedupKey (chat messages) are unaffected.
+            modelBuilder.Entity<Notification>()
+                .HasIndex(n => new { n.UserId, n.DedupKey })
+                .IsUnique()
+                .HasFilter("[DedupKey] IS NOT NULL");
+
+            modelBuilder.Entity<DeviceToken>().Property(d => d.Token).HasMaxLength(450);
+            modelBuilder.Entity<DeviceToken>().Property(d => d.Platform).HasMaxLength(20);
+            modelBuilder.Entity<DeviceToken>().Property(d => d.AppVersion).HasMaxLength(30);
+
+            // One row per FCM token, ever -- RegisterDevice re-points it to whichever account is now
+            // signed in on that device (account switch) instead of accumulating duplicates.
+            modelBuilder.Entity<DeviceToken>()
+                .HasIndex(d => d.Token)
+                .IsUnique();
+            modelBuilder.Entity<DeviceToken>()
+                .HasIndex(d => new { d.UserId, d.IsActive });
 
             modelBuilder.Entity<PushSubscription>()
                 .HasOne(p => p.User)

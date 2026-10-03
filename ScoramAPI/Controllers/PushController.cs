@@ -78,45 +78,76 @@ namespace ScoramAPI.Controllers
             return NoContent();
         }
 
-        // MOBILE PUSH (Firebase Cloud Messaging) -- the app calls this once it has a real FCM token
-        // (after Firebase.initializeApp + requesting notification permission), and again whenever
-        // FCM hands it a refreshed token (FirebaseMessaging.onTokenRefresh). Mirrors
-        // Subscribe/Unsubscribe above exactly, just keyed by Token instead of Endpoint -- see
-        // Models.DeviceToken's own comment.
+        // MOBILE PUSH (Firebase Cloud Messaging) -- the app calls this after login and whenever FCM
+        // hands it a refreshed token. IDEMPOTENT and ownership-safe:
+        //  * UserId always comes from the JWT, never the request body.
+        //  * The same token registered again (retry, token refresh, app restart) updates the one row;
+        //    it never creates a second one. A unique index on Token backs this up at the DB level, so
+        //    even two concurrent calls cannot produce duplicates (the loser retries as an update).
+        //  * A token already owned by ANOTHER account is re-pointed to the caller -- the device is now
+        //    signed in as them, so the previous account must stop receiving its pushes (account switch).
+        //  * A previously deactivated token is reactivated.
         [Authorize(Roles = "Student")]
         [HttpPost("register-device")]
         public async Task<IActionResult> RegisterDevice(RegisterDeviceDto dto)
         {
             var userId = User.GetUserId();
+            var token = dto.Token.Trim();
+            if (token.Length == 0) return BadRequest(new { message = "Token is required." });
+            var platform = string.IsNullOrWhiteSpace(dto.Platform) ? "Android" : dto.Platform.Trim();
 
-            var existing = await _db.DeviceTokens.FirstOrDefaultAsync(d => d.Token == dto.Token);
-            if (existing != null)
+            for (var attempt = 0; attempt < 2; attempt++)
             {
-                existing.UserId = userId;
-                existing.Platform = dto.Platform;
-            }
-            else
-            {
-                _db.DeviceTokens.Add(new DeviceToken
+                var existing = await _db.DeviceTokens.FirstOrDefaultAsync(d => d.Token == token);
+                var now = DateTime.UtcNow;
+                if (existing != null)
                 {
-                    UserId = userId,
-                    Token = dto.Token,
-                    Platform = dto.Platform
-                });
-            }
+                    existing.UserId = userId;
+                    existing.Platform = platform;
+                    existing.AppVersion = dto.AppVersion;
+                    existing.IsActive = true;
+                    existing.LastUsedAt = now;
+                    existing.UpdatedAt = now;
+                }
+                else
+                {
+                    _db.DeviceTokens.Add(new DeviceToken
+                    {
+                        UserId = userId,
+                        Token = token,
+                        Platform = platform,
+                        AppVersion = dto.AppVersion,
+                        IsActive = true,
+                        LastUsedAt = now,
+                        UpdatedAt = now
+                    });
+                }
 
-            await _db.SaveChangesAsync();
+                try
+                {
+                    await _db.SaveChangesAsync();
+                    return NoContent();
+                }
+                catch (DbUpdateException) when (attempt == 0)
+                {
+                    // Concurrent insert of the same token won the unique index -- clear this context's
+                    // pending state and redo as an update.
+                    _db.ChangeTracker.Clear();
+                }
+            }
             return NoContent();
         }
 
-        // Called on explicit logout so a shared/reused device stops getting pushes meant for the
-        // account that just signed out.
+        // Called on explicit logout (BEFORE the session is cleared -- it needs the JWT) so a shared/reused
+        // device stops getting pushes meant for the account that just signed out. Only removes the row if
+        // the caller owns it; unknown tokens are a quiet no-op so the call is safe to repeat.
         [Authorize(Roles = "Student")]
         [HttpPost("unregister-device")]
         public async Task<IActionResult> UnregisterDevice(UnregisterDeviceDto dto)
         {
             var userId = User.GetUserId();
-            var existing = await _db.DeviceTokens.FirstOrDefaultAsync(d => d.Token == dto.Token && d.UserId == userId);
+            var token = dto.Token.Trim();
+            var existing = await _db.DeviceTokens.FirstOrDefaultAsync(d => d.Token == token && d.UserId == userId);
             if (existing != null)
             {
                 _db.DeviceTokens.Remove(existing);

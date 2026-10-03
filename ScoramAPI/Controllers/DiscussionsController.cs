@@ -249,6 +249,7 @@ namespace ScoramAPI.Controllers
 
             var linkPath = parent.QuestionBankQuestionId != null ? $"/question-bank/{parent.QuestionBankQuestionId}" : $"/questions/{parent.QuestionId}";
             await NotifyMentionsAsync(reply, user.FullName, userId, linkPath);
+            await NotifyReplyAsync(parent, reply, user.FullName, userId, linkPath);
 
             return Ok(ToResponseDto(reply, user.FullName, authorIsAdmin: false, isMine: true, myVote: null, replies: new List<CommentResponseDto>()));
         }
@@ -566,12 +567,47 @@ namespace ScoramAPI.Controllers
             {
                 await _notifications.CreateAsync(
                     userId,
-                    NotificationType.Mention,
-                    $"{authorName} mentioned you",
-                    comment.CommentText.Length > 120 ? comment.CommentText[..120] + "…" : comment.CommentText,
-                    linkPath
-                );
+                    new NotificationRequest
+                    {
+                        Type = NotificationType.Mention,
+                        Title = $"{authorName} mentioned you",
+                        Body = comment.CommentText.Length > 120 ? comment.CommentText[..120] + "…" : comment.CommentText,
+                        LinkUrl = linkPath,
+                        // Structured target: mobile opens this question's discussion thread.
+                        EntityType = comment.QuestionBankQuestionId != null ? "QuestionBankQuestion" : "Question",
+                        EntityId = (comment.QuestionBankQuestionId ?? comment.QuestionId)?.ToString()
+                    });
             }
+        }
+
+        // PUSH -- tell the author of the comment that was replied to (the reply's immediate parent).
+        // Skipped when: the parent was written by an admin (no student to notify), the author replied to
+        // themselves, or the reply already @mentions them (NotifyMentionsAsync notified them -- never
+        // send two notifications for one reply). DedupKey ties it to this exact reply.
+        private async Task NotifyReplyAsync(QuestionComment parent, QuestionComment reply, string replierName, Guid replierUserId, string linkPath)
+        {
+            if (parent.UserId is not Guid parentAuthorId || parentAuthorId == replierUserId) return;
+
+            var parentAuthorUsername = await _db.Users
+                .Where(u => u.Id == parentAuthorId)
+                .Select(u => u.Username)
+                .FirstOrDefaultAsync();
+            if (parentAuthorUsername != null &&
+                reply.CommentText.Contains("@" + parentAuthorUsername, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            await _notifications.CreateAsync(
+                parentAuthorId,
+                new NotificationRequest
+                {
+                    Type = NotificationType.DiscussionReply,
+                    Title = $"{replierName} replied to your comment",
+                    Body = reply.CommentText.Length > 120 ? reply.CommentText[..120] + "…" : reply.CommentText,
+                    LinkUrl = linkPath,
+                    EntityType = reply.QuestionBankQuestionId != null ? "QuestionBankQuestion" : "Question",
+                    EntityId = (reply.QuestionBankQuestionId ?? reply.QuestionId)?.ToString(),
+                    DedupKey = $"DiscussionReply:{reply.Id}"
+                });
         }
 
         private static CommentResponseDto ToResponseDto(QuestionComment c, string authorName, bool authorIsAdmin, bool isMine, bool? myVote, List<CommentResponseDto> replies) => new CommentResponseDto

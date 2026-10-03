@@ -24,6 +24,21 @@ namespace ScoramAPI.Models
 
         public bool IsRead { get; set; } = false;
 
+        // PUSH NOTIFICATION SYSTEM -- structured navigation target, so the mobile app never has to
+        // guess a destination from LinkUrl (a WEB path) or from the notification text. EntityType is
+        // a short stable name ("Chat", "ChatRoom", "Question", "QuestionBankQuestion", "MockTest",
+        // "Paper", "PracticeTemplate", ...); EntityId is that entity's Guid as a string. Both are
+        // nullable: older rows and generic notifications (announcements) have no entity.
+        public string? EntityType { get; set; }
+        public string? EntityId { get; set; }
+
+        public DateTime? ReadAt { get; set; }
+
+        // Idempotency key, unique per (UserId, DedupKey) where not null -- e.g. "NewMockTest:{testId}".
+        // A retried/duplicated event (publish clicked twice, job re-run) then cannot notify the same
+        // student twice about the same logical thing. Null = no dedup (chat messages, etc.).
+        public string? DedupKey { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
@@ -56,12 +71,25 @@ namespace ScoramAPI.Models
         public Guid UserId { get; set; }
         public User? User { get; set; }
 
+        // nvarchar(450) + UNIQUE index since AddPushNotificationMetadata -- before that it was
+        // nvarchar(max) with no unique index, so two concurrent registrations of the same token
+        // (login + onTokenRefresh) could create duplicate rows.
         public string Token { get; set; } = string.Empty;
 
         // "Android" | "iOS" -- purely informational (which platform this token is for); FCM's own
         // send API doesn't need it, it's just useful for admin visibility/debugging.
         public string Platform { get; set; } = string.Empty;
 
+        public string? AppVersion { get; set; }
+
+        // False = FCM reported this token dead (uninstalled / expired). Kept as a soft flag instead of
+        // a delete so a failure is visible for debugging; sending only ever targets IsActive rows, and
+        // a later register-device call with the same token reactivates it.
+        public bool IsActive { get; set; } = true;
+
+        public DateTime LastUsedAt { get; set; } = DateTime.UtcNow;
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 }

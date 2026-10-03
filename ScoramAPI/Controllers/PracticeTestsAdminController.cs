@@ -21,12 +21,15 @@ namespace ScoramAPI.Controllers
         private readonly ScoramDbContext _db;
         private readonly IAdminPermissionService _permissions;
         private readonly IAuditLogService _audit;
+        private readonly INotificationFanOutService _fanOut;
 
-        public PracticeTestsAdminController(ScoramDbContext db, IAdminPermissionService permissions, IAuditLogService audit)
+        public PracticeTestsAdminController(ScoramDbContext db, IAdminPermissionService permissions, IAuditLogService audit,
+            INotificationFanOutService fanOut)
         {
             _db = db;
             _permissions = permissions;
             _audit = audit;
+            _fanOut = fanOut;
         }
 
         // GET /api/admin/practice-tests?status=&search=&page=&pageSize=
@@ -211,10 +214,28 @@ namespace ScoramAPI.Controllers
             var template = await _db.PracticeTestTemplates.FindAsync(id);
             if (template == null) return NotFound();
 
+            var wasPublished = template.Status == TestPublishStatus.Published;
             template.Status = status;
             template.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
             await _audit.LogAsync(User.GetAdminId(), $"PracticeTestTemplate.{status}", "PracticeTestTemplate", id);
+
+            // PUSH -- My Exams audience only; see MockTestsAdminController.UpdateStatus for the rules.
+            if (status == TestPublishStatus.Published && !wasPublished && template.ExamId.HasValue)
+            {
+                _fanOut.Queue(new FanOutRequest
+                {
+                    Audience = FanOutAudience.ExamAudience,
+                    ExamIds = new[] { template.ExamId.Value },
+                    Type = NotificationType.NewTest,
+                    Title = "New practice test available",
+                    Body = $"{template.Title} is now available.",
+                    LinkUrl = "/tests",
+                    EntityType = "PracticeTemplate",
+                    EntityId = template.Id.ToString(),
+                    DedupKey = $"NewTest:{template.Id}"
+                });
+            }
 
             return Ok(new { template.Id, Status = template.Status.ToString() });
         }

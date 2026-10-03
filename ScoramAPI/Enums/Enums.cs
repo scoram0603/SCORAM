@@ -293,7 +293,38 @@ namespace ScoramAPI.Enums
         // Someone challenged this student to a Quiz -- see QuizChallengesController.Create.
         // String-backed column is already nvarchar(20) (see ScoramDbContext), and "QuizChallenge"
         // fits within that, so this needed no migration of its own.
-        QuizChallenge
+        QuizChallenge,
+
+        // ---- PUSH NOTIFICATION SYSTEM (AddPushNotificationMetadata migration widens the column to
+        // nvarchar(40)). APPEND ONLY: Type is stored by NAME (HasConversion<string>), so reordering is
+        // harmless, but renaming a value would orphan existing rows. Keep names <= 40 chars.
+        // Mirrored by NotificationType handling in the Flutter app (core/services/notification_router.dart)
+        // -- an unknown name there falls back to "open the Notifications screen", never a crash.
+
+        // A reply to a student's discussion comment (distinct from Mention, which is an explicit @username).
+        DiscussionReply,
+
+        // New content published by an admin, fanned out only to students whose My Exams contain the
+        // content's exam (see NotificationFanOutService).
+        NewTest,
+        NewMockTest,
+        NewPYP,
+
+        // RESERVED -- no producer yet. Quizzes carry no ExamId (they are intentionally global content,
+        // see MyExamScopeService), so they cannot follow the My Exams rule; wire this once product
+        // decides who a new Quiz should notify.
+        NewQuiz,
+
+        // RESERVED -- Gamification badge/achievement unlocked. No producer wired yet.
+        Achievement,
+
+        // Admin broadcast (AdminNotificationsController).
+        SystemAnnouncement,
+
+        // RESERVED -- the Study Partner feature does not exist in this codebase yet. These exist so
+        // the Flutter router and the DB column are ready when it lands; nothing emits them today.
+        StudyPartnerRequest,
+        StudyPartnerAccepted
     }
 
     public enum ImportFileFormat

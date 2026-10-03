@@ -49,6 +49,10 @@ builder.Services.AddScoped<IAdminPermissionService, AdminPermissionService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPushNotificationService, PushNotificationService>();
+// Off-request-path delivery + My-Exams/broadcast fan-out -- see Services/NotificationWorkQueue.cs.
+builder.Services.AddSingleton<INotificationWorkQueue, NotificationWorkQueue>();
+builder.Services.AddHostedService<NotificationWorker>();
+builder.Services.AddScoped<INotificationFanOutService, NotificationFanOutService>();
 builder.Services.AddScoped<IMsg91Service, Msg91Service>();
 builder.Services.AddSingleton<ICaptchaService, CaptchaService>(); // lightweight math captcha for Register/Login -- see CaptchaService's own comment
 builder.Services.AddScoped<IBulkImportService, BulkImportService>();

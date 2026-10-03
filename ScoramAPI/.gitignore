@@ -16,3 +16,10 @@ logs/
 # Render-ephemeral-disk migration; nothing in the app reads from or writes to this path anymore),
 # but this folder still had ~13MB of leftover files from before that, being tracked in git.
 wwwroot/uploads/
+
+# ---- Firebase / FCM (mobile push) -- NEVER commit service-account credentials ----
+# Provide them via env vars (Firebase__ProjectId / Firebase__ClientEmail / Firebase__PrivateKey) or keep
+# the JSON OUTSIDE the repo and point Firebase:ServiceAccountKeyPath at it.
+*-firebase-adminsdk-*.json
+firebase-service-account*.json
+serviceAccountKey*.json

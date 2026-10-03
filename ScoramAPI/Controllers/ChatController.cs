@@ -266,11 +266,16 @@ namespace ScoramAPI.Controllers
                 await _hub.Clients.Group($"user-{mentionedUserId}").SendAsync("ReceiveMention", responseDto);
                 await _notifications.CreateAsync(
                     mentionedUserId,
-                    NotificationType.Mention,
-                    $"{responseDto.SenderName} mentioned you",
-                    responseDto.MessageText ?? "Tap to view the conversation",
-                    "/chat"
-                );
+                    new NotificationRequest
+                    {
+                        Type = NotificationType.Mention,
+                        Title = $"{responseDto.SenderName} mentioned you",
+                        Body = responseDto.MessageText ?? "Tap to view the conversation",
+                        LinkUrl = "/chat",
+                        // Structured target: mobile opens this group room.
+                        EntityType = "ChatRoom",
+                        EntityId = id.ToString()
+                    });
             }
 
             return Ok(responseDto);

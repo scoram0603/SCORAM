@@ -27,11 +27,14 @@ namespace ScoramAPI.Controllers
         private readonly IBackgroundJobQueue _jobQueue;
         private readonly ILogger<PapersController> _logger;
         private readonly IAuditLogService _audit;
+        private readonly INotificationFanOutService _fanOut;
 
         public PapersController(
             ScoramDbContext db, IAdminPermissionService permissions, IFileStorageService fileStorage,
-            IInstantSearchService instantSearch, IBackgroundJobQueue jobQueue, ILogger<PapersController> logger, IAuditLogService audit)
+            IInstantSearchService instantSearch, IBackgroundJobQueue jobQueue, ILogger<PapersController> logger, IAuditLogService audit,
+            INotificationFanOutService fanOut)
         {
+            _fanOut = fanOut;
             _db = db;
             _permissions = permissions;
             _fileStorage = fileStorage;
@@ -588,6 +591,23 @@ namespace ScoramAPI.Controllers
             await _db.SaveChangesAsync();
             await IndexPaperQuestionsAsync(paper.Id);
             await _audit.LogAsync(User.GetAdminId(), "Paper.Publish", "Paper", paper.Id);
+
+            // PUSH -- students preparing for this paper's exam (My Exams) only. Publish only runs from
+            // PendingReview, so this fires once per paper; DedupKey also covers a repeated publish after
+            // an unpublish/republish cycle (they were already told about this paper).
+            var examName = await _db.Exams.Where(e => e.Id == paper.ExamId).Select(e => e.Name).FirstOrDefaultAsync() ?? "A";
+            _fanOut.Queue(new FanOutRequest
+            {
+                Audience = FanOutAudience.ExamAudience,
+                ExamIds = new[] { paper.ExamId },
+                Type = NotificationType.NewPYP,
+                Title = "New previous year paper",
+                Body = $"{examName} {paper.Year} paper is now available.",
+                LinkUrl = "/papers",
+                EntityType = "Paper",
+                EntityId = paper.Id.ToString(),
+                DedupKey = $"NewPYP:{paper.Id}"
+            });
 
             return Ok(await ToDto(paper.Id));
         }

@@ -21,12 +21,15 @@ namespace ScoramAPI.Controllers
         private readonly ScoramDbContext _db;
         private readonly IAdminPermissionService _permissions;
         private readonly IAuditLogService _audit;
+        private readonly INotificationFanOutService _fanOut;
 
-        public MockTestsAdminController(ScoramDbContext db, IAdminPermissionService permissions, IAuditLogService audit)
+        public MockTestsAdminController(ScoramDbContext db, IAdminPermissionService permissions, IAuditLogService audit,
+            INotificationFanOutService fanOut)
         {
             _db = db;
             _permissions = permissions;
             _audit = audit;
+            _fanOut = fanOut;
         }
 
         // GET /api/admin/mocktests?status=&search=&page=&pageSize=
@@ -187,9 +190,31 @@ namespace ScoramAPI.Controllers
             if (status == TestPublishStatus.Published && test.MockTestQuestions.Count == 0)
                 return BadRequest(new { message = "Add at least one question before publishing." });
 
+            var wasPublished = test.Status == TestPublishStatus.Published;
             test.Status = status;
             await _db.SaveChangesAsync();
             await _audit.LogAsync(User.GetAdminId(), $"MockTest.{status}", "MockTest", id);
+
+            // PUSH: tell students preparing for THIS exam (My Exams) -- and nobody else. Only on a real
+            // Draft/Archived -> Published transition (re-saving Published stays silent), and only for a
+            // Mock Test that has an ExamId: legacy rows tagged only by free-text ExamName can't be
+            // matched to My Exams reliably, so they are skipped rather than broadcast. DedupKey makes a
+            // double click harmless.
+            if (status == TestPublishStatus.Published && !wasPublished && test.ExamId.HasValue)
+            {
+                _fanOut.Queue(new FanOutRequest
+                {
+                    Audience = FanOutAudience.ExamAudience,
+                    ExamIds = new[] { test.ExamId.Value },
+                    Type = NotificationType.NewMockTest,
+                    Title = "New mock test available",
+                    Body = $"{test.Title} is now available.",
+                    LinkUrl = "/mock-tests",
+                    EntityType = "MockTest",
+                    EntityId = test.Id.ToString(),
+                    DedupKey = $"NewMockTest:{test.Id}"
+                });
+            }
             return Ok(new { test.Id, Status = test.Status.ToString() });
         }
 

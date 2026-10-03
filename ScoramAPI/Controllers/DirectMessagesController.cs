@@ -212,11 +212,16 @@ namespace ScoramAPI.Controllers
 
             await _notifications.CreateAsync(
                 otherUserId,
-                NotificationType.DirectMessage,
-                responseDto.SenderFullName,
-                PreviewFor(saved) ?? string.Empty,
-                "/chat?tab=messages"
-            );
+                new NotificationRequest
+                {
+                    Type = NotificationType.DirectMessage,
+                    Title = responseDto.SenderFullName,
+                    Body = PreviewFor(saved) ?? string.Empty,
+                    LinkUrl = "/chat?tab=messages",
+                    // Structured target for the mobile app (opens this exact conversation).
+                    EntityType = "DirectConversation",
+                    EntityId = id.ToString()
+                });
 
             return Ok(responseDto);
         }
@@ -271,11 +276,16 @@ namespace ScoramAPI.Controllers
 
             await _notifications.CreateAsync(
                 otherUserId,
-                NotificationType.DirectMessage,
-                responseDto.SenderFullName,
-                PreviewFor(saved) ?? string.Empty,
-                "/chat?tab=messages"
-            );
+                new NotificationRequest
+                {
+                    Type = NotificationType.DirectMessage,
+                    Title = responseDto.SenderFullName,
+                    Body = PreviewFor(saved) ?? string.Empty,
+                    LinkUrl = "/chat?tab=messages",
+                    // Structured target for the mobile app (opens this exact conversation).
+                    EntityType = "DirectConversation",
+                    EntityId = id.ToString()
+                });
 
             return Ok(responseDto);
         }
@@ -327,11 +337,16 @@ namespace ScoramAPI.Controllers
 
             await _notifications.CreateAsync(
                 otherUserId2,
-                NotificationType.DirectMessage,
-                responseDto2.SenderFullName,
-                PreviewFor(saved2) ?? string.Empty,
-                "/chat?tab=messages"
-            );
+                new NotificationRequest
+                {
+                    Type = NotificationType.DirectMessage,
+                    Title = responseDto2.SenderFullName,
+                    Body = PreviewFor(saved2) ?? string.Empty,
+                    LinkUrl = "/chat?tab=messages",
+                    // Structured target for the mobile app (opens this exact conversation).
+                    EntityType = "DirectConversation",
+                    EntityId = id.ToString()
+                });
 
             return Ok(responseDto2);
         }
