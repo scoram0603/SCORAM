@@ -29,6 +29,7 @@ import PreExamInstructions from "./pages/PreExamInstructions";
 import Leaderboard from "./pages/Leaderboard";
 import ProgressPage from "./pages/Progress";
 import Referrals from "./pages/Referrals";
+import StudyPartners from "./pages/StudyPartners";
 import Bookmarks from "./pages/Bookmarks";
 import Settings from "./pages/Settings";
 // "MY EXAMS" -- see context/MyExamsContext.jsx
@@ -91,6 +92,7 @@ function AppRoutes() {
           <Route path="leaderboard" element={<Leaderboard />} />
           <Route path="progress" element={<ProgressPage />} />
           <Route path="referrals" element={<Referrals />} />
+          <Route path="study-partners" element={<StudyPartners />} />
         </Route>
 
         <Route path="*" element={<NotFound />} />

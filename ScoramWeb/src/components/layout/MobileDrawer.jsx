@@ -1,6 +1,6 @@
 import {
   Home, Search, BookOpen, MessageCircle, ClipboardCheck, HelpCircle,
-  MessageSquare, Trophy, Bookmark, BarChart3, User, Settings, LogOut, LogIn, X, Library,
+  MessageSquare, Trophy, Bookmark, BarChart3, User, Settings, LogOut, LogIn, X, Library, Users,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import logo from "../../assets/scoram-logo-horizontal.png";
@@ -9,7 +9,7 @@ import { API_BASE_URL } from "../../api/client";
 
 const ICONS = {
   Home, Search, BookOpen, MessageCircle, ClipboardCheck, HelpCircle,
-  MessageSquare, Trophy, Bookmark, BarChart3, User, Settings, Library,
+  MessageSquare, Trophy, Bookmark, BarChart3, User, Settings, Library, Users,
 };
 
 function photoSrc(url) {

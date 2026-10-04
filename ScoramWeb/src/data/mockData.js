@@ -45,6 +45,7 @@ export const sidebarNavItems = [
     items: [
       { to: "/chat", label: "Messages", icon: "MessageCircle", highlight: "accent" },
       { to: "/discussions", label: "Discussions", icon: "MessageSquare" },
+      { to: "/study-partners", label: "Study Partner", icon: "Users" },
       { to: "/leaderboard", label: "Leaderboard", icon: "Trophy" },
     ],
   },

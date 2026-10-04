@@ -31,8 +31,13 @@ namespace ScoramAPI.Controllers
             var userId = User.GetUserId();
             var normalized = q.Trim().ToLowerInvariant();
 
+            // Never surface students who blocked this user, or whom this user blocked.
+            var blockedIds = _db.UserBlocks
+                .Where(b => b.BlockerUserId == userId || b.BlockedUserId == userId)
+                .Select(b => b.BlockerUserId == userId ? b.BlockedUserId : b.BlockerUserId);
+
             var users = await _db.Users
-                .Where(u => u.IsActive && u.Id != userId)
+                .Where(u => u.IsActive && u.Id != userId && !blockedIds.Contains(u.Id))
                 .Where(u => u.Username.Contains(normalized) || u.FullName.ToLower().Contains(normalized))
                 .OrderBy(u => u.Username)
                 .Take(20)

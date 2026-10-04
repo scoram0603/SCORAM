@@ -324,7 +324,56 @@ namespace ScoramAPI.Enums
         // RESERVED -- the Study Partner feature does not exist in this codebase yet. These exist so
         // the Flutter router and the DB column are ready when it lands; nothing emits them today.
         StudyPartnerRequest,
-        StudyPartnerAccepted
+        StudyPartnerAccepted,
+
+        // STUDY PARTNER challenges (Controllers/StudyPartnersController.cs). Names <= 40 chars.
+        StudyPartnerChallenge,
+        StudyPartnerChallengeAccepted,
+        StudyPartnerChallengeCompleted
+    }
+
+    // ---- STUDY PARTNER -------------------------------------------------------------------------
+    // All stored by NAME (HasConversion<string>) like NotificationType, so values may be reordered
+    // but never renamed.
+
+    /// <summary>Who may see a piece of a student's study data.</summary>
+    public enum VisibilityLevel
+    {
+        Everyone,
+        StudyPartnersOnly,
+        OnlyMe
+    }
+
+    public enum StudyPartnerRequestStatus
+    {
+        Pending,
+        Accepted,
+        Rejected,
+        Cancelled
+    }
+
+    public enum StudyChallengeType
+    {
+        /// <summary>Who answers more questions in the window (must reach QuestionCount to qualify).</summary>
+        Practice,
+        /// <summary>Best accuracy over the window (needs at least QuestionCount answered to qualify).</summary>
+        Accuracy,
+        /// <summary>Fastest single attempt that answers at least QuestionCount questions.</summary>
+        Speed,
+        /// <summary>Most distinct study days in the window (must reach TargetDays to qualify).</summary>
+        Streak
+    }
+
+    public enum StudyChallengeStatus
+    {
+        Pending,
+        /// <summary>Accepted but the start date is still in the future.</summary>
+        Accepted,
+        InProgress,
+        Completed,
+        Rejected,
+        Expired,
+        Cancelled
     }
 
     public enum ImportFileFormat

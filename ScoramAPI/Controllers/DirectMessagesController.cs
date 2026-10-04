@@ -91,6 +91,13 @@ namespace ScoramAPI.Controllers
             var otherUser = await _db.Users.FirstOrDefaultAsync(u => u.Id == dto.OtherUserId && u.IsActive);
             if (otherUser == null) return NotFound(new { message = "That user doesn't exist." });
 
+            // BLOCKING (added with Study Partner): a block in either direction ends new conversations.
+            // Same answer as "doesn't exist" so the response never reveals who blocked whom.
+            if (await _db.UserBlocks.AnyAsync(b =>
+                    (b.BlockerUserId == userId && b.BlockedUserId == dto.OtherUserId) ||
+                    (b.BlockerUserId == dto.OtherUserId && b.BlockedUserId == userId)))
+                return NotFound(new { message = "That user doesn't exist." });
+
             // Smaller Guid always goes in UserAId -- guarantees "A messages B" and "B messages A"
             // land on the exact same row instead of creating two threads for the same pair.
             var (userAId, userBId) = userId.CompareTo(dto.OtherUserId) < 0
@@ -152,6 +159,14 @@ namespace ScoramAPI.Controllers
             var conversation = await _db.DirectConversations.FindAsync(id);
             if (conversation == null) return NotFound(new { message = "Conversation not found." });
             if (!IsParticipant(conversation, userId)) return Forbid();
+
+            // BLOCKING: an existing thread goes read-only once either side blocks the other (history is
+            // kept -- it follows the existing retention rules -- but nothing new can be sent).
+            var otherParticipantId = conversation.UserAId == userId ? conversation.UserBId : conversation.UserAId;
+            if (await _db.UserBlocks.AnyAsync(b =>
+                    (b.BlockerUserId == userId && b.BlockedUserId == otherParticipantId) ||
+                    (b.BlockerUserId == otherParticipantId && b.BlockedUserId == userId)))
+                return StatusCode(403, new { message = "You can't message this student." });
 
             if (string.IsNullOrWhiteSpace(dto.MessageText) && dto.Attachment == null)
                 return BadRequest(new { message = "Send some text or an attachment." });

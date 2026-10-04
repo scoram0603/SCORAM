@@ -60,6 +60,12 @@ namespace ScoramAPI.Data
         public DbSet<Notification> Notifications => Set<Notification>();
         public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
         public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
+        // STUDY PARTNER
+        public DbSet<StudyPartnerRequest> StudyPartnerRequests => Set<StudyPartnerRequest>();
+        public DbSet<StudyPartnership> StudyPartnerships => Set<StudyPartnership>();
+        public DbSet<UserBlock> UserBlocks => Set<UserBlock>();
+        public DbSet<UserPrivacySettings> PrivacySettings => Set<UserPrivacySettings>();
+        public DbSet<StudyPartnerChallenge> StudyPartnerChallenges => Set<StudyPartnerChallenge>();
         public DbSet<BannedWord> BannedWords => Set<BannedWord>();
         public DbSet<MockTest> MockTests => Set<MockTest>();
         public DbSet<MockTestQuestion> MockTestQuestions => Set<MockTestQuestion>();
@@ -916,6 +922,61 @@ namespace ScoramAPI.Data
                 .HasIndex(n => new { n.UserId, n.DedupKey })
                 .IsUnique()
                 .HasFilter("[DedupKey] IS NOT NULL");
+
+            // ---------------- STUDY PARTNER ----------------
+            // Several FKs from one table to Users: SQL Server rejects multiple CASCADE paths, and users
+            // are deactivated (IsActive), never hard-deleted, so every FK here is NoAction.
+            modelBuilder.Entity<StudyPartnerRequest>(e =>
+            {
+                e.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+                e.HasOne(r => r.Sender).WithMany().HasForeignKey(r => r.SenderUserId).OnDelete(DeleteBehavior.NoAction);
+                e.HasOne(r => r.Receiver).WithMany().HasForeignKey(r => r.ReceiverUserId).OnDelete(DeleteBehavior.NoAction);
+                // At most ONE pending request per direction; the reverse direction is guarded in code.
+                e.HasIndex(r => new { r.SenderUserId, r.ReceiverUserId }).IsUnique().HasFilter("[Status] = 'Pending'");
+                e.HasIndex(r => new { r.ReceiverUserId, r.Status });
+                e.ToTable(t => t.HasCheckConstraint("CK_StudyPartnerRequests_NotSelf", "[SenderUserId] <> [ReceiverUserId]"));
+            });
+
+            modelBuilder.Entity<StudyPartnership>(e =>
+            {
+                e.HasOne(p => p.UserA).WithMany().HasForeignKey(p => p.UserAId).OnDelete(DeleteBehavior.NoAction);
+                e.HasOne(p => p.UserB).WithMany().HasForeignKey(p => p.UserBId).OnDelete(DeleteBehavior.NoAction);
+                // One row per pair (code stores them canonically ordered) -- no A-B / B-A duplicates.
+                e.HasIndex(p => new { p.UserAId, p.UserBId }).IsUnique();
+                e.HasIndex(p => p.UserBId);
+                e.ToTable(t => t.HasCheckConstraint("CK_StudyPartnerships_NotSelf", "[UserAId] <> [UserBId]"));
+            });
+
+            modelBuilder.Entity<UserBlock>(e =>
+            {
+                e.HasOne(b => b.Blocker).WithMany().HasForeignKey(b => b.BlockerUserId).OnDelete(DeleteBehavior.NoAction);
+                e.HasOne(b => b.Blocked).WithMany().HasForeignKey(b => b.BlockedUserId).OnDelete(DeleteBehavior.NoAction);
+                e.HasIndex(b => new { b.BlockerUserId, b.BlockedUserId }).IsUnique();
+                e.HasIndex(b => b.BlockedUserId);
+                e.ToTable(t => t.HasCheckConstraint("CK_UserBlocks_NotSelf", "[BlockerUserId] <> [BlockedUserId]"));
+            });
+
+            modelBuilder.Entity<UserPrivacySettings>(e =>
+            {
+                e.HasOne(p => p.User).WithOne().HasForeignKey<UserPrivacySettings>(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+                e.Property(p => p.ProfileVisibility).HasConversion<string>().HasMaxLength(20);
+                e.Property(p => p.ProgressVisibility).HasConversion<string>().HasMaxLength(20);
+                e.Property(p => p.ActivityVisibility).HasConversion<string>().HasMaxLength(20);
+            });
+
+            modelBuilder.Entity<StudyPartnerChallenge>(e =>
+            {
+                e.Property(c => c.Type).HasConversion<string>().HasMaxLength(20);
+                e.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
+                e.Property(c => c.CreatorResult).HasPrecision(10, 2);
+                e.Property(c => c.PartnerResult).HasPrecision(10, 2);
+                e.HasOne(c => c.Creator).WithMany().HasForeignKey(c => c.CreatorUserId).OnDelete(DeleteBehavior.NoAction);
+                e.HasOne(c => c.Partner).WithMany().HasForeignKey(c => c.PartnerUserId).OnDelete(DeleteBehavior.NoAction);
+                e.HasOne(c => c.Exam).WithMany().HasForeignKey(c => c.ExamId).OnDelete(DeleteBehavior.NoAction);
+                e.HasIndex(c => new { c.CreatorUserId, c.Status });
+                e.HasIndex(c => new { c.PartnerUserId, c.Status });
+                e.ToTable(t => t.HasCheckConstraint("CK_StudyPartnerChallenges_NotSelf", "[CreatorUserId] <> [PartnerUserId]"));
+            });
 
             modelBuilder.Entity<DeviceToken>().Property(d => d.Token).HasMaxLength(450);
             modelBuilder.Entity<DeviceToken>().Property(d => d.Platform).HasMaxLength(20);
