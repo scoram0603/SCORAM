@@ -75,7 +75,19 @@ namespace ScoramAPI.Controllers
                 {
                     Room = r,
                     MemberCount = r.Memberships.Count(m => !m.IsBanned),
-                    Membership = r.Memberships.FirstOrDefault(m => m.UserId == userId)
+                    Membership = r.Memberships.FirstOrDefault(m => m.UserId == userId),
+                    LastMessage = _db.ChatMessages
+                        .Where(m => m.ChatRoomId == r.Id && !m.IsDeleted)
+                        .OrderByDescending(m => m.SentAt)
+                        .Select(m => new
+                        {
+                            m.SentAt,
+                            m.MessageType,
+                            m.MessageText,
+                            m.SharedContentTitle,
+                            SenderName = m.User != null ? m.User.FullName : null
+                        })
+                        .FirstOrDefault()
                 })
                 .ToListAsync();
 
@@ -96,13 +108,37 @@ namespace ScoramAPI.Controllers
                 OnlineCount = _presence.GetOnlineCount(x.Room.Id),
                 IsMember = x.Membership != null && !x.Membership.IsBanned,
                 IsBanned = x.Membership?.IsBanned ?? false,
-                CreatedAt = x.Room.CreatedAt
+                CreatedAt = x.Room.CreatedAt,
+                LastMessageAt = x.LastMessage?.SentAt,
+                LastMessagePreview = x.LastMessage == null
+                    ? null
+                    : RoomPreviewFor(x.LastMessage.MessageType, x.LastMessage.MessageText, x.LastMessage.SharedContentTitle, x.LastMessage.SenderName)
             });
 
             if (string.IsNullOrWhiteSpace(normalizedSearch))
                 result = result.Where(r => r.IsFeatured || r.IsMember);
 
             return Ok(result.ToList());
+        }
+
+        // Room-list preview line, e.g. "Rahul: see page 4" / "📷 Photo". Mirrors
+        // DirectMessagesController.PreviewFor, plus a first-name prefix because a room has many senders.
+        private static string RoomPreviewFor(ChatMessageType type, string? text, string? sharedTitle, string? senderName)
+        {
+            var body = type switch
+            {
+                ChatMessageType.Image => string.IsNullOrWhiteSpace(text) ? "📷 Photo" : text,
+                ChatMessageType.Document => string.IsNullOrWhiteSpace(text) ? "📄 Document" : text,
+                ChatMessageType.Poll => "📊 Poll",
+                ChatMessageType.Notice => string.IsNullOrWhiteSpace(text) ? "📢 Announcement" : "📢 " + text,
+                ChatMessageType.QuestionShare => "🔗 Shared a question",
+                ChatMessageType.ContentShare => $"🔗 Shared {sharedTitle ?? "an item"}",
+                _ => text ?? string.Empty
+            };
+            body = body.Replace('\n', ' ').Trim();
+            if (body.Length > 120) body = body.Substring(0, 120);
+            var firstName = string.IsNullOrWhiteSpace(senderName) ? null : senderName.Trim().Split(' ')[0];
+            return firstName == null ? body : $"{firstName}: {body}";
         }
 
         // POST /api/chat/rooms/{id}/join

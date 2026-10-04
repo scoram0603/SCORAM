@@ -24,6 +24,11 @@ namespace ScoramAPI.DTOs
         public bool IsMember { get; set; }
         public bool IsBanned { get; set; }
         public DateTime CreatedAt { get; set; }
+        // UNIFIED MESSAGES LIST -- newest non-deleted message in the room (server-formatted preview,
+        // same idea as ConversationSummaryDto.LastMessagePreview). Null when the room has no messages
+        // yet. Only filled by the student GET /api/chat/rooms endpoint; admin endpoints leave it null.
+        public DateTime? LastMessageAt { get; set; }
+        public string? LastMessagePreview { get; set; }
     }
 
     // GROUP CHAT -- POST /api/admin/chat/rooms (ManageChatRooms)

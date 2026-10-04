@@ -182,13 +182,24 @@ namespace ScoramAPI.Services
         // is deactivated individually and never affects the user's other devices.
         private async Task SendFcmAsync(Guid userId, PushPayload payload)
         {
-            if (!FcmConfigured) return;
+            if (!FcmConfigured)
+            {
+                // Most common reason "push never arrives when the app is closed": no server credentials.
+                // Set Firebase__ProjectId / Firebase__ClientEmail / Firebase__PrivateKey (or
+                // Firebase__ServiceAccountKeyPath) for project scoram-b483e and restart the API.
+                _logger.LogWarning("FCM is NOT configured on this server -- mobile push skipped for user {UserId}. Set Firebase__* credentials.", userId);
+                return;
+            }
 
             var tokens = await _db.DeviceTokens
                 .Where(d => d.UserId == userId && d.IsActive)
                 .Select(d => d.Token)
                 .ToListAsync();
-            if (tokens.Count == 0) return;
+            if (tokens.Count == 0)
+            {
+                _logger.LogInformation("FCM: user {UserId} has no ACTIVE device tokens (never registered, logged out, or token deactivated).", userId);
+                return;
+            }
 
             var message = new MulticastMessage
             {
@@ -221,6 +232,8 @@ namespace ScoramAPI.Services
             try
             {
                 var response = await FirebaseMessaging.DefaultInstance.SendEachForMulticastAsync(message);
+                _logger.LogInformation("FCM: user {UserId} -> {Success} sent, {Failure} failed ({Total} device(s)).",
+                    userId, response.SuccessCount, response.FailureCount, tokens.Count);
                 var deadTokens = new List<string>();
                 for (var i = 0; i < response.Responses.Count; i++)
                 {
