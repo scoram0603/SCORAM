@@ -199,7 +199,7 @@ export default function BulkPaperUpload() {
               </div>
               <p className="mt-1 text-xs text-ink-400">
                 Expected columns: ExamName, Year, Medium (required); Tier, Shift, Date, PaperCode,
-                PaperLabel (all optional). Date must be YYYY-MM-DD. Medium is Hindi or English. An
+                PaperLabel (all optional). Date must be YYYY-MM-DD. Medium is Hindi, English or Bilingual. An
                 ExamName that doesn't already exist creates a new exam, exactly like "+ New Exam" in
                 the wizard. CSV, Excel (.xlsx), and JSON (an array of the same fields) are all
                 supported -- pick whichever's easiest to prepare.

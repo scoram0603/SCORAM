@@ -211,9 +211,9 @@ namespace ScoramAPI.Services
                     row.Errors.Add($"Year must be between 1990 and {DateTime.UtcNow.Year + 1}.");
 
                 if (string.IsNullOrWhiteSpace(row.Medium))
-                    row.Errors.Add("Medium is required (Hindi or English).");
+                    row.Errors.Add("Medium is required (Hindi, English or Bilingual).");
                 else if (!Enum.TryParse<PaperLanguage>(row.Medium, ignoreCase: true, out _))
-                    row.Errors.Add($"'{row.Medium}' isn't a valid medium (expected Hindi or English).");
+                    row.Errors.Add($"'{row.Medium}' isn't a valid medium (expected Hindi, English or Bilingual).");
 
                 if (!string.IsNullOrWhiteSpace(row.ExamDateRaw) && row.ExamDate == null)
                     row.Errors.Add($"'{row.ExamDateRaw}' isn't a valid date (expected YYYY-MM-DD).");

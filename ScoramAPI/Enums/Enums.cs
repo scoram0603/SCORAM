@@ -219,12 +219,17 @@ namespace ScoramAPI.Enums
         ManageFeedback
     }
 
-    // Deliberately just these two for now, per product decision -- not the free-text Language field
-    // question uploads originally used. Adding a third language later is a one-line enum addition.
+    // Deliberately a small fixed set, per product decision -- not the free-text Language field
+    // question uploads originally used. Adding another value later is a one-line enum addition.
+    // Bilingual = a paper whose questions carry both Hindi and English text together (as in the
+    // real printed paper). Appended last so existing numeric values never shift; the column is
+    // stored as a string (HasConversion<string>, MaxLength 10 -- "Bilingual" is 9 chars), so no
+    // migration is needed.
     public enum PaperLanguage
     {
         Hindi,
-        English
+        English,
+        Bilingual
     }
 
     public enum ChatRoomPostPermission

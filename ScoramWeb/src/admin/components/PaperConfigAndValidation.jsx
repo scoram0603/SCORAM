@@ -83,6 +83,7 @@ export function PaperIdentityCard({ paper, canEdit, isLoading, onSave }) {
           <Select value={language} onChange={(e) => setLanguage(e.target.value)}>
             <option value="Hindi">Hindi</option>
             <option value="English">English</option>
+            <option value="Bilingual">Bilingual</option>
           </Select>
         </FormField>
         <FormField label="Tier"><TextInput value={tier} onChange={(e) => setTier(e.target.value)} placeholder="optional" /></FormField>

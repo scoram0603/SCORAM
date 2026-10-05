@@ -13,7 +13,7 @@ import ImagePickerField from "../components/ImagePickerField";
 import { API_BASE_URL } from "../../api/client";
 import { PageHeader, Card, Button, FormField, TextInput, TextArea, Select, Alert, StatusBadge, friendlyError } from "../components/AdminUI";
 
-const LANGUAGES = ["Hindi", "English"];
+const LANGUAGES = ["Hindi", "English", "Bilingual"];
 const DIFFICULTIES = ["Easy", "Medium", "Hard"];
 
 const EMPTY_QUESTION_TEXT_FIELDS = {
