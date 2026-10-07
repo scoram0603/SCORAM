@@ -21,7 +21,7 @@ export const LEGAL = {
   contactEmail: seoConfig.contact.email,
 
   // Deliberately NOT inferred from where the developer is based -- needs legal review.
-  governingLaw: "[APPLICABLE GOVERNING LAW AND JURISDICTION - INSERT AFTER LEGAL REVIEW]",
+  governingLaw: "These Terms are governed by and construed in accordance with the laws of India. The courts located in Budaun Uttar Pradesh, India shall have exclusive jurisdiction over any disputes arising out of or in connection with these Terms.",
 
   paths: {
     privacy: "/privacy-policy",
