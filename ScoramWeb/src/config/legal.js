@@ -14,7 +14,7 @@ export const LEGAL = {
   lastUpdated: "October 6, 2026",
 
   // MUST match the developer name shown on the Google Play listing exactly.
-  developerName: "[DEVELOPER / LEGAL ENTITY NAME - SAME AS GOOGLE PLAY LISTING]",
+  developerName: "Durgesh Kumar",
 
   // Official privacy/support mailbox. info@scoram.in is what the site already publishes
   // (seoConfig.contact.email) -- confirm it is the intended privacy contact.
