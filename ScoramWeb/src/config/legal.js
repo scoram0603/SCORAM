@@ -14,14 +14,14 @@ export const LEGAL = {
   lastUpdated: "October 6, 2026",
 
   // MUST match the developer name shown on the Google Play listing exactly.
-  developerName: "[DEVELOPER / LEGAL ENTITY NAME - SAME AS GOOGLE PLAY LISTING]",
+  developerName: "Durgesh Kumar",
 
   // Official privacy/support mailbox. info@scoram.in is what the site already publishes
   // (seoConfig.contact.email) -- confirm it is the intended privacy contact.
   contactEmail: seoConfig.contact.email,
 
   // Deliberately NOT inferred from where the developer is based -- needs legal review.
-  governingLaw: "[APPLICABLE GOVERNING LAW AND JURISDICTION - INSERT AFTER LEGAL REVIEW]",
+  governingLaw: "These Terms are governed by and construed in accordance with the laws of India. The courts located in Budaun, Uttar Pradesh, India shall have exclusive jurisdiction over any disputes arising out of or in connection with these Terms.",
 
   paths: {
     privacy: "/privacy-policy",
