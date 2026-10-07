@@ -38,6 +38,10 @@ export default function TestRunner() {
   const [confirmSubmit, setConfirmSubmit] = useState(false);
 
   const startedAtRef = useRef(null);
+  // serverTime - device time, in ms. Added to Date.now() everywhere we compare against the server's
+  // expiresAt, so a student's device clock being ahead/behind can't make a brand-new attempt look
+  // already expired (which auto-submitted it on the first tick and jumped straight to the result).
+  const clockOffsetRef = useRef(0);
   const saveTimersRef = useRef({});
   const submittedRef = useRef(false);
 
@@ -60,6 +64,8 @@ export default function TestRunner() {
         });
         setQuestions(data.questions);
         startedAtRef.current = new Date(data.startedAt).getTime();
+        const serverNow = data.serverTime ? new Date(data.serverTime).getTime() : NaN;
+        clockOffsetRef.current = Number.isFinite(serverNow) ? serverNow - Date.now() : 0;
         setStatus("running");
       })
       .catch(() => {
@@ -76,7 +82,7 @@ export default function TestRunner() {
     const expiresAt = new Date(meta.expiresAt).getTime();
 
     function tick() {
-      const secondsLeft = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+      const secondsLeft = Math.max(0, Math.round((expiresAt - (Date.now() + clockOffsetRef.current)) / 1000));
       setRemainingSeconds(secondsLeft);
       if (secondsLeft <= 0) handleSubmit(true);
     }
@@ -152,7 +158,7 @@ export default function TestRunner() {
 
     Object.values(saveTimersRef.current).forEach(clearTimeout);
 
-    const timeTakenSeconds = Math.round((Date.now() - startedAtRef.current) / 1000);
+    const timeTakenSeconds = Math.max(0, Math.round((Date.now() + clockOffsetRef.current - startedAtRef.current) / 1000));
     try {
       await submitTestAttempt(attemptId, timeTakenSeconds);
       navigate(`/tests/result/${attemptId}`, { replace: true });

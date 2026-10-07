@@ -44,6 +44,10 @@ namespace ScoramAPI.DTOs
         // StartedAt + DurationMinutes -- the frontend timer counts down to this, not from a fresh
         // DurationMinutes every time, so a resumed attempt's clock picks up where it really left off.
         public DateTime ExpiresAt { get; set; }
+        // Server's "now" at the moment this response was built. The frontend uses it to correct for a
+        // student's device clock being ahead/behind, so a skewed clock can't make a fresh attempt
+        // look already expired (and auto-submit it) on the very first timer tick.
+        public DateTime ServerTime { get; set; }
         public string? Instructions { get; set; }
         public List<TestAttemptQuestionDto> Questions { get; set; } = new();
     }

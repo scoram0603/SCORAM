@@ -179,6 +179,21 @@ namespace ScoramAPI.Controllers
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 100);
 
+            // Close out any attempt whose time already ran out, so it shows under "Completed Papers"
+            // (with its real score) instead of lingering in "Continue Attempting" with a dead clock.
+            var inProgress = await _db.StudentTestResults
+                .Include(r => r.Answers)
+                .Include(r => r.Paper)
+                .Where(r => r.UserId == userId && r.TestKind == TestKind.PreviousYearPaper && r.Status == TestAttemptStatus.InProgress)
+                .ToListAsync();
+            var anyExpired = false;
+            foreach (var r in inProgress.Where(TestAttemptsController.IsExpired))
+            {
+                TestAttemptsController.FinalizeExpired(r);
+                anyExpired = true;
+            }
+            if (anyExpired) await _db.SaveChangesAsync();
+
             var query = _db.StudentTestResults
                 .Include(r => r.Paper).ThenInclude(p => p!.Exam)
                 .Where(r => r.UserId == userId && r.TestKind == TestKind.PreviousYearPaper)
@@ -313,7 +328,7 @@ namespace ScoramAPI.Controllers
                 .FirstOrDefaultAsync(p => p.Id == id && p.Status == PaperStatus.Published);
             if (paper == null) return NotFound(new { message = "Paper not found." });
 
-            if (!paper.DurationMinutes.HasValue || !paper.RequiredQuestionCount.HasValue)
+            if (!paper.DurationMinutes.HasValue || !paper.RequiredQuestionCount.HasValue || paper.DurationMinutes.Value <= 0)
                 return BadRequest(new { message = "This paper isn't set up for Previous Year Paper Practice yet." });
 
             var userId = User.GetUserId();
@@ -322,7 +337,21 @@ namespace ScoramAPI.Controllers
                 .Include(r => r.Answers)
                 .Include(r => r.Paper).ThenInclude(p => p!.Exam)
                 .FirstOrDefaultAsync(r => r.UserId == userId && r.PaperId == id && r.Status == TestAttemptStatus.InProgress);
-            if (existing != null) return Ok(TestAttemptsController.ToStartResponse(existing));
+            if (existing != null)
+            {
+                // Genuine resume: time is still left, hand back the same attempt.
+                if (!TestAttemptsController.IsExpired(existing))
+                    return Ok(TestAttemptsController.ToStartResponse(existing));
+
+                // BUG FIX -- the old attempt's time ran out while the student was away. Resuming it
+                // would hand TestRunner an ExpiresAt that's already in the past, which instantly
+                // auto-submits it and drops the student on a result screen for a paper they never
+                // attempted. Close it out (it stays in "Completed Papers" with whatever was saved) and
+                // fall through to start a brand-new attempt. Saved before the insert below so the
+                // one-InProgress-attempt-per-paper unique index is never violated.
+                TestAttemptsController.FinalizeExpired(existing);
+                await _db.SaveChangesAsync();
+            }
 
             // "Exact paper integrity" (spec section 8) -- refuse to generate an incomplete paper as
             // if it were the real thing rather than silently starting a 93/100-question attempt.

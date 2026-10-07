@@ -40,6 +40,15 @@ namespace ScoramAPI.Controllers
             var attempt = await LoadOwnedAttemptAsync(attemptId, userId);
             if (attempt == null) return NotFound(new { message = "Attempt not found." });
 
+            // A Previous Year Paper attempt whose time ran out while the student was away is closed
+            // here (instead of being handed back as "resumable" with an already-past ExpiresAt) -- see
+            // IsExpired's comment. Scoped to papers; Mock/Practice/Quiz keep their existing behavior.
+            if (attempt.TestKind == TestKind.PreviousYearPaper && IsExpired(attempt))
+            {
+                FinalizeExpired(attempt);
+                await _db.SaveChangesAsync();
+            }
+
             return attempt.Status == TestAttemptStatus.InProgress
                 ? Ok(ToStartResponse(attempt))
                 : Ok(ToResultDto(attempt));
@@ -253,15 +262,43 @@ namespace ScoramAPI.Controllers
             attempt.AttemptedAt = DateTime.UtcNow;
         }
 
+        internal static int DurationMinutesFor(Models.StudentTestResult attempt) => attempt.TestKind switch
+        {
+            TestKind.Mock => attempt.MockTest?.DurationMinutes ?? 0,
+            TestKind.PreviousYearPaper => attempt.Paper?.DurationMinutes ?? 0,
+            TestKind.Quiz => attempt.Quiz?.DurationMinutes ?? attempt.QuizDurationMinutes ?? EstimateDurationMinutes(attempt),
+            _ => attempt.PracticeTestTemplate?.DurationMinutes ?? attempt.PracticeDurationMinutes ?? EstimateDurationMinutes(attempt)
+        };
+
+        // BUG FIX (PYP "Start Paper" jumping straight to the result) -- nothing on the server ever
+        // closes an attempt whose time has run out; it just stays InProgress forever. Start() on a
+        // paper hands back that stale attempt as a "resume", its ExpiresAt is already in the past, and
+        // TestRunner's countdown sees 0 seconds left on its very first tick and auto-submits it -- so
+        // the student lands on a result screen for a paper they never actually attempted. An attempt
+        // counts as expired once its full duration (plus a short grace period for network latency /
+        // a final auto-save) has passed. Duration <= 0 means "unknown" (e.g. Paper not loaded), never
+        // treat that as expired.
+        private static readonly TimeSpan ExpiryGrace = TimeSpan.FromSeconds(30);
+
+        internal static bool IsExpired(Models.StudentTestResult attempt)
+        {
+            if (attempt.Status != TestAttemptStatus.InProgress) return false;
+            var durationMinutes = DurationMinutesFor(attempt);
+            if (durationMinutes <= 0) return false;
+            return DateTime.UtcNow > attempt.StartedAt.AddMinutes(durationMinutes) + ExpiryGrace;
+        }
+
+        // Closes an expired attempt exactly the way the client's own auto-submit would have (graded
+        // from whatever was auto-saved), but without awarding XP/streak -- the student wasn't there.
+        // Caller is responsible for SaveChangesAsync.
+        internal static void FinalizeExpired(Models.StudentTestResult attempt)
+        {
+            GradeAttempt(attempt, TestAttemptStatus.AutoSubmitted, DurationMinutesFor(attempt) * 60);
+        }
+
         internal static TestAttemptStartResponseDto ToStartResponse(Models.StudentTestResult attempt)
         {
-            var durationMinutes = attempt.TestKind switch
-            {
-                TestKind.Mock => attempt.MockTest?.DurationMinutes ?? 0,
-                TestKind.PreviousYearPaper => attempt.Paper?.DurationMinutes ?? 0,
-                TestKind.Quiz => attempt.Quiz?.DurationMinutes ?? attempt.QuizDurationMinutes ?? EstimateDurationMinutes(attempt),
-                _ => attempt.PracticeTestTemplate?.DurationMinutes ?? attempt.PracticeDurationMinutes ?? EstimateDurationMinutes(attempt)
-            };
+            var durationMinutes = DurationMinutesFor(attempt);
 
             return new TestAttemptStartResponseDto
             {
@@ -272,6 +309,7 @@ namespace ScoramAPI.Controllers
                 NegativeMarkingRatio = attempt.NegativeMarkingRatio,
                 StartedAt = attempt.StartedAt,
                 ExpiresAt = attempt.StartedAt.AddMinutes(durationMinutes),
+                ServerTime = DateTime.UtcNow,
                 Instructions = attempt.MockTest?.Instructions ?? attempt.PracticeTestTemplate?.Description,
                 Questions = attempt.Answers
                     .OrderBy(a => a.QuestionOrder)
