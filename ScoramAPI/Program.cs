@@ -57,6 +57,7 @@ builder.Services.AddScoped<INotificationFanOutService, NotificationFanOutService
 // STUDY PARTNER -- shared progress numbers (same definitions as the Progress page) used by
 // StudyPartnersController for profile / compare / leaderboard / challenges.
 builder.Services.AddScoped<IStudentProgressService, StudentProgressService>();
+builder.Services.AddSingleton<IDmViewingService, DmViewingService>(); // DIRECT MESSAGES -- which thread a student has open right now (suppresses redundant notifications)
 builder.Services.AddScoped<IAccountDeletionService, AccountDeletionService>(); // self-service account deletion -- see AccountDeletionService's own comment
 builder.Services.AddScoped<IMsg91Service, Msg91Service>();
 builder.Services.AddSingleton<ICaptchaService, CaptchaService>(); // lightweight math captcha for Register/Login -- see CaptchaService's own comment

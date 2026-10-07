@@ -32,6 +32,13 @@ namespace ScoramAPI.Services
         /// the Web Push + FCM delivery (off the request path). Respects the recipient's mute preferences.
         /// Returns null if muted, the user is inactive/unknown, or DedupKey was already used for this user.</summary>
         Task<NotificationResponseDto?> CreateAsync(Guid userId, NotificationRequest request);
+
+        /// <summary>
+        /// Same as <see cref="CreateAsync(Guid, NotificationRequest)"/> but runs on the background work
+        /// queue, so a request that triggers a notification (sending a chat message) never makes the
+        /// sender wait for the recipient's notification row + hub push + FCM hand-off.
+        /// </summary>
+        void Enqueue(Guid userId, NotificationRequest request);
     }
 
     public class NotificationService : INotificationService
@@ -53,6 +60,9 @@ namespace ScoramAPI.Services
         public Task<NotificationResponseDto?> CreateAsync(Guid userId, NotificationType type, string title, string body, string linkUrl) =>
             CreateAsync(userId, new NotificationRequest { Type = type, Title = title, Body = body, LinkUrl = linkUrl });
 
+        public void Enqueue(Guid userId, NotificationRequest request) =>
+            _queue.Enqueue((sp, _) => sp.GetRequiredService<INotificationService>().CreateAsync(userId, request));
+
         public async Task<NotificationResponseDto?> CreateAsync(Guid userId, NotificationRequest request)
         {
             var user = await _db.Users.FindAsync(userId);
@@ -62,6 +72,35 @@ namespace ScoramAPI.Services
             if (request.DedupKey != null &&
                 await _db.Notifications.AnyAsync(n => n.UserId == userId && n.DedupKey == request.DedupKey))
                 return null;
+
+            // DIRECT MESSAGES: one notification row PER CONVERSATION, not per message. A burst of
+            // messages from the same person re-uses (and re-opens) that row with the newest preview
+            // instead of piling up a new entry each time -- the unread COUNT shown next to it is
+            // computed from the actual unread messages (see NotificationsController.List). The hub
+            // event and push below still fire for every message, so delivery stays instant.
+            if (request.Type == NotificationType.DirectMessage && request.EntityType != null && request.EntityId != null)
+            {
+                var existing = await _db.Notifications
+                    .Where(n => n.UserId == userId && n.Type == NotificationType.DirectMessage
+                                && n.EntityType == request.EntityType && n.EntityId == request.EntityId)
+                    .OrderByDescending(n => n.CreatedAt)
+                    .ToListAsync();
+
+                if (existing.Count > 0)
+                {
+                    var keep = existing[0];
+                    keep.Title = Clean(request.Title, MaxTitleLength);
+                    keep.Body = Clean(request.Body, MaxBodyLength);
+                    keep.LinkUrl = string.IsNullOrWhiteSpace(request.LinkUrl) ? "/" : request.LinkUrl;
+                    keep.IsRead = false;
+                    keep.ReadAt = null;
+                    keep.CreatedAt = DateTime.UtcNow;
+                    // Rows from before this change: collapse the stragglers into the one we keep.
+                    if (existing.Count > 1) _db.Notifications.RemoveRange(existing.Skip(1));
+                    await _db.SaveChangesAsync();
+                    return await PublishAsync(userId, keep);
+                }
+            }
 
             var notification = new Notification
             {
@@ -88,6 +127,13 @@ namespace ScoramAPI.Services
                 return null;
             }
 
+            return await PublishAsync(userId, notification);
+        }
+
+        // Shared by the create and the "re-use this conversation's row" paths above: builds the DTO, pushes it
+        // over the hub, and hands the FCM push to the background queue.
+        private async Task<NotificationResponseDto> PublishAsync(Guid userId, Notification notification)
+        {
             var dto = new NotificationResponseDto
             {
                 Id = notification.Id,

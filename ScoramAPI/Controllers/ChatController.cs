@@ -300,7 +300,11 @@ namespace ScoramAPI.Controllers
             foreach (var mentionedUserId in mentionedUserIds)
             {
                 await _hub.Clients.Group($"user-{mentionedUserId}").SendAsync("ReceiveMention", responseDto);
-                await _notifications.CreateAsync(
+                // Someone who has this very room open sees the mention live (highlighted in the
+                // thread) -- a notification + push on top of that is just noise. Room presence is
+                // the "chat is open" signal (JoinRoomGroup/LeaveRoomGroup).
+                if (_presence.GetOnlineUserIds(id).Contains(mentionedUserId)) continue;
+                _notifications.Enqueue(
                     mentionedUserId,
                     new NotificationRequest
                     {

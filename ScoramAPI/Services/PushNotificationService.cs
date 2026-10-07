@@ -223,7 +223,11 @@ namespace ScoramAPI.Services
                     {
                         ChannelId = AndroidChannelId,
                         Icon = AndroidSmallIcon,
-                        Color = AndroidAccentColor
+                        Color = AndroidAccentColor,
+                        // Same Tag => Android REPLACES the earlier tray entry instead of stacking a new one.
+                        // Direct messages use the conversation id, so five messages from one person show
+                        // as one tray entry (the latest message) rather than five.
+                        Tag = payload.Type == "DirectMessage" ? payload.EntityId : null
                     }
                 },
                 Apns = new ApnsConfig { Aps = new Aps { Sound = "default" } }

@@ -31,9 +31,11 @@ namespace ScoramAPI.Controllers
         private readonly IHubContext<ChatHub> _hub;
         private readonly INotificationService _notifications;
         private readonly IDmPresenceService _dmPresence;
+        private readonly IDmViewingService _dmViewing;
 
-        public DirectMessagesController(ScoramDbContext db, IFileStorageService fileStorage, IHubContext<ChatHub> hub, INotificationService notifications, IDmPresenceService dmPresence)
+        public DirectMessagesController(ScoramDbContext db, IFileStorageService fileStorage, IHubContext<ChatHub> hub, INotificationService notifications, IDmPresenceService dmPresence, IDmViewingService dmViewing)
         {
+            _dmViewing = dmViewing;
             _db = db;
             _fileStorage = fileStorage;
             _hub = hub;
@@ -225,18 +227,7 @@ namespace ScoramAPI.Controllers
                 Console.WriteLine($"[DirectMessagesController] SignalR push failed for conversation {id}: {ex}");
             }
 
-            await _notifications.CreateAsync(
-                otherUserId,
-                new NotificationRequest
-                {
-                    Type = NotificationType.DirectMessage,
-                    Title = responseDto.SenderFullName,
-                    Body = PreviewFor(saved) ?? string.Empty,
-                    LinkUrl = "/chat?tab=messages",
-                    // Structured target for the mobile app (opens this exact conversation).
-                    EntityType = "DirectConversation",
-                    EntityId = id.ToString()
-                });
+            NotifyDirectMessage(otherUserId, id, responseDto.SenderFullName, PreviewFor(saved) ?? string.Empty);
 
             return Ok(responseDto);
         }
@@ -289,18 +280,7 @@ namespace ScoramAPI.Controllers
                 Console.WriteLine($"[DirectMessagesController] SignalR push failed for conversation {id}: {ex}");
             }
 
-            await _notifications.CreateAsync(
-                otherUserId,
-                new NotificationRequest
-                {
-                    Type = NotificationType.DirectMessage,
-                    Title = responseDto.SenderFullName,
-                    Body = PreviewFor(saved) ?? string.Empty,
-                    LinkUrl = "/chat?tab=messages",
-                    // Structured target for the mobile app (opens this exact conversation).
-                    EntityType = "DirectConversation",
-                    EntityId = id.ToString()
-                });
+            NotifyDirectMessage(otherUserId, id, responseDto.SenderFullName, PreviewFor(saved) ?? string.Empty);
 
             return Ok(responseDto);
         }
@@ -350,18 +330,7 @@ namespace ScoramAPI.Controllers
                 Console.WriteLine($"[DirectMessagesController] SignalR push failed for conversation {id}: {ex}");
             }
 
-            await _notifications.CreateAsync(
-                otherUserId2,
-                new NotificationRequest
-                {
-                    Type = NotificationType.DirectMessage,
-                    Title = responseDto2.SenderFullName,
-                    Body = PreviewFor(saved2) ?? string.Empty,
-                    LinkUrl = "/chat?tab=messages",
-                    // Structured target for the mobile app (opens this exact conversation).
-                    EntityType = "DirectConversation",
-                    EntityId = id.ToString()
-                });
+            NotifyDirectMessage(otherUserId2, id, responseDto2.SenderFullName, PreviewFor(saved2) ?? string.Empty);
 
             return Ok(responseDto2);
         }
@@ -415,10 +384,42 @@ namespace ScoramAPI.Controllers
             foreach (var m in unread) m.IsRead = true;
             await _db.SaveChangesAsync();
 
+            // Opening/reading the thread also clears its bell notification, so the notification
+            // list (and the unread badge on Home) never says "3 new messages" about a thread the
+            // student has already read.
+            var conversationKey = id.ToString();
+            var now = DateTime.UtcNow;
+            await _db.Notifications
+                .Where(n => n.UserId == userId && n.Type == NotificationType.DirectMessage
+                            && n.EntityType == "DirectConversation" && n.EntityId == conversationKey && !n.IsRead)
+                .ExecuteUpdateAsync(s => s.SetProperty(n => n.IsRead, true).SetProperty(n => n.ReadAt, now));
+
             return NoContent();
         }
 
         // ---------- helpers ----------
+
+        // Notification for a new message. Skipped entirely when the recipient has THIS thread open right
+        // now (they are reading it live -- a notification/push would only be noise), and otherwise
+        // queued in the background so the SENDER's request never waits on it. See DmViewingService.
+        private void NotifyDirectMessage(Guid recipientId, Guid conversationId, string senderName, string preview)
+        {
+            if (_dmViewing.IsViewing(recipientId, conversationId)) return;
+
+            _notifications.Enqueue(
+                recipientId,
+                new NotificationRequest
+                {
+                    Type = NotificationType.DirectMessage,
+                    Title = senderName,
+                    Body = preview,
+                    LinkUrl = "/chat?tab=messages",
+                    // Structured target for the mobile app (opens this exact conversation).
+                    EntityType = "DirectConversation",
+                    EntityId = conversationId.ToString()
+                });
+        }
+
 
         private async Task<bool> IsParticipant(Guid conversationId, Guid userId)
         {

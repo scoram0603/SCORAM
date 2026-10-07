@@ -38,12 +38,14 @@ namespace ScoramAPI.Hubs
         private readonly ScoramDbContext _db;
         private readonly IChatPresenceService _presence;
         private readonly IDmPresenceService _dmPresence;
+        private readonly IDmViewingService _dmViewing;
 
-        public ChatHub(ScoramDbContext db, IChatPresenceService presence, IDmPresenceService dmPresence)
+        public ChatHub(ScoramDbContext db, IChatPresenceService presence, IDmPresenceService dmPresence, IDmViewingService dmViewing)
         {
             _db = db;
             _presence = presence;
             _dmPresence = dmPresence;
+            _dmViewing = dmViewing;
         }
 
         public override async Task OnConnectedAsync()
@@ -82,6 +84,9 @@ namespace ScoramAPI.Hubs
             if (dmUserWentOffline.HasValue)
                 await PersistAndBroadcastDmOfflineAsync(dmUserWentOffline.Value);
 
+            // A dropped connection can't still be "looking at" a thread.
+            _dmViewing.Close(Context.ConnectionId);
+
             await base.OnDisconnectedAsync(exception);
         }
 
@@ -109,6 +114,18 @@ namespace ScoramAPI.Hubs
         {
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"room-{roomId}");
 
+            var userId = Context.User!.GetUserId();
+            if (_presence.RemovePresence(roomId, userId, Context.ConnectionId))
+                await BroadcastPresenceAsync(roomId);
+        }
+
+        // The app went to the background while this room's chat was open. Presence (online list, and the
+        // "don't notify me about a mention in the room I'm looking at" rule) must stop counting them --
+        // but unlike LeaveRoomGroup the SignalR group membership stays, so the connection keeps
+        // receiving the room's messages if it survives, and JoinRoomGroup on return simply re-adds
+        // presence.
+        public async Task PauseRoomPresence(Guid roomId)
+        {
             var userId = Context.User!.GetUserId();
             if (_presence.RemovePresence(roomId, userId, Context.ConnectionId))
                 await BroadcastPresenceAsync(roomId);
@@ -145,6 +162,25 @@ namespace ScoramAPI.Hubs
             var userId = Context.User!.GetUserId();
             if (_dmPresence.RemovePresence(userId, Context.ConnectionId))
                 await PersistAndBroadcastDmOfflineAsync(userId);
+        }
+
+        // Called when a student opens one specific DM thread (and again after a reconnect while it is
+        // still open). While it is open, DirectMessagesController skips the notification + push for
+        // messages arriving in THAT thread -- the person is reading it live. Verified against
+        // participation so a client can't register interest in someone else's conversation.
+        public async Task OpenDmConversation(Guid conversationId)
+        {
+            var userId = Context.User!.GetUserId();
+            var isParticipant = await _db.DirectConversations
+                .AnyAsync(c => c.Id == conversationId && (c.UserAId == userId || c.UserBId == userId));
+            if (isParticipant) _dmViewing.Open(Context.ConnectionId, userId, conversationId);
+        }
+
+        // Thread closed (back button) or app backgrounded -- notifications resume for it.
+        public Task CloseDmConversation()
+        {
+            _dmViewing.Close(Context.ConnectionId);
+            return Task.CompletedTask;
         }
 
         // Shared by LeaveDmSection and the OnDisconnectedAsync cleanup path -- both mean the same

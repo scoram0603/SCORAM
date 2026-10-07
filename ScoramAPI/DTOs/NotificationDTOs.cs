@@ -13,6 +13,12 @@ namespace ScoramAPI.DTOs
         public string? EntityId { get; set; }
 
         public bool IsRead { get; set; }
+
+        // Only set on direct-message rows by GET /api/notifications: how many UNREAD messages from that
+        // person are waiting (so the app can show "5" next to their name instead of five separate
+        // entries). Null for every other notification type.
+        public int? UnreadCount { get; set; }
+
         public DateTime? ReadAt { get; set; }
         public DateTime CreatedAt { get; set; }
     }

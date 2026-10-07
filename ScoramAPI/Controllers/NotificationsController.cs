@@ -47,6 +47,27 @@ namespace ScoramAPI.Controllers
                 })
                 .ToListAsync();
 
+            // Direct-message rows carry the live unread-message count for that conversation (one
+            // grouped query for the whole page, not one per row).
+            var conversationIds = notifications
+                .Where(n => n.Type == "DirectMessage" && n.EntityType == "DirectConversation" && Guid.TryParse(n.EntityId, out _))
+                .Select(n => Guid.Parse(n.EntityId!))
+                .Distinct()
+                .ToList();
+
+            if (conversationIds.Count > 0)
+            {
+                var unreadByConversation = await _db.DirectMessages
+                    .Where(m => conversationIds.Contains(m.ConversationId) && m.SenderId != userId && !m.IsRead && !m.IsDeleted)
+                    .GroupBy(m => m.ConversationId)
+                    .Select(g => new { ConversationId = g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(x => x.ConversationId, x => x.Count);
+
+                foreach (var n in notifications.Where(n => n.Type == "DirectMessage" && n.EntityType == "DirectConversation"))
+                    if (Guid.TryParse(n.EntityId, out var conversationId))
+                        n.UnreadCount = unreadByConversation.GetValueOrDefault(conversationId, 0);
+            }
+
             return Ok(notifications);
         }
 
