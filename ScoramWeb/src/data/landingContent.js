@@ -48,13 +48,13 @@ export const footerLinks = {
     { label: "Help Center", href: "#faq" },
     { label: "Contact Us", href: "mailto:info@scoram.in" },
     { label: "Privacy Policy", to: "/privacy-policy" },
-    { label: "Terms & Conditions", to: "/terms" },
+    { label: "Terms & Conditions", to: "/terms-and-conditions" },
+    { label: "Delete Account", to: "/delete-account" },
   ],
 };
 
-// Support/legal pages (Privacy Policy, Terms) don't exist in the app yet -- linked above for
-// structure/SEO completeness, but see LANDING_REPORT.md: routes need to be created before these
-// stop 404ing.
+// Legal/support routes (/privacy-policy, /terms-and-conditions, /delete-account) are live -- see
+// App.jsx and config/legal.js.
 
 export const features = [
   {

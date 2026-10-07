@@ -429,8 +429,8 @@ export default function Login() {
           {mode === "register" && (
             <p className="-mt-1 text-center text-xs text-ink-400">
               By creating an account, you agree to SCORAM's{" "}
-              <Link to="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-secondary-500 hover:underline">
-                Terms of Service
+              <Link to="/terms-and-conditions" target="_blank" rel="noopener noreferrer" className="font-semibold text-secondary-500 hover:underline">
+                Terms &amp; Conditions
               </Link>{" "}
               and{" "}
               <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-secondary-500 hover:underline">

@@ -20,6 +20,57 @@
   }
 }
 
+@layer components {
+  /* Long-form legal text (LegalPage.jsx). Kept here, not as arbitrary variants on the element, so
+     the typography is defined once and the JSX content stays readable. */
+  .legal-prose {
+    @apply text-[15px] leading-[1.75] text-ink-600;
+  }
+  .legal-prose > section + section {
+    @apply mt-12;
+  }
+  .legal-prose h2 {
+    @apply mb-4 border-b border-primary-100 pb-2 text-xl font-bold leading-snug text-ink-900;
+  }
+  .legal-prose h3 {
+    @apply mb-2 mt-7 text-base font-bold text-ink-900;
+  }
+  .legal-prose p {
+    @apply mt-3;
+  }
+  .legal-prose ul,
+  .legal-prose ol {
+    @apply mt-3 space-y-1.5 pl-5;
+  }
+  .legal-prose ul {
+    @apply list-disc;
+  }
+  .legal-prose ol {
+    @apply list-decimal;
+  }
+  .legal-prose strong {
+    @apply font-semibold text-ink-900;
+  }
+  .legal-prose a {
+    @apply font-medium text-secondary-500 underline-offset-2 hover:underline;
+  }
+  .legal-prose .legal-callout {
+    @apply mt-4 rounded-xl2 border border-primary-100 bg-primary-50 p-4 text-sm text-ink-900;
+  }
+  .legal-prose .legal-table-wrap {
+    @apply mt-4 overflow-x-auto rounded-xl2 border border-primary-100;
+  }
+  .legal-prose table {
+    @apply w-full min-w-[34rem] border-collapse text-left text-sm;
+  }
+  .legal-prose th {
+    @apply bg-surface px-3 py-2.5 font-semibold text-ink-900;
+  }
+  .legal-prose td {
+    @apply border-t border-primary-100 px-3 py-2.5 align-top;
+  }
+}
+
 @layer utilities {
   /* Hide scrollbars on horizontally-scrolling rows while keeping them scrollable */
   .no-scrollbar::-webkit-scrollbar {

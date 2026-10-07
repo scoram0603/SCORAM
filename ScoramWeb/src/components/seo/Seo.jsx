@@ -56,8 +56,12 @@ export default function Seo({
   jsonLd,
 }) {
   useEffect(() => {
+    // A title that already leads with the brand ("SCORAM Privacy Policy") is used as-is instead of
+    // getting " | SCORAM" appended a second time.
     const resolvedTitle = title
-      ? seoConfig.titleTemplate.replace("%s", title)
+      ? title.startsWith(seoConfig.siteName)
+        ? title
+        : seoConfig.titleTemplate.replace("%s", title)
       : seoConfig.defaultTitle;
     document.title = resolvedTitle;
 

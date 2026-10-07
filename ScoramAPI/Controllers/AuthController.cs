@@ -536,5 +536,45 @@ namespace ScoramAPI.Controllers
 
             return Ok(new ChangePhoneResponseDto { PhoneNumber = user.PhoneNumber });
         }
+
+        // POST /api/auth/delete-account -- permanent, self-service account deletion (Google Play
+        // account-deletion requirement; also linked from the public /delete-account web page).
+        // Order matters: confirmation word -> re-authentication -> deletion. Wrong credentials come
+        // back as 400 (not 401) for the same reason ChangePassword's do -- the clients treat a 401
+        // as "session expired" and would sign the person out instead of showing the message.
+        [Authorize(Roles = "Student")]
+        [HttpPost("delete-account")]
+        [EnableRateLimiting("login")]
+        public async Task<ActionResult> DeleteAccount(DeleteAccountDto dto, [FromServices] IAccountDeletionService accountDeletion)
+        {
+            var user = await _db.Users.FindAsync(User.GetUserId());
+            if (user == null) return NotFound();
+
+            if (!string.Equals(dto.Confirmation?.Trim(), "DELETE", StringComparison.Ordinal))
+                return BadRequest(new { message = "Type DELETE to confirm that you want to permanently delete your account." });
+
+            if (!string.IsNullOrEmpty(dto.CurrentPassword))
+            {
+                if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+                    return BadRequest(new { message = "Current password is incorrect." });
+            }
+            else if (!string.IsNullOrEmpty(dto.OtpAccessToken))
+            {
+                var verify = await _msg91.VerifyAccessTokenAsync(dto.OtpAccessToken);
+                if (!verify.Success) return BadRequest(new { message = verify.ErrorMessage ?? "Phone verification failed." });
+
+                if (verify.PhoneNumber != user.PhoneNumber)
+                    return BadRequest(new { message = "That phone number doesn't match this account. Verify the number registered to your account." });
+            }
+            else
+            {
+                return BadRequest(new { message = "Enter your current password, or verify your registered phone number with an OTP, to confirm it's you." });
+            }
+
+            var deleted = await accountDeletion.DeleteAccountAsync(user.Id);
+            if (!deleted) return NotFound();
+
+            return Ok(new { message = "Your account has been deleted." });
+        }
     }
 }

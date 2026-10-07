@@ -41,7 +41,12 @@
     <priority>0.2</priority>
   </url>
   <url>
-    <loc>https://scoram.in/terms</loc>
+    <loc>https://scoram.in/terms-and-conditions</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  <url>
+    <loc>https://scoram.in/delete-account</loc>
     <changefreq>yearly</changefreq>
     <priority>0.2</priority>
   </url>

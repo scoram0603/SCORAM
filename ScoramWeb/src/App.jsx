@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import AppLayout from "./layouts/AppLayout";
 import AuthLayout from "./layouts/AuthLayout";
 import ProtectedRoute from "./routes/ProtectedRoute";
@@ -17,6 +17,7 @@ import NotFound from "./pages/NotFound";
 // LANDING PAGE -- public support pages linked from the new marketing footer
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Terms from "./pages/Terms";
+import DeleteAccount from "./pages/DeleteAccount";
 // SCORAM_TESTS
 import Tests from "./pages/Tests";
 import PracticeTests from "./pages/PracticeTests";
@@ -105,7 +106,12 @@ function AppRoutes() {
       {/* LANDING PAGE -- public support pages, own navbar/footer (LegalPage), no app chrome,
           so these are top-level routes rather than nested under AppLayout or AuthLayout. */}
       <Route path="privacy-policy" element={<PrivacyPolicy />} />
-      <Route path="terms" element={<Terms />} />
+      <Route path="terms-and-conditions" element={<Terms />} />
+      {/* "/terms" was the original URL for this page -- kept as a redirect so links already shared,
+          indexed or printed keep working. */}
+      <Route path="terms" element={<Navigate to="/terms-and-conditions" replace />} />
+      {/* Public on purpose: this is the Google Play Data Safety "delete account URL". */}
+      <Route path="delete-account" element={<DeleteAccount />} />
     </Routes>
   );
 }

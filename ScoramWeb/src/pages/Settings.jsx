@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Lock, Mail, Phone, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, FileText, Shield } from "lucide-react";
+import { Lock, Mail, Phone, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, FileText, Shield, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import OtpEntryBox from "../components/auth/OtpEntryBox";
+import DeleteAccountForm from "../components/auth/DeleteAccountForm";
+import { LEGAL } from "../config/legal";
 
 function isValidPhone(value) {
   return /^\d{10}$/.test(value.trim());
@@ -18,6 +20,7 @@ export default function Settings() {
       <ChangeEmailCard />
       <ChangePhoneCard />
       <LegalCard />
+      <DeleteAccountCard />
     </div>
   );
 }
@@ -29,16 +32,16 @@ function LegalCard() {
     <SettingsCard icon={Shield} title="Legal">
       <div className="mt-3 flex flex-col gap-1">
         <Link
-          to="/terms"
+          to={LEGAL.paths.terms}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-2.5 rounded-xl2 px-1 py-2 text-sm font-medium text-ink-600 hover:text-primary-600"
         >
           <FileText className="h-4 w-4 shrink-0 text-ink-400" strokeWidth={2} />
-          Terms of Service
+          Terms &amp; Conditions
         </Link>
         <Link
-          to="/privacy-policy"
+          to={LEGAL.paths.privacy}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-2.5 rounded-xl2 px-1 py-2 text-sm font-medium text-ink-600 hover:text-primary-600"
@@ -48,6 +51,31 @@ function LegalCard() {
         </Link>
       </div>
     </SettingsCard>
+  );
+}
+
+// Collapsed by default so it is easy to find but hard to trigger by accident. The form itself (and
+// its re-authentication) lives in DeleteAccountForm so /delete-account can reuse it.
+function DeleteAccountCard() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <SettingsCard icon={Trash2} title="Delete Account" description="Permanently delete your account and data">
+        {open ? (
+          <div className="mt-3">
+            <DeleteAccountForm />
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="mt-3 w-full rounded-xl2 border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
+          >
+            Delete my account…
+          </button>
+        )}
+      </SettingsCard>
+    </>
   );
 }
 

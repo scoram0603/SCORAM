@@ -219,4 +219,22 @@ namespace ScoramAPI.DTOs
         public bool NotifyOnGroupMessages { get; set; }
         public bool NotifyOnDirectMessages { get; set; }
     }
+
+    // ---------- POST /api/auth/delete-account ----------
+    // Self-service account deletion (see AccountDeletionService for exactly what is erased vs.
+    // anonymized). Re-authentication is REQUIRED and takes one of two forms, because the app has no
+    // forgot-password flow and a person who signs in with a phone OTP may not remember a password:
+    //   * CurrentPassword -- same proof ChangePassword/ChangeEmail/ChangePhone already use, or
+    //   * OtpAccessToken  -- a fresh MSG91 widget token proving they own THIS ACCOUNT'S phone number
+    //                        (re-verified server-side and cross-checked against the stored number).
+    // Confirmation must be the literal word DELETE so a stray tap can never trigger it.
+    public class DeleteAccountDto
+    {
+        public string? CurrentPassword { get; set; }
+
+        public string? OtpAccessToken { get; set; }
+
+        [Required]
+        public string Confirmation { get; set; } = string.Empty;
+    }
 }

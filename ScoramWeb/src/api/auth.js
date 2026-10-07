@@ -128,3 +128,21 @@ export function changePhone({ currentPassword, newPhoneNumber, otpAccessToken })
     body: { currentPassword, newPhoneNumber, otpAccessToken },
   });
 }
+
+// POST /api/auth/delete-account -- permanent, self-service account deletion (see
+// AccountDeletionService.cs for exactly what is erased vs. anonymized). Re-authentication is
+// either `currentPassword` or `otpAccessToken` (a fresh MSG91 token for the account's OWN phone
+// number -- for people who sign in by OTP and don't remember a password); `confirmation` must be
+// the literal word DELETE. A wrong password comes back as a 400, never a 401, so this can't be
+// mistaken for an expired session.
+export function deleteAccount({ currentPassword, otpAccessToken, confirmation }) {
+  return apiFetch("/api/auth/delete-account", {
+    method: "POST",
+    auth: true,
+    body: {
+      currentPassword: currentPassword || null,
+      otpAccessToken: otpAccessToken || null,
+      confirmation,
+    },
+  });
+}

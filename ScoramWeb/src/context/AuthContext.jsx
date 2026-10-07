@@ -184,6 +184,18 @@ export function AuthProvider({ children }) {
     setSessionExpired(false);
   }, []);
 
+  // Permanently deletes the account server-side, then drops the local session. Deliberately does
+  // NOT call authApi.logout() afterward -- the account (and every token it ever had) is already
+  // gone, so that request could only 401. Throws on failure so the caller can show the message.
+  const deleteAccount = useCallback(async (payload) => {
+    await authApi.deleteAccount(payload);
+    setStoredToken(null);
+    setStoredRefreshToken(null);
+    setToken(null);
+    setUser(null);
+    setSessionExpired(false);
+  }, []);
+
   const updateNotificationPreferences = useCallback(async (prefs) => {
     const updated = await authApi.updateNotificationPreferences(prefs);
     setUser((prev) => (prev ? { ...prev, ...updated } : prev));
@@ -239,6 +251,7 @@ export function AuthProvider({ children }) {
       loginWithOtp,
       register,
       logout,
+      deleteAccount,
       updateNotificationPreferences,
       updateProfilePhoto,
       removeProfilePhoto,
@@ -249,7 +262,7 @@ export function AuthProvider({ children }) {
       clearError: () => setError(null),
     }),
     [
-      user, token, isLoading, error, sessionExpired, login, loginWithOtp, register, logout,
+      user, token, isLoading, error, sessionExpired, login, loginWithOtp, register, logout, deleteAccount,
       updateNotificationPreferences, updateProfilePhoto, removeProfilePhoto, updateBasicProfile,
       updatePassword, updateEmail, updatePhoneNumber,
     ]
