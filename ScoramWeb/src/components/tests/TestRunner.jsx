@@ -4,6 +4,7 @@ import { Loader2, Clock, Flag, ChevronLeft, ChevronRight, Menu, X, AlertTriangle
 import { getAttempt, saveAnswer, submitTestAttempt } from "../../api/testAttempts";
 import { API_BASE_URL } from "../../api/client";
 import { MathText, RichQuestionBody } from "../questions/MathText";
+import { StimulusPanel, PaperInstructionsList } from "./PaperContent";
 
 function imgSrc(url) {
   if (!url) return null;
@@ -30,6 +31,9 @@ export default function TestRunner() {
   const [status, setStatus] = useState("loading"); // loading | running | error
   const [meta, setMeta] = useState(null);
   const [questions, setQuestions] = useState([]);
+  // Shared Stimulus (optional, Previous Year Papers): each passage/table is sent once; questions reference it by id.
+  const [stimuli, setStimuli] = useState([]);
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [showInstructions, setShowInstructions] = useState(true);
@@ -61,8 +65,10 @@ export default function TestRunner() {
           negativeMarkingRatio: data.negativeMarkingRatio,
           expiresAt: data.expiresAt,
           instructions: data.instructions,
+          paperInstructions: data.paperInstructions || [],
         });
         setQuestions(data.questions);
+        setStimuli(data.stimuli || []);
         startedAtRef.current = new Date(data.startedAt).getTime();
         const serverNow = data.serverTime ? new Date(data.serverTime).getTime() : NaN;
         clockOffsetRef.current = Number.isFinite(serverNow) ? serverNow - Date.now() : 0;
@@ -114,6 +120,15 @@ export default function TestRunner() {
     });
     return { answered, markedForReview, answeredAndMarked, notVisited, notAnswered: questions.length - answered - answeredAndMarked };
   }, [questions]);
+
+  // Stimuli of the question on screen, in the order the admin set. Empty for every ordinary question, so papers
+  // without shared content render exactly as before.
+  const currentStimuli = useMemo(() => {
+    const ids = current?.stimulusIds;
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+    const byId = new Map(stimuli.map((s) => [s.id, s]));
+    return ids.map((id) => byId.get(id)).filter(Boolean);
+  }, [current, stimuli]);
 
   const updateCurrentQuestion = useCallback((patch) => {
     setQuestions((prev) => prev.map((q, i) => (i === currentIndex ? { ...q, ...patch } : q)));
@@ -205,6 +220,11 @@ export default function TestRunner() {
             <Clock className="h-4 w-4" strokeWidth={2.25} />
             {formatTime(remainingSeconds)}
           </span>
+          {meta.paperInstructions?.length > 0 && (
+            <button type="button" onClick={() => setInstructionsOpen(true)} className="rounded-lg border border-primary-100 px-2.5 py-1.5 text-xs font-semibold text-ink-600">
+              Instructions
+            </button>
+          )}
           <button type="button" onClick={() => setPaletteOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 lg:hidden">
             <Menu className="h-5 w-5" strokeWidth={2.25} />
           </button>
@@ -215,7 +235,10 @@ export default function TestRunner() {
         <main className="flex-1 px-4 py-5 sm:px-6">
           {current && (
             <>
-              <div className="rounded-xl2 border border-primary-100 bg-white p-4 shadow-card sm:p-5">
+              {/* Passage/table left, question right on wide screens; stacked (passage first) on phones/tablets. */}
+              <div className={currentStimuli.length > 0 ? "xl:grid xl:grid-cols-2 xl:items-start xl:gap-4" : ""}>
+              <StimulusPanel stimuli={currentStimuli} className="mb-4 xl:sticky xl:top-20 xl:mb-0 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto" />
+              <div className="min-w-0 rounded-xl2 border border-primary-100 bg-white p-4 shadow-card sm:p-5">
                 <p className="text-[15px] font-semibold leading-snug text-ink-900">
                   <RichQuestionBody contentBlocks={current.contentBlocks} fallbackText={current.questionText} />
                 </p>
@@ -245,6 +268,7 @@ export default function TestRunner() {
                     </button>
                   ))}
                 </div>
+              </div>
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -317,6 +341,20 @@ export default function TestRunner() {
         )}
       </div>
 
+      {instructionsOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink-900/40 px-4" onClick={() => setInstructionsOpen(false)}>
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl2 bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-ink-900">Paper instructions</h3>
+              <button type="button" onClick={() => setInstructionsOpen(false)} aria-label="Close instructions">
+                <X className="h-5 w-5 text-ink-400" strokeWidth={2.25} />
+              </button>
+            </div>
+            <PaperInstructionsList instructions={meta.paperInstructions} />
+          </div>
+        </div>
+      )}
+
       {confirmSubmit && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink-900/40 px-6">
           <div className="w-full max-w-sm rounded-xl2 bg-white p-5 shadow-xl">
@@ -351,7 +389,7 @@ export default function TestRunner() {
 function InstructionsScreen({ meta, questionCount, onStart }) {
   const label = meta.testKind === "Mock" ? "Mock Test" : meta.testKind === "PreviousYearPaper" ? "Previous Year Paper" : "Practice Test";
   return (
-    <div className="mx-auto flex min-h-[80vh] max-w-lg flex-col justify-center px-6 py-10">
+    <div className={`mx-auto flex min-h-[80vh] ${meta.paperInstructions?.length > 0 ? "max-w-2xl" : "max-w-lg"} flex-col justify-center px-6 py-10`}>
       <p className="text-xs font-bold uppercase tracking-wide text-secondary-500">{label}</p>
       <h1 className="mt-1 text-xl font-extrabold text-ink-900">{meta.title}</h1>
 
@@ -365,6 +403,12 @@ function InstructionsScreen({ meta, questionCount, onStart }) {
       {meta.instructions && (
         <div className="mt-5 rounded-xl2 border border-primary-100 bg-white p-4 text-sm leading-relaxed text-ink-600">
           {meta.instructions}
+        </div>
+      )}
+
+      {meta.paperInstructions?.length > 0 && (
+        <div className="mt-5 rounded-xl2 border border-primary-100 bg-white p-4">
+          <PaperInstructionsList instructions={meta.paperInstructions} />
         </div>
       )}
 

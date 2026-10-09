@@ -14,6 +14,7 @@ import CommentThread from "../components/questions/CommentThread";
 import LikeButton from "../components/questions/LikeButton";
 import ReportQuestionModal from "../components/questions/ReportQuestionModal";
 import { MathText, RichQuestionBody } from "../components/questions/MathText";
+import { StimulusPanel } from "../components/tests/PaperContent";
 
 function imgSrc(url) {
   if (!url) return null;
@@ -105,6 +106,7 @@ export default function TestAttemptResult() {
           <QuestionReviewCard
             key={q.studentAnswerId}
             question={q}
+            stimuli={(q.stimulusIds || []).map((id) => (result.stimuli || []).find((s) => s.id === id)).filter(Boolean)}
             index={i}
             expanded={expandedIndex === i}
             onToggle={() => setExpandedIndex(expandedIndex === i ? -1 : i)}
@@ -125,7 +127,7 @@ function Stat({ icon: Icon, color, label, value }) {
   );
 }
 
-function QuestionReviewCard({ question: q, index, expanded, onToggle }) {
+function QuestionReviewCard({ question: q, stimuli = [], index, expanded, onToggle }) {
   const [reportOpen, setReportOpen] = useState(false);
   const navigate = useNavigate();
   const questionType = q.isQuestionBank ? "bank" : "paper";
@@ -152,6 +154,7 @@ function QuestionReviewCard({ question: q, index, expanded, onToggle }) {
 
       {expanded && (
         <div className="border-t border-primary-100 px-4 pb-4 pt-3">
+          {stimuli.length > 0 && <StimulusPanel stimuli={stimuli} className="mb-3 max-h-80 overflow-y-auto" />}
           <p className="mb-3 text-sm font-medium text-ink-900">
             <RichQuestionBody contentBlocks={q.contentBlocks} fallbackText={q.questionText} />
           </p>

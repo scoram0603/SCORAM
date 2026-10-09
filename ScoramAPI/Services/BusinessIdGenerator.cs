@@ -39,6 +39,7 @@ namespace ScoramAPI.Services
             PracticeTestTemplate => BusinessIdEntityType.Test,
             MockTest => BusinessIdEntityType.MockTest,
             Admin => BusinessIdEntityType.Admin,
+            SharedStimulus => BusinessIdEntityType.SharedStimulus,
             _ => null
         };
 

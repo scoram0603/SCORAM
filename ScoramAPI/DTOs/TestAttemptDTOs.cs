@@ -26,6 +26,9 @@ namespace ScoramAPI.DTOs
         public string? OptionCImageUrl { get; set; }
         public string? OptionDImageUrl { get; set; }
         public List<ContentBlockDto> ContentBlocks { get; set; } = new();
+        // Optional (Shared Stimulus): ids into TestAttemptStartResponseDto.Stimuli, in display order. Empty for every
+        // question without a stimulus, and for every non-paper attempt -- old clients simply ignore it.
+        public List<Guid> StimulusIds { get; set; } = new();
         public string? SelectedOption { get; set; }
         public bool IsMarkedForReview { get; set; }
     }
@@ -49,6 +52,10 @@ namespace ScoramAPI.DTOs
         // look already expired (and auto-submit it) on the very first timer tick.
         public DateTime ServerTime { get; set; }
         public string? Instructions { get; set; }
+        // Optional, additive (Advanced Paper Instructions / Shared Stimulus). Empty unless a Previous Year Paper has such
+        // content; each stimulus appears once here and is referenced by questions through StimulusIds.
+        public List<StudentPaperInstructionDto> PaperInstructions { get; set; } = new();
+        public List<StudentStimulusDto> Stimuli { get; set; } = new();
         public List<TestAttemptQuestionDto> Questions { get; set; } = new();
     }
 
@@ -106,6 +113,9 @@ namespace ScoramAPI.DTOs
         public string? Subject { get; set; }
         public string? Topic { get; set; }
 
+        // Optional (Shared Stimulus): ids into TestSubmitResultDto.Stimuli. Empty for questions without shared content.
+        public List<Guid> StimulusIds { get; set; } = new();
+
         // Points at the live question for Report/Alternative Solution/Comments/Like -- reuses all
         // four features with zero new backend code (see Controllers/QuestionReportsController.cs,
         // SolutionsController.cs, DiscussionsController.cs, QuestionVotesController.cs), since every
@@ -133,6 +143,8 @@ namespace ScoramAPI.DTOs
         public int? Percentile { get; set; }
         public DateTime AttemptedAt { get; set; }
         public List<TestAnswerReviewDto> Questions { get; set; } = new();
+        // Optional (Shared Stimulus): each active stimulus once; questions reference it via StimulusIds.
+        public List<StudentStimulusDto> Stimuli { get; set; } = new();
     }
 
     // Lightweight row for "My Tests" -- In Progress / Completed, Practice + Mock mixed together

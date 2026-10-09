@@ -173,7 +173,8 @@ export function MathText({ text, className }) {
 // renders without needing to know in advance whether that particular question has rich content or
 // is a plain pre-existing one. This is the one place ContentBlocks actually gets displayed; nothing
 // else in the frontend needs to know the field exists.
-export function RichQuestionBody({ contentBlocks, fallbackText, className }) {
+// imageClassName is optional (Shared Stimulus panels pass a wider, uncapped style); omitted = exactly the old look.
+export function RichQuestionBody({ contentBlocks, fallbackText, className, imageClassName }) {
   if (!Array.isArray(contentBlocks) || contentBlocks.length === 0) {
     return <MathText text={fallbackText} className={className} />;
   }
@@ -183,7 +184,7 @@ export function RichQuestionBody({ contentBlocks, fallbackText, className }) {
       {contentBlocks.map((block, i) => {
         if (block.type === "image") {
           return imgSrc(block.content) ? (
-            <img key={i} src={imgSrc(block.content)} alt="" className="my-2 max-h-64 rounded-lg border border-primary-100" />
+            <img key={i} src={imgSrc(block.content)} alt="" className={imageClassName || "my-2 max-h-64 rounded-lg border border-primary-100"} />
           ) : null;
         }
         if (block.type === "table") {

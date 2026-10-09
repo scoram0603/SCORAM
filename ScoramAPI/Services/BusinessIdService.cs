@@ -190,6 +190,12 @@ namespace ScoramAPI.Services
                     if (e != null) return (e, e.FullName);
                     break;
                 }
+                case BusinessIdEntityType.SharedStimulus:
+                {
+                    var e = await _db.SharedStimuli.FirstOrDefaultAsync(x => x.Id == id, ct);
+                    if (e != null) return (e, e.Title);
+                    break;
+                }
             }
             throw new BusinessIdException(404, "NOT_FOUND", $"That {Describe(type)} could not be found.");
         }
@@ -201,6 +207,7 @@ namespace ScoramAPI.Services
             BusinessIdEntityType.Test => _db.PracticeTestTemplates.AnyAsync(x => x.BusinessId == businessId && x.Id != exceptId, ct),
             BusinessIdEntityType.MockTest => _db.MockTests.AnyAsync(x => x.BusinessId == businessId && x.Id != exceptId, ct),
             BusinessIdEntityType.Admin => _db.Admins.AnyAsync(x => x.BusinessId == businessId && x.Id != exceptId, ct),
+            BusinessIdEntityType.SharedStimulus => _db.SharedStimuli.AnyAsync(x => x.BusinessId == businessId && x.Id != exceptId, ct),
             _ => Task.FromResult(false)
         };
 
@@ -326,6 +333,7 @@ namespace ScoramAPI.Services
         {
             BusinessIdEntityType.MockTest => "mock test",
             BusinessIdEntityType.Test => "test",
+            BusinessIdEntityType.SharedStimulus => "shared stimulus",
             _ => type.ToString().ToLowerInvariant()
         };
 

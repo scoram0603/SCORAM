@@ -28,7 +28,8 @@ namespace ScoramAPI.Models
         Subject,
         Test,
         MockTest,
-        Admin
+        Admin,
+        SharedStimulus
     }
 
     // One row per counter (e.g. "EXM:SSC", "SUB", "TST", "MCK", "ADM"). LastNumber only ever goes

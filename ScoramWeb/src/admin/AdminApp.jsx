@@ -31,6 +31,8 @@ import QuizManagement from "./pages/QuizManagement";
 import FeedbackManagement from "./pages/FeedbackManagement";
 import AdminSecuritySettings from "./pages/AdminSecuritySettings";
 import AdminNotFound from "./pages/AdminNotFound";
+import SharedContent from "./pages/SharedContent";
+import BulkQuestionEditor from "./pages/BulkQuestionEditor";
 
 function AdminRoutes() {
   return (
@@ -57,6 +59,12 @@ function AdminRoutes() {
 
           <Route element={<RequireAdminPermission permission="PublishPaper" />}>
             <Route path="review" element={<ReviewQueue />} />
+          </Route>
+
+          {/* Shared passages/tables/images + multi-paper bulk editor (server enforces EditPaper/UploadPaper) */}
+          <Route element={<RequireAdminPermission permission="EditPaper" />}>
+            <Route path="shared-content" element={<SharedContent />} />
+            <Route path="bulk-editor" element={<BulkQuestionEditor />} />
           </Route>
 
           <Route element={<RequireAdminPermission permission="Audit" />}>

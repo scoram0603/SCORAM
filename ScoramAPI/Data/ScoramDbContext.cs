@@ -78,6 +78,10 @@ namespace ScoramAPI.Data
         public DbSet<Paper> Papers => Set<Paper>();
         // Previous Year Paper Practice -- existing Question Bank questions mapped onto a Paper.
         public DbSet<PaperQuestionBankLink> PaperQuestionBankLinks => Set<PaperQuestionBankLink>();
+        // Shared Stimulus + Paper Instructions (admin content-authoring) -- see Models/SharedStimulusModels.cs.
+        public DbSet<SharedStimulus> SharedStimuli => Set<SharedStimulus>();
+        public DbSet<PaperQuestionStimulus> PaperQuestionStimuli => Set<PaperQuestionStimulus>();
+        public DbSet<PaperInstruction> PaperInstructions => Set<PaperInstruction>();
         public DbSet<AdminPermissionGrant> AdminPermissionGrants => Set<AdminPermissionGrant>();
 
         // Question Bank (SCORAM_QUESTION_BANK)
@@ -130,8 +134,30 @@ namespace ScoramAPI.Data
         // accidentally binds the property from a request body.
         internal bool AllowBusinessIdChange { get; set; }
 
+        // Shared Stimulus links that point at a QB-link row must go before that row (or its Paper) is
+        // deleted. Runs inside SaveChangesAsync so ALL existing delete paths are covered without
+        // touching their controllers: UnmapQuestion, Paper delete, exam-merge paper removal, rollbacks.
+        // The rows are only relationships -- the SharedStimulus and the questions are never touched.
+        private async Task RemoveStimulusLinksOfDeletedEntitiesAsync(CancellationToken ct)
+        {
+            var deleted = ChangeTracker.Entries().Where(e => e.State == EntityState.Deleted).Select(e => e.Entity).ToList();
+            if (deleted.Count == 0) return;
+
+            var linkIds = deleted.OfType<PaperQuestionBankLink>().Select(l => l.Id).ToList();
+            var paperIds = deleted.OfType<Paper>().Select(p => p.Id).ToList();
+            if (linkIds.Count == 0 && paperIds.Count == 0) return;
+
+            var rows = await PaperQuestionStimuli
+                .Where(x => x.PaperQuestionBankLinkId != null
+                    && (linkIds.Contains(x.PaperQuestionBankLinkId.Value)
+                        || paperIds.Contains(x.PaperQuestionBankLink!.PaperId)))
+                .ToListAsync(ct);
+            if (rows.Count > 0) PaperQuestionStimuli.RemoveRange(rows);
+        }
+
         public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
         {
+            await RemoveStimulusLinksOfDeletedEntitiesAsync(cancellationToken);
             GuardBusinessIdEdits();
 
             var needId = ChangeTracker.Entries()
@@ -704,6 +730,47 @@ namespace ScoramAPI.Data
             modelBuilder.Entity<PaperQuestionBankLink>()
                 .HasIndex(l => new { l.PaperId, l.QuestionBankQuestionId })
                 .IsUnique();
+
+            // ---------- Shared Stimulus / Paper Instructions ----------
+            // Delete rules: a stimulus can never be hard-deleted while referenced (Restrict) --
+            // admins archive instead. Links die with the question / paper-link they belong to
+            // (they are only a relationship, never content), so existing Question / Paper /
+            // QuestionBank delete flows keep working unchanged. Nothing cascades UP to Paper,
+            // Question or SharedStimulus.
+            modelBuilder.Entity<SharedStimulus>(e =>
+            {
+                e.Property(s => s.BusinessId).HasMaxLength(30);
+                e.HasIndex(s => s.BusinessId).IsUnique().HasFilter("[BusinessId] IS NOT NULL").HasDatabaseName("UX_SharedStimuli_BusinessId");
+                e.HasIndex(s => s.Status);
+                e.HasOne(s => s.CreatedByAdmin).WithMany().HasForeignKey(s => s.CreatedByAdminId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(s => s.UpdatedByAdmin).WithMany().HasForeignKey(s => s.UpdatedByAdminId).OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<PaperQuestionStimulus>(e =>
+            {
+                e.ToTable(t => t.HasCheckConstraint("CK_PaperQuestionStimuli_ExactlyOneTarget",
+                    "([QuestionId] IS NOT NULL AND [PaperQuestionBankLinkId] IS NULL) OR ([QuestionId] IS NULL AND [PaperQuestionBankLinkId] IS NOT NULL)"));
+                e.HasOne(x => x.SharedStimulus).WithMany(s => s.Links).HasForeignKey(x => x.SharedStimulusId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(x => x.Question).WithMany().HasForeignKey(x => x.QuestionId).OnDelete(DeleteBehavior.Cascade);
+                // Restrict (not Cascade): Paper -> Question -> Link-row and Paper -> QB-link -> Link-row would be
+                // two cascade paths into this table, which SQL Server rejects (error 1785). The rows are
+                // removed instead by RemoveStimulusLinksOfDeletedEntitiesAsync in SaveChangesAsync, in the
+                // same save/transaction, so every existing unmap / paper-delete flow keeps working.
+                e.HasOne(x => x.PaperQuestionBankLink).WithMany().HasForeignKey(x => x.PaperQuestionBankLinkId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(x => x.CreatedByAdmin).WithMany().HasForeignKey(x => x.CreatedByAdminId).OnDelete(DeleteBehavior.Restrict);
+                // No duplicate Q -> STM relationship, on either side of a paper's question list.
+                e.HasIndex(x => new { x.QuestionId, x.SharedStimulusId }).IsUnique().HasFilter("[QuestionId] IS NOT NULL").HasDatabaseName("UX_PaperQuestionStimuli_Question_Stimulus");
+                e.HasIndex(x => new { x.PaperQuestionBankLinkId, x.SharedStimulusId }).IsUnique().HasFilter("[PaperQuestionBankLinkId] IS NOT NULL").HasDatabaseName("UX_PaperQuestionStimuli_Link_Stimulus");
+                e.HasIndex(x => x.SharedStimulusId);
+            });
+
+            modelBuilder.Entity<PaperInstruction>(e =>
+            {
+                e.HasOne(i => i.Paper).WithMany().HasForeignKey(i => i.PaperId).OnDelete(DeleteBehavior.Cascade); // instructions belong to the paper only
+                e.HasOne(i => i.CreatedByAdmin).WithMany().HasForeignKey(i => i.CreatedByAdminId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(i => i.UpdatedByAdmin).WithMany().HasForeignKey(i => i.UpdatedByAdminId).OnDelete(DeleteBehavior.Restrict);
+                e.HasIndex(i => new { i.PaperId, i.DisplayOrder });
+            });
 
             modelBuilder.Entity<AdminPermissionGrant>()
                 .HasOne(g => g.Admin)

@@ -13,6 +13,7 @@ import TestQuestionPicker from "../components/TestQuestionPicker";
 import PaperQuestionBulkPicker from "../components/PaperQuestionBulkPicker";
 import { PracticeSettingsCard, PaperIdentityCard, ValidationSummary } from "../components/PaperConfigAndValidation";
 import { QuestionCard, QuestionEditForm } from "../components/QuestionEditor";
+import PaperContentManager from "../components/PaperContentManager";
 
 export default function PaperDetailView() {
   const { paperId } = useParams();
@@ -366,6 +367,8 @@ export default function PaperDetailView() {
             )}
           </Card>
         )}
+
+        <PaperContentManager token={token} paperId={paperId} canEdit={hasPermission("EditPaper") || hasPermission("UploadPaper")} />
 
         {actionError && <div className="mb-4"><Alert>{actionError}</Alert></div>}
 

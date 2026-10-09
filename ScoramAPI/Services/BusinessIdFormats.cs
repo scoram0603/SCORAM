@@ -23,6 +23,7 @@ namespace ScoramAPI.Services
         public const string TestPrefix = "TST";
         public const string MockTestPrefix = "MCK";
         public const string AdminPrefix = "ADM";
+        public const string SharedStimulusPrefix = "STM";
 
         // Letters only, on purpose: with digits allowed in the code, "EXMSSC2001" could be code
         // "SSC2"+001 or "SSC"+2001 and the sequence could not be parsed back out unambiguously.
@@ -33,6 +34,7 @@ namespace ScoramAPI.Services
         private static readonly Regex SubjectRegex = new(@"^SUB(?<num>\d{3,9})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex TestRegex = new(@"^TST(?<num>\d{4,9})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex MockTestRegex = new(@"^MCK(?<num>\d{4,9})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex SharedStimulusRegex = new(@"^STM(?<num>\d{4,9})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex AdminRegex = new(@"^ADM(?<num>\d{4,9})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         public static string Normalize(string? raw) => (raw ?? string.Empty).Trim().ToUpperInvariant();
@@ -66,6 +68,7 @@ namespace ScoramAPI.Services
             BusinessIdEntityType.Test => TestPrefix,
             BusinessIdEntityType.MockTest => MockTestPrefix,
             BusinessIdEntityType.Admin => AdminPrefix,
+            BusinessIdEntityType.SharedStimulus => SharedStimulusPrefix,
             _ => throw new ArgumentOutOfRangeException(nameof(type))
         };
 
@@ -104,6 +107,7 @@ namespace ScoramAPI.Services
                 case "test": case "tests": case "practicetest": case "practicetests": type = BusinessIdEntityType.Test; return true;
                 case "mocktest": case "mocktests": case "mock": type = BusinessIdEntityType.MockTest; return true;
                 case "admin": case "admins": type = BusinessIdEntityType.Admin; return true;
+                case "sharedstimulus": case "sharedstimuli": case "stimulus": case "stimuli": type = BusinessIdEntityType.SharedStimulus; return true;
                 default: return false;
             }
         }
@@ -115,6 +119,7 @@ namespace ScoramAPI.Services
             BusinessIdEntityType.Test => "TST0001",
             BusinessIdEntityType.MockTest => "MCK0001",
             BusinessIdEntityType.Admin => "ADM0001",
+            BusinessIdEntityType.SharedStimulus => "STM0001",
             _ => string.Empty
         };
 
@@ -125,6 +130,7 @@ namespace ScoramAPI.Services
             BusinessIdEntityType.Test => TestRegex,
             BusinessIdEntityType.MockTest => MockTestRegex,
             BusinessIdEntityType.Admin => AdminRegex,
+            BusinessIdEntityType.SharedStimulus => SharedStimulusRegex,
             _ => throw new ArgumentOutOfRangeException(nameof(type))
         };
     }

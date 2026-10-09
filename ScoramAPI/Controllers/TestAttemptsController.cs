@@ -34,7 +34,7 @@ namespace ScoramAPI.Controllers
         // already submitted, returns the full graded result instead (spec: "Resume Test" / a
         // submitted attempt can't be modified).
         [HttpGet("{attemptId:guid}")]
-        public async Task<ActionResult<object>> GetAttempt(Guid attemptId)
+        public async Task<ActionResult<object>> GetAttempt(Guid attemptId, [FromServices] IPaperContentService content)
         {
             var userId = User.GetUserId();
             var attempt = await LoadOwnedAttemptAsync(attemptId, userId);
@@ -49,9 +49,16 @@ namespace ScoramAPI.Controllers
                 await _db.SaveChangesAsync();
             }
 
-            return attempt.Status == TestAttemptStatus.InProgress
-                ? Ok(ToStartResponse(attempt))
-                : Ok(ToResultDto(attempt));
+            if (attempt.Status != TestAttemptStatus.InProgress)
+            {
+                var graded = ToResultDto(attempt);
+                await content.EnrichResultAsync(graded, attempt);
+                return Ok(graded);
+            }
+
+            var started = ToStartResponse(attempt);
+            await content.EnrichAsync(started, attempt); // adds paper instructions/stimuli for Previous Year Papers only
+            return Ok(started);
         }
 
         // PATCH /api/tests/attempts/answers/{studentAnswerId} -- auto-save. Fire-and-forget-friendly:
@@ -105,14 +112,18 @@ namespace ScoramAPI.Controllers
         // or erroring, so a double-click or a retried request after a flaky network response can't
         // produce two submissions or corrupt the stored result.
         [HttpPost("{attemptId:guid}/submit")]
-        public async Task<ActionResult<TestSubmitResultDto>> Submit(Guid attemptId, TestSubmitDto dto)
+        public async Task<ActionResult<TestSubmitResultDto>> Submit(Guid attemptId, TestSubmitDto dto, [FromServices] IPaperContentService content)
         {
             var userId = User.GetUserId();
             var attempt = await LoadOwnedAttemptAsync(attemptId, userId);
             if (attempt == null) return NotFound(new { message = "Attempt not found." });
 
             if (attempt.Status != TestAttemptStatus.InProgress)
-                return Ok(ToResultDto(attempt)); // idempotent -- already graded, hand back what's there
+            {
+                var again = ToResultDto(attempt); // idempotent -- already graded, hand back what's there
+                await content.EnrichResultAsync(again, attempt);
+                return Ok(again);
+            }
 
             GradeAttempt(attempt, TestAttemptStatus.Submitted, dto.TimeTakenSeconds);
             await _db.SaveChangesAsync();
@@ -161,7 +172,9 @@ namespace ScoramAPI.Controllers
                 }
             }
 
-            return Ok(ToResultDto(attempt));
+            var result = ToResultDto(attempt);
+            await content.EnrichResultAsync(result, attempt);
+            return Ok(result);
         }
 
         // GET /api/tests/attempts/mine?status=&page=&pageSize= -- "My Tests": In Progress + Completed,

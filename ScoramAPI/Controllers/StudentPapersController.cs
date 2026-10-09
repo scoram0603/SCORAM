@@ -322,7 +322,7 @@ namespace ScoramAPI.Controllers
         // a second call while one is already running just hands back the same attempt (resume).
         [HttpPost("{id:guid}/start")]
         [Authorize(Roles = "Student")]
-        public async Task<ActionResult<TestAttemptStartResponseDto>> Start(Guid id)
+        public async Task<ActionResult<TestAttemptStartResponseDto>> Start(Guid id, [FromServices] IPaperContentService content)
         {
             var paper = await _db.Papers.Include(p => p.Exam)
                 .FirstOrDefaultAsync(p => p.Id == id && p.Status == PaperStatus.Published);
@@ -341,7 +341,11 @@ namespace ScoramAPI.Controllers
             {
                 // Genuine resume: time is still left, hand back the same attempt.
                 if (!TestAttemptsController.IsExpired(existing))
-                    return Ok(TestAttemptsController.ToStartResponse(existing));
+                {
+                    var resumed = TestAttemptsController.ToStartResponse(existing);
+                    await content.EnrichAsync(resumed, existing);
+                    return Ok(resumed);
+                }
 
                 // BUG FIX -- the old attempt's time ran out while the student was away. Resuming it
                 // would hand TestRunner an ExpiresAt that's already in the past, which instantly
@@ -436,7 +440,9 @@ namespace ScoramAPI.Controllers
             await _db.SaveChangesAsync();
 
             attempt.Paper = paper;
-            return Ok(TestAttemptsController.ToStartResponse(attempt));
+            var started = TestAttemptsController.ToStartResponse(attempt);
+            await content.EnrichAsync(started, attempt);
+            return Ok(started);
         }
     }
 }
