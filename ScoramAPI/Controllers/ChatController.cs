@@ -477,14 +477,19 @@ namespace ScoramAPI.Controllers
         [HttpGet("rooms/{id:guid}/mentionable-users")]
         public async Task<ActionResult<List<MentionableUserDto>>> GetMentionableUsers(Guid id, [FromQuery] string? q)
         {
+            var me = User.GetUserId();
             var query = _db.ChatRoomMemberships
-                .Where(m => m.ChatRoomId == id && !m.IsBanned)
-                .Select(m => m.User!);
+                .Where(m => m.ChatRoomId == id && !m.IsBanned && m.UserId != me)
+                .Select(m => m.User!)
+                .Where(u => u.IsActive);
 
             if (!string.IsNullOrWhiteSpace(q))
-                query = query.Where(u => u.Username.Contains(q.ToLower()));
+            {
+                var n = q.Trim().ToLowerInvariant();
+                query = query.Where(u => u.Username.Contains(n) || u.FullName.ToLower().Contains(n));
+            }
 
-            var users = await query.Take(10).Select(u => new MentionableUserDto { Id = u.Id, Username = u.Username, FullName = u.FullName, PhotoUrl = u.PhotoUrl }).ToListAsync();
+            var users = await query.OrderBy(u => u.Username).Take(20).Select(u => new MentionableUserDto { Id = u.Id, Username = u.Username, FullName = u.FullName, PhotoUrl = u.PhotoUrl }).ToListAsync();
             return Ok(users);
         }
 

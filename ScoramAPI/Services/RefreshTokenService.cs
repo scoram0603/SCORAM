@@ -16,7 +16,16 @@ namespace ScoramAPI.Services
         // Rotation: revokes `token`, points it at `replacement`, and persists the new row in the same
         // SaveChanges call so a crash between the two can't leave an old token revoked with no
         // working replacement.
-        Task RotateAsync(RefreshToken token, RefreshToken replacement);
+        // Returns false when another request already rotated/revoked `token` first (a race between two
+        // parallel refreshes) -- the caller must NOT hand out the replacement in that case.
+        Task<bool> RotateAsync(RefreshToken token, RefreshToken replacement);
+
+        // Network-retry grace: if the client's refresh response was lost (flaky mobile data) it retries
+        // with the token the server already rotated a moment ago. Inside a short window that is a
+        // legitimate retry, not theft -- returns the still-live replacement so the caller can rotate
+        // THAT one and hand the client a fresh pair. Null means "outside the window / no live
+        // replacement", i.e. real reuse.
+        Task<RefreshToken?> TryGetGraceReplacementAsync(RefreshToken revoked);
 
         Task RevokeAsync(RefreshToken token);
 
@@ -57,12 +66,41 @@ namespace ScoramAPI.Services
             return await _db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == hash && t.IsAdmin == isAdmin);
         }
 
-        public async Task RotateAsync(RefreshToken token, RefreshToken replacement)
+        private static readonly TimeSpan RotationGrace = TimeSpan.FromSeconds(30);
+
+        public async Task<bool> RotateAsync(RefreshToken token, RefreshToken replacement)
         {
-            token.RevokedAt = DateTime.UtcNow;
-            token.ReplacedByTokenId = replacement.Id;
+            await using var tx = await _db.Database.BeginTransactionAsync();
+
+            // Conditional UPDATE: only the first of several concurrent refreshes wins the revoke.
+            var now = DateTime.UtcNow;
+            var revoked = await _db.RefreshTokens
+                .Where(t => t.Id == token.Id && t.RevokedAt == null)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(t => t.RevokedAt, now)
+                    .SetProperty(t => t.ReplacedByTokenId, replacement.Id));
+            if (revoked == 0)
+            {
+                await tx.RollbackAsync();
+                return false;
+            }
+
             _db.RefreshTokens.Add(replacement);
             await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            token.RevokedAt = now;
+            token.ReplacedByTokenId = replacement.Id;
+            return true;
+        }
+
+        public async Task<RefreshToken?> TryGetGraceReplacementAsync(RefreshToken revoked)
+        {
+            if (revoked.RevokedAt == null || revoked.ReplacedByTokenId == null) return null;
+            if (DateTime.UtcNow - revoked.RevokedAt.Value > RotationGrace) return null;
+
+            var replacement = await _db.RefreshTokens.FirstOrDefaultAsync(t => t.Id == revoked.ReplacedByTokenId.Value);
+            return replacement != null && replacement.IsActive ? replacement : null;
         }
 
         public async Task RevokeAsync(RefreshToken token)

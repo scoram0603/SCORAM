@@ -31,6 +31,18 @@ namespace ScoramAPI.Middleware
             {
                 await _next(context);
             }
+            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+            {
+                // Client went away (app backgrounded, navigated away) -- not a server error, don't log one.
+                if (!context.Response.HasStarted) context.Response.StatusCode = 499;
+            }
+            catch (BadHttpRequestException ex) when (!context.Response.HasStarted)
+            {
+                context.Response.Clear();
+                context.Response.StatusCode = ex.StatusCode;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = "The request couldn't be processed.", traceId = context.TraceIdentifier }));
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unhandled exception on {Method} {Path}", context.Request.Method, context.Request.Path);

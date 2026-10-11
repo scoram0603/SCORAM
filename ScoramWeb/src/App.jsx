@@ -18,6 +18,7 @@ import NotFound from "./pages/NotFound";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Terms from "./pages/Terms";
 import DeleteAccount from "./pages/DeleteAccount";
+import OurTeam from "./pages/OurTeam";
 // SCORAM_TESTS
 import Tests from "./pages/Tests";
 import PracticeTests from "./pages/PracticeTests";
@@ -112,6 +113,9 @@ function AppRoutes() {
       <Route path="terms" element={<Navigate to="/terms-and-conditions" replace />} />
       {/* Public on purpose: this is the Google Play Data Safety "delete account URL". */}
       <Route path="delete-account" element={<DeleteAccount />} />
+      {/* Public "Our Team" page -- same pattern as the legal pages above: own navbar/footer,
+          no app chrome, so a top-level route rather than nested under AppLayout. */}
+      <Route path="our-team" element={<OurTeam />} />
     </Routes>
   );
 }

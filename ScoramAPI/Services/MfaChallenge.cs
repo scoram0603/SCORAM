@@ -6,5 +6,7 @@ namespace ScoramAPI.Services
     public class MfaChallenge
     {
         public Guid AdminId { get; set; }
+        // Wrong codes tried against this challenge -- capped so one challenge can't be used to brute-force the 6-digit code.
+        public int FailedAttempts { get; set; }
     }
 }

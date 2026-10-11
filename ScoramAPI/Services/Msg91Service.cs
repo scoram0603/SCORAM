@@ -75,7 +75,9 @@ namespace ScoramAPI.Services
             HttpResponseMessage response;
             try
             {
-                response = await client.PostAsync(VerifyUrl, new StringContent(requestBody, Encoding.UTF8, "application/json"));
+                // Default HttpClient timeout is 100s -- an unresponsive MSG91 would otherwise hang Register/Login-OTP that long.
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                response = await client.PostAsync(VerifyUrl, new StringContent(requestBody, Encoding.UTF8, "application/json"), cts.Token);
             }
             catch (Exception ex)
             {

@@ -26,7 +26,7 @@ namespace ScoramAPI.Services
         // channel could deadlock a worker waiting on its own full queue.
         private readonly Channel<Func<IServiceProvider, CancellationToken, Task>> _channel =
             Channel.CreateUnbounded<Func<IServiceProvider, CancellationToken, Task>>(
-                new UnboundedChannelOptions { SingleReader = true });
+                new UnboundedChannelOptions { SingleReader = false });
 
         public ChannelReader<Func<IServiceProvider, CancellationToken, Task>> Reader => _channel.Reader;
 
@@ -47,10 +47,16 @@ namespace ScoramAPI.Services
             _logger = logger;
         }
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        // Several consumers on purpose. With a single sequential loop, one big My-Exams fan-out (thousands of
+        // per-user jobs) sat in front of every chat/DM push queued behind it, so "instant" notifications
+        // arrived minutes late. Each job still gets its own DI scope, so concurrency is safe.
+        private const int Consumers = 4;
+
+        protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+            Task.WhenAll(Enumerable.Range(0, Consumers).Select(_ => ConsumeAsync(stoppingToken)));
+
+        private async Task ConsumeAsync(CancellationToken stoppingToken)
         {
-            // Sequential on purpose: keeps DbContext usage simple and gives natural back-pressure on
-            // Firebase. Each item gets its own DI scope (the queued delegates need scoped services).
             await foreach (var work in _queue.Reader.ReadAllAsync(stoppingToken))
             {
                 try

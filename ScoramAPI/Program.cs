@@ -157,6 +157,18 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 
+    // Silent token renewal is automatic app traffic, not a password attempt: sharing the 5/min "login"
+    // bucket meant a college/CGNAT IP (many students, one address) could 429 everyone's renewals.
+    // The refresh token itself is a 256-bit secret, so a looser per-IP limit costs nothing in safety.
+    options.AddPolicy("refresh", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 60,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+
     options.AddPolicy("register", httpContext => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         factory: _ => new FixedWindowRateLimiterOptions
@@ -289,6 +301,10 @@ if (redisMultiplexer != null)
 
 // ---------- JWT Authentication ----------
 var jwtSection = builder.Configuration.GetSection("Jwt");
+// Fail fast with a readable message instead of a NullReferenceException (missing key) or an opaque
+// IDX10603 on the first login (key shorter than HS256's 256-bit minimum).
+if (string.IsNullOrWhiteSpace(jwtSection["Key"]) || Encoding.UTF8.GetByteCount(jwtSection["Key"]!) < 32)
+    throw new InvalidOperationException("Jwt:Key is missing or shorter than 32 bytes. Set it via configuration / the Jwt__Key environment variable.");
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -302,6 +318,8 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
+        // Default skew is 5 minutes, which silently stretches the 60-minute access token to 65.
+        ClockSkew = TimeSpan.FromSeconds(30),
         ValidIssuer = jwtSection["Issuer"],
         ValidAudience = jwtSection["Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSection["Key"]!))
@@ -366,7 +384,7 @@ builder.Services.AddAuthorization();
 // are configured in a non-Development environment, cross-origin requests are simply rejected (fails
 // closed rather than open) until Cors:AllowedOrigins is set.
 var configuredCorsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
-var devCorsOrigins = new[] { "http://localhost:5173", "http://localhost:3000", "https://scoram.in/" };
+var devCorsOrigins = new[] { "http://localhost:5173", "http://localhost:3000", "https://scoram.in" };
 var corsOrigins = builder.Environment.IsDevelopment()
     ? devCorsOrigins.Concat(configuredCorsOrigins).Distinct().ToArray()
     : configuredCorsOrigins;

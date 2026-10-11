@@ -16,6 +16,22 @@ namespace ScoramAPI.Controllers
     {
         private const int LeaderboardTopN = 20;
 
+        // Slim projection of a finished attempt for ProgressAnalytics().
+        private sealed class AttemptRow
+        {
+            public DateTime AttemptedAt { get; set; }
+            public TestKind TestKind { get; set; }
+            public decimal Score { get; set; }
+            public int AnswerCount { get; set; }
+        }
+
+        // Projection row for the SQL-side leaderboard ranking in Leaderboard().
+        private sealed class XpRow
+        {
+            public Guid UserId { get; set; }
+            public int Xp { get; set; }
+        }
+
         private readonly ScoramDbContext _db;
         private readonly IMyExamScopeService _myExams;
 
@@ -65,35 +81,44 @@ namespace ScoramAPI.Controllers
         {
             var userId = User.GetUserId();
 
-            var completedAttempts = await _db.StudentTestResults
+            // Only the columns the maths needs -- never the full StudentAnswer rows (each carries the
+            // question text/options/explanation snapshot) for every attempt the student ever made.
+            var completedAttempts = await _db.StudentTestResults.AsNoTracking()
                 .Where(r => r.UserId == userId && r.Status != TestAttemptStatus.InProgress)
-                .Include(r => r.Answers)
                 .OrderBy(r => r.AttemptedAt)
+                .Select(r => new AttemptRow
+                {
+                    AttemptedAt = r.AttemptedAt,
+                    TestKind = r.TestKind,
+                    Score = r.Score,
+                    AnswerCount = r.Answers.Count
+                })
                 .ToListAsync();
 
             // Subject-wise accuracy -- from each answer's frozen snapshot (not the live
             // Question/QuestionBank record), so a subject renamed/retagged later never retroactively
             // reshuffles old history. Skipped questions are excluded: not attempting isn't the same
-            // signal as attempting and getting it wrong.
-            var bySubject = completedAttempts
-                .SelectMany(r => r.Answers)
-                .Where(a => !string.IsNullOrWhiteSpace(a.SubjectSnapshot) && a.SelectedOption != null)
+            // signal as attempting and getting it wrong. Grouped in SQL.
+            var subjectRows = await _db.StudentAnswers.AsNoTracking()
+                .Where(a => a.StudentTestResult!.UserId == userId
+                            && a.StudentTestResult.Status != TestAttemptStatus.InProgress
+                            && a.SubjectSnapshot != null && a.SelectedOption != null)
                 .GroupBy(a => a.SubjectSnapshot!)
-                .Select(g =>
+                .Select(g => new { Subject = g.Key, Attempted = g.Count(), Correct = g.Count(a => a.IsCorrect) })
+                .ToListAsync();
+
+            var bySubject = subjectRows
+                .Where(r => !string.IsNullOrWhiteSpace(r.Subject))
+                .Select(r => new SubjectPerformanceDto
                 {
-                    var answers = g.ToList();
-                    var correct = answers.Count(a => a.IsCorrect);
-                    return new SubjectPerformanceDto
-                    {
-                        Subject = g.Key,
-                        Attempted = answers.Count,
-                        Correct = correct,
-                        AccuracyPercent = Math.Round((decimal)correct / answers.Count * 100, 1),
-                    };
+                    Subject = r.Subject,
+                    Attempted = r.Attempted,
+                    Correct = r.Correct,
+                    AccuracyPercent = Math.Round((decimal)r.Correct / r.Attempted * 100, 1),
                 })
                 // A subject seen only once or twice is too noisy to call a "weak area" yet.
-                .Where(s => s.Attempted >= 3)
-                .OrderBy(s => s.AccuracyPercent)
+                .Where(x => x.Attempted >= 3)
+                .OrderBy(x => x.AccuracyPercent)
                 .ToList();
 
             // Per-activity-type average score -- so a student can see e.g. "doing fine on Quizzes,
@@ -107,10 +132,10 @@ namespace ScoramAPI.Controllers
                     {
                         TestKind = g.Key.ToString(),
                         AttemptCount = attempts.Count,
-                        AvgScorePercent = Math.Round(attempts.Average(r => r.Answers.Count == 0 ? 0 : r.Score / r.Answers.Count * 100), 1),
+                        AvgScorePercent = Math.Round(attempts.Average(r => r.AnswerCount == 0 ? 0 : r.Score / r.AnswerCount * 100), 1),
                     };
                 })
-                .OrderByDescending(a => a.AttemptCount)
+                .OrderByDescending(x => x.AttemptCount)
                 .ToList();
 
             // Last 15 completed attempts, oldest first, so a line chart reads left-to-right as
@@ -120,7 +145,7 @@ namespace ScoramAPI.Controllers
                 .Select(r => new ScoreTrendPointDto
                 {
                     Date = r.AttemptedAt,
-                    ScorePercent = r.Answers.Count == 0 ? 0 : Math.Round(r.Score / r.Answers.Count * 100, 1),
+                    ScorePercent = r.AnswerCount == 0 ? 0 : Math.Round(r.Score / r.AnswerCount * 100, 1),
                     TestKind = r.TestKind.ToString(),
                 })
                 .ToList();
@@ -181,7 +206,10 @@ namespace ScoramAPI.Controllers
                     return BadRequest(new { message = "That exam isn't in your My Exams. Add it to see its leaderboard." });
             }
 
-            List<(Guid UserId, int Xp)> ranked;
+            // Ranking happens in SQL: only the top N rows (plus the caller's own XP + a COUNT for their
+            // rank) ever leave the database. Previously every student's row was loaded into memory and
+            // sorted in C# on each request, which grows linearly with the user base.
+            IQueryable<XpRow> board;
 
             if (scope == "friends")
             {
@@ -193,25 +221,20 @@ namespace ScoramAPI.Controllers
                     .ToListAsync();
                 friendIds.Add(userId);
 
-                var raw = await _db.UserXPs
+                board = _db.UserXPs.AsNoTracking()
                     .Where(x => friendIds.Contains(x.UserId))
-                    .Select(x => new { x.UserId, x.TotalXP })
-                    .ToListAsync();
-                ranked = raw.Select(x => (x.UserId, x.TotalXP)).ToList();
+                    .Select(x => new XpRow { UserId = x.UserId, Xp = x.TotalXP });
             }
             else if (period == "alltime" && scope == "global")
             {
                 // All-time global is just UserXP.TotalXP directly -- no need to sum the transaction
                 // log for the one case that already has a running total maintained.
-                var raw = await _db.UserXPs
-                    .OrderByDescending(x => x.TotalXP)
-                    .Select(x => new { x.UserId, x.TotalXP })
-                    .ToListAsync();
-                ranked = raw.Select(x => (x.UserId, x.TotalXP)).ToList();
+                board = _db.UserXPs.AsNoTracking()
+                    .Select(x => new XpRow { UserId = x.UserId, Xp = x.TotalXP });
             }
             else
             {
-                var query = _db.XpTransactions.AsQueryable();
+                var query = _db.XpTransactions.AsNoTracking().AsQueryable();
 
                 if (period == "weekly")
                 {
@@ -227,32 +250,33 @@ namespace ScoramAPI.Controllers
                 if (scope == "exam")
                     query = query.Where(t => t.ExamName == examName);
 
-                var raw = await query
+                board = query
                     .GroupBy(t => t.UserId)
-                    .Select(g => new { UserId = g.Key, Xp = g.Sum(t => t.Amount) })
-                    .ToListAsync();
-                ranked = raw.Select(x => (x.UserId, x.Xp)).ToList();
+                    .Select(g => new XpRow { UserId = g.Key, Xp = g.Sum(t => t.Amount) });
             }
 
-            ranked = ranked.OrderByDescending(r => r.Xp).ToList();
+            var topRows = await board
+                .OrderByDescending(r => r.Xp).ThenBy(r => r.UserId)
+                .Take(LeaderboardTopN)
+                .ToListAsync();
 
-            var topRows = ranked.Take(LeaderboardTopN).ToList();
             var callerInTop = topRows.Any(r => r.UserId == userId);
-            var rowsToShow = topRows;
-            int? callerRank = null;
+            XpRow? callerRow = null;
+            int callerRankValue = 0;
 
             if (!callerInTop)
             {
-                var idx = ranked.FindIndex(r => r.UserId == userId);
-                if (idx >= 0)
+                callerRow = await board.Where(r => r.UserId == userId).FirstOrDefaultAsync();
+                if (callerRow != null)
                 {
-                    callerRank = idx + 1;
-                    rowsToShow = topRows.Append(ranked[idx]).ToList();
+                    var ahead = callerRow.Xp;
+                    callerRankValue = await board.CountAsync(r => r.Xp > ahead) + 1;
                 }
             }
 
-            var userIds = rowsToShow.Select(r => r.UserId).Distinct().ToList();
-            var userInfo = await _db.Users
+            var userIds = topRows.Select(r => r.UserId).ToList();
+            if (callerRow != null) userIds.Add(callerRow.UserId);
+            var userInfo = await _db.Users.AsNoTracking()
                 .Where(u => userIds.Contains(u.Id))
                 .Select(u => new { u.Id, u.Username, u.FullName, u.PhotoUrl })
                 .ToDictionaryAsync(u => u.Id);
@@ -274,22 +298,18 @@ namespace ScoramAPI.Controllers
                 });
             }
 
-            if (!callerInTop && callerRank.HasValue)
+            if (callerRow != null && userInfo.TryGetValue(callerRow.UserId, out var callerInfo))
             {
-                var callerRow = ranked[callerRank.Value - 1];
-                if (userInfo.TryGetValue(callerRow.UserId, out var info))
+                entries.Add(new LeaderboardEntryDto
                 {
-                    entries.Add(new LeaderboardEntryDto
-                    {
-                        Rank = callerRank.Value,
-                        UserId = callerRow.UserId,
-                        Username = info.Username,
-                        FullName = info.FullName,
-                        PhotoUrl = info.PhotoUrl,
-                        Xp = callerRow.Xp,
-                        IsCurrentUser = true
-                    });
-                }
+                    Rank = callerRankValue,
+                    UserId = callerRow.UserId,
+                    Username = callerInfo.Username,
+                    FullName = callerInfo.FullName,
+                    PhotoUrl = callerInfo.PhotoUrl,
+                    Xp = callerRow.Xp,
+                    IsCurrentUser = true
+                });
             }
 
             return Ok(new LeaderboardResponseDto

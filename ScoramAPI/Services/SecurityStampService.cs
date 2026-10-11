@@ -43,7 +43,12 @@ namespace ScoramAPI.Services
         public async Task<bool> IsValidAsync(Guid principalId, bool isAdmin, string tokenStamp)
         {
             var cacheKey = CacheKey(principalId, isAdmin);
-            var cached = await _cache.GetStringAsync(cacheKey);
+
+            // The cache is only an optimisation: if Redis is down/slow, fall through to the database
+            // instead of turning every authenticated request into a 500.
+            string? cached = null;
+            try { cached = await _cache.GetStringAsync(cacheKey); }
+            catch (Exception) { /* cache unavailable -- read the DB below */ }
 
             string? currentStamp;
             if (cached == null)
@@ -52,7 +57,8 @@ namespace ScoramAPI.Services
                     ? (await _db.Admins.Where(a => a.Id == principalId).Select(a => (Guid?)a.SecurityStamp).FirstOrDefaultAsync())?.ToString()
                     : (await _db.Users.Where(u => u.Id == principalId).Select(u => (Guid?)u.SecurityStamp).FirstOrDefaultAsync())?.ToString();
 
-                await _cache.SetStringAsync(cacheKey, currentStamp ?? NotFoundSentinel, CacheOptions);
+                try { await _cache.SetStringAsync(cacheKey, currentStamp ?? NotFoundSentinel, CacheOptions); }
+                catch (Exception) { /* best-effort */ }
             }
             else
             {
@@ -62,8 +68,11 @@ namespace ScoramAPI.Services
             return currentStamp != null && currentStamp == tokenStamp;
         }
 
-        public Task InvalidateAsync(Guid principalId, bool isAdmin) =>
-            _cache.RemoveAsync(CacheKey(principalId, isAdmin));
+        public async Task InvalidateAsync(Guid principalId, bool isAdmin)
+        {
+            try { await _cache.RemoveAsync(CacheKey(principalId, isAdmin)); }
+            catch (Exception) { /* entry expires within the 60s TTL anyway */ }
+        }
 
         private static string CacheKey(Guid principalId, bool isAdmin) => $"secstamp:{(isAdmin ? "admin" : "user")}:{principalId}";
     }

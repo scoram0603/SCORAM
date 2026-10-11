@@ -25,6 +25,8 @@ namespace ScoramAPI.Controllers
         private readonly ICaptchaService _captcha;
         private readonly IConfiguration _config;
 
+        private static readonly string DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword("scoram-timing-equaliser");
+
         public AuthController(ScoramDbContext db, ITokenService tokenService, IRefreshTokenService refreshTokens, ISecurityStampService securityStamps, IFileStorageService fileStorage, IGamificationService gamification, IMsg91Service msg91, ICaptchaService captcha, IConfiguration config)
         {
             _db = db;
@@ -139,11 +141,22 @@ namespace ScoramAPI.Controllers
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 PhoneNumber = verifiedPhoneNumber,
                 PhoneVerified = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                LastActiveAt = DateTime.UtcNow
             };
 
             _db.Users.Add(user);
-            await _db.SaveChangesAsync();
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                // Two parallel submissions (double-tap, retry after a timeout) both passed the AnyAsync
+                // checks above; the unique index caught the loser. That's a 409, not a 500.
+                _db.Entry(user).State = EntityState.Detached;
+                return Conflict(new { message = "An account with these details already exists. Try logging in instead." });
+            }
 
             // Initialize gamification records for the new student
             // GAMIFICATION -- LastActiveDate uses IST (not UTC) calendar day, same as every streak
@@ -173,9 +186,6 @@ namespace ScoramAPI.Controllers
 
             await _db.SaveChangesAsync();
 
-            user.LastActiveAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync();
-
             return Ok(await IssueAuthResponseAsync(user));
         }
 
@@ -193,7 +203,10 @@ namespace ScoramAPI.Controllers
 
             var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == identifier || u.Username == normalizedUsername);
 
-            if (user == null || !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
+            // Always pay for one BCrypt verify, even for an unknown account, so response time doesn't
+            // reveal whether an email/username is registered.
+            var passwordOk = BCrypt.Net.BCrypt.Verify(dto.Password, user?.PasswordHash ?? DummyPasswordHash);
+            if (user == null || !passwordOk)
                 return Unauthorized(new { message = "Invalid email/username or password." });
 
             if (!user.IsActive)
@@ -242,7 +255,7 @@ namespace ScoramAPI.Controllers
         // Can't tell those apart from here, so this errs toward the safer read and revokes every
         // active session for the account rather than just rejecting the one request.
         [HttpPost("refresh")]
-        [EnableRateLimiting("login")]
+        [EnableRateLimiting("refresh")]
         public async Task<ActionResult<AuthResponseDto>> Refresh(RefreshTokenRequestDto dto)
         {
             var stored = await _refreshTokens.FindByRawTokenAsync(dto.RefreshToken, isAdmin: false);
@@ -251,6 +264,15 @@ namespace ScoramAPI.Controllers
 
             if (stored.RevokedAt != null)
             {
+                // A client retrying right after a lost response (flaky network) isn't theft -- within a
+                // short grace window, continue from the replacement instead of killing every session.
+                var graced = await _refreshTokens.TryGetGraceReplacementAsync(stored);
+                if (graced != null)
+                {
+                    stored = graced;
+                }
+                else
+                {
                 // Strong signal of a stolen/replayed token (see this method's own comment above) --
                 // treat it as a full compromise, not just a dead refresh token: kill every live access
                 // token for this account too, not only future refresh attempts.
@@ -263,6 +285,7 @@ namespace ScoramAPI.Controllers
                     await _securityStamps.InvalidateAsync(compromisedUser.Id, isAdmin: false);
                 }
                 return Unauthorized(new { message = "This session is no longer valid. Please log in again." });
+                }
             }
 
             if (stored.ExpiresAt <= DateTime.UtcNow)
@@ -281,7 +304,10 @@ namespace ScoramAPI.Controllers
                 ExpiresAt = newExpiresAt,
                 CreatedByIp = HttpContext.Connection.RemoteIpAddress?.ToString()
             };
-            await _refreshTokens.RotateAsync(stored, replacement);
+            if (!await _refreshTokens.RotateAsync(stored, replacement))
+                // Lost a race with a parallel refresh of the same token. 409 (not 401) so the client
+                // keeps its session and simply retries instead of signing the student out.
+                return Conflict(new { message = "Session refresh is already in progress. Please retry." });
 
             var (accessToken, accessExpiresAt) = _tokenService.GenerateToken(user);
             return Ok(new AuthResponseDto

@@ -126,8 +126,10 @@ namespace ScoramAPI.Services
 
         public async Task SendAsync(Guid userId, PushPayload payload)
         {
-            await SendWebPushAsync(userId, payload);
+            // Independent channels -- don't make the phone wait for browser Web Push round trips. They
+            // share this scope's DbContext, so run FCM first (the latency-critical one) and Web Push after.
             await SendFcmAsync(userId, payload);
+            await SendWebPushAsync(userId, payload);
         }
 
         private async Task SendWebPushAsync(Guid userId, PushPayload payload)
@@ -224,6 +226,8 @@ namespace ScoramAPI.Services
                         ChannelId = AndroidChannelId,
                         Icon = AndroidSmallIcon,
                         Color = AndroidAccentColor,
+                        // Explicit event time: the tray shows when the notification was SENT, never a bogus date.
+                        EventTimestamp = DateTime.UtcNow,
                         // Same Tag => Android REPLACES the earlier tray entry instead of stacking a new one.
                         // Direct messages use the conversation id, so five messages from one person show
                         // as one tray entry (the latest message) rather than five.

@@ -36,6 +36,11 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://scoram.in/our-team</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
     <loc>https://scoram.in/privacy-policy</loc>
     <changefreq>yearly</changefreq>
     <priority>0.2</priority>

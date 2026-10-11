@@ -33,6 +33,8 @@ namespace ScoramAPI.Controllers
             [FromQuery] PaperLanguage? language, [FromQuery] PaperStatus? status, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
             if (!await CanEditAsync()) return Forbid();
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 100);
             return Ok(await _service.ListPapersAsync(search, examId, year, language, status, page, pageSize, HttpContext.RequestAborted));
         }
 
@@ -42,6 +44,8 @@ namespace ScoramAPI.Controllers
             [FromQuery] string? subject, [FromQuery] string? topic, [FromQuery] string? stimulus, [FromQuery] int page = 1, [FromQuery] int pageSize = 25)
         {
             if (!await CanEditAsync()) return Forbid();
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 100);
             try
             {
                 var filter = new BulkQuestionFilterDto { PaperId = paperId, Search = search, Subject = subject, Topic = topic, Stimulus = stimulus };

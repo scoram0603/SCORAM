@@ -43,7 +43,8 @@ namespace ScoramAPI.Services
         private static readonly char[] Operators = { '+', '-', '×' };
 
         private readonly IDistributedCache _cache;
-        private readonly Random _random = new();
+        // Singleton service: System.Random instances aren't thread-safe, Random.Shared is.
+        private readonly Random _random = Random.Shared;
 
         public CaptchaService(IDistributedCache cache)
         {

@@ -32,6 +32,7 @@ namespace ScoramAPI.Controllers
         // authenticator app and type a code, short enough that a leaked/logged challenge token
         // (which on its own grants no access -- it's not a bearer credential, just proof the
         // password check already passed) isn't useful for long.
+        private static readonly string DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword("scoram-timing-equaliser");
         private const string MfaChallengePrefix = "admin-mfa-challenge:";
         private static readonly TimeSpan MfaChallengeTtl = TimeSpan.FromMinutes(5);
 
@@ -54,7 +55,9 @@ namespace ScoramAPI.Controllers
         {
             var admin = await _db.Admins.FirstOrDefaultAsync(a => a.Email == dto.Email);
 
-            if (admin == null || !BCrypt.Net.BCrypt.Verify(dto.Password, admin.PasswordHash))
+            // Same timing-equaliser as AuthController.Login.
+            var passwordOk = BCrypt.Net.BCrypt.Verify(dto.Password, admin?.PasswordHash ?? DummyPasswordHash);
+            if (admin == null || !passwordOk)
                 return Unauthorized(new { message = "Invalid email or password." });
 
             if (!admin.IsActive)
@@ -110,7 +113,16 @@ namespace ScoramAPI.Controllers
 
             var validCode = _totp.ValidateCode(admin.TotpSecret, dto.Code) || TryConsumeBackupCode(admin, dto.Code);
             if (!validCode)
+            {
+                challenge.FailedAttempts++;
+                if (challenge.FailedAttempts >= 5)
+                {
+                    await _cache.RemoveAsync(MfaChallengePrefix + dto.MfaChallengeToken);
+                    return Unauthorized(new { message = "Too many invalid codes. Please log in again." });
+                }
+                await _cache.SetAsync(MfaChallengePrefix + dto.MfaChallengeToken, challenge, MfaChallengeTtl);
                 return Unauthorized(new { message = "Invalid code." });
+            }
 
             // One-time use -- a second attempt with the same challenge token (even with a fresh,
             // otherwise-valid code) must go through Login again from scratch.
@@ -278,7 +290,7 @@ namespace ScoramAPI.Controllers
         // POST /api/admin/auth/refresh -- see AuthController.Refresh's comment for the full
         // rotation/reuse-detection reasoning; identical logic here, scoped to admin tokens (IsAdmin: true).
         [HttpPost("auth/refresh")]
-        [EnableRateLimiting("login")]
+        [EnableRateLimiting("refresh")]
         public async Task<ActionResult<AdminAuthResponseDto>> Refresh(RefreshTokenRequestDto dto)
         {
             var stored = await _refreshTokens.FindByRawTokenAsync(dto.RefreshToken, isAdmin: true);
@@ -287,6 +299,13 @@ namespace ScoramAPI.Controllers
 
             if (stored.RevokedAt != null)
             {
+                var graced = await _refreshTokens.TryGetGraceReplacementAsync(stored);
+                if (graced != null)
+                {
+                    stored = graced;
+                }
+                else
+                {
                 // See AuthController.Refresh's matching comment -- same reasoning, admin session.
                 await _refreshTokens.RevokeAllAsync(stored.PrincipalId, isAdmin: true);
                 var compromisedAdmin = await _db.Admins.FindAsync(stored.PrincipalId);
@@ -297,6 +316,7 @@ namespace ScoramAPI.Controllers
                     await _securityStamps.InvalidateAsync(compromisedAdmin.Id, isAdmin: true);
                 }
                 return Unauthorized(new { message = "This session is no longer valid. Please log in again." });
+                }
             }
 
             if (stored.ExpiresAt <= DateTime.UtcNow)
@@ -315,7 +335,8 @@ namespace ScoramAPI.Controllers
                 ExpiresAt = newExpiresAt,
                 CreatedByIp = HttpContext.Connection.RemoteIpAddress?.ToString()
             };
-            await _refreshTokens.RotateAsync(stored, replacement);
+            if (!await _refreshTokens.RotateAsync(stored, replacement))
+                return Conflict(new { message = "Session refresh is already in progress. Please retry." });
 
             var (accessToken, accessExpiresAt) = _tokenService.GenerateAdminToken(admin);
             return Ok(new AdminAuthResponseDto

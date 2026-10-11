@@ -117,7 +117,10 @@ namespace ScoramAPI.Controllers
             [FromQuery] string? shift = null, [FromQuery] string? paperLabel = null,
             [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
-            var query = _db.Papers.Include(p => p.Exam).Include(p => p.CreatedByAdmin).AsQueryable();
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 100);
+
+            var query = _db.Papers.AsNoTracking().Include(p => p.Exam).Include(p => p.CreatedByAdmin).AsQueryable();
 
             if (status.HasValue) query = query.Where(p => p.Status == status.Value);
             if (examId.HasValue) query = query.Where(p => p.ExamId == examId.Value);
