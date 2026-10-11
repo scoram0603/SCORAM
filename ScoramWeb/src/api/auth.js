@@ -4,7 +4,7 @@ import { apiFetch, apiFetchForm } from "./client";
 // MSG91 widget's own access-token from having just OTP-verified phoneNumber (see msg91.js) --
 // the backend re-verifies it server-side and cross-checks it against phoneNumber before creating
 // the account.
-export function register({ username, fullName, email, password, phoneNumber, otpAccessToken, referralCode }) {
+export function register({ username, fullName, email, password, phoneNumber, otpAccessToken, referralCode, captchaId, captchaAnswer }) {
   return apiFetch("/api/auth/register", {
     method: "POST",
     body: {
@@ -15,6 +15,10 @@ export function register({ username, fullName, email, password, phoneNumber, otp
       phoneNumber,
       otpAccessToken,
       referralCode: referralCode || null,
+      // AuthController.Register verifies these before anything else (same challenge as login) --
+      // omitting them is a guaranteed 400, see getCaptcha() below.
+      captchaId,
+      captchaAnswer,
     },
   });
 }

@@ -104,10 +104,14 @@ let studentRefreshPromise = null;
 let adminRefreshPromise = null;
 
 async function refreshStudentSession() {
+  // Checked BEFORE creating the shared promise: an early `return null` inside the async body below
+  // would resolve without ever reaching its `finally`, leaving this resolved-null promise cached
+  // for the rest of the page load and silently blocking every later refresh -- even after a fresh
+  // login stores a real refresh token.
+  if (!getStoredRefreshToken()) return null;
   if (!studentRefreshPromise) {
     studentRefreshPromise = (async () => {
       const refreshToken = getStoredRefreshToken();
-      if (!refreshToken) return null;
       try {
         const res = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
           method: "POST",
@@ -131,10 +135,14 @@ async function refreshStudentSession() {
 }
 
 async function refreshAdminSession() {
+  // Checked BEFORE creating the shared promise: an early `return null` inside the async body below
+  // would resolve without ever reaching its `finally`, leaving this resolved-null promise cached
+  // for the rest of the page load and silently blocking every later refresh -- even after a fresh
+  // login stores a real refresh token.
+  if (!getStoredAdminRefreshToken()) return null;
   if (!adminRefreshPromise) {
     adminRefreshPromise = (async () => {
       const refreshToken = getStoredAdminRefreshToken();
-      if (!refreshToken) return null;
       try {
         const res = await fetch(`${API_BASE_URL}/api/admin/auth/refresh`, {
           method: "POST",
@@ -336,7 +344,13 @@ async function parseApiResponse(response, resolvedToken, isAdminToken) {
     // withAutomaticReconnect -- without this, a expired token can pile up retries indefinitely).
     if (response.status === 401 && resolvedToken) notifyExpiredToken(isAdminToken);
 
-    const message = data?.message || data?.title || `Request failed with status ${response.status}`;
+    // ASP.NET's automatic model-validation 400 has no "message" -- just a generic "One or more
+    // validation errors occurred." title plus an `errors` map ({ Field: ["reason", ...] }). Surface the
+    // first concrete reason instead of the useless generic title.
+    const firstValidationError = data?.errors
+      ? Object.values(data.errors).flat().find((m) => typeof m === "string" && m.trim())
+      : null;
+    const message = data?.message || firstValidationError || data?.title || `Request failed with status ${response.status}`;
     throw new ApiError(message, response.status, data);
   }
 
@@ -351,5 +365,3 @@ export class ApiError extends Error {
     this.data = data;
   }
 }
-
-
