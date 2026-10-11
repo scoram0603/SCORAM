@@ -1149,6 +1149,61 @@ namespace ScoramAPI.Migrations
                     b.ToTable("JobAlerts");
                 });
 
+            modelBuilder.Entity("ScoramAPI.Models.MistakeRevisionItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ConsecutiveCorrect")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CorrectedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDismissed")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastRevisedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("NextDueAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RevisionAttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RevisionCorrectCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "QuestionBankQuestionId")
+                        .IsUnique()
+                        .HasFilter("[QuestionBankQuestionId] IS NOT NULL");
+
+                    b.HasIndex("UserId", "QuestionId")
+                        .IsUnique()
+                        .HasFilter("[QuestionId] IS NOT NULL");
+
+                    b.ToTable("MistakeRevisionItems");
+                });
+
             modelBuilder.Entity("ScoramAPI.Models.MockTest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2544,6 +2599,61 @@ namespace ScoramAPI.Migrations
                     b.ToTable("RefreshTokens");
                 });
 
+            modelBuilder.Entity("ScoramAPI.Models.RevisionAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AnsweredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsCorrect")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SelectedOption")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
+                    b.Property<string>("SubjectSnapshot")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int?>("TimeSpentSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TopicSnapshot")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "AnsweredAt");
+
+                    b.HasIndex("UserId", "ClientRequestId")
+                        .IsUnique()
+                        .HasFilter("[ClientRequestId] IS NOT NULL");
+
+                    b.HasIndex("UserId", "QuestionBankQuestionId");
+
+                    b.HasIndex("UserId", "QuestionId");
+
+                    b.ToTable("RevisionAttempts");
+                });
+
             modelBuilder.Entity("ScoramAPI.Models.SharedStimulus", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2687,6 +2797,9 @@ namespace ScoramAPI.Migrations
 
                     b.Property<string>("SubjectSnapshot")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("TimeSpentSeconds")
+                        .HasColumnType("int");
 
                     b.Property<string>("TopicSnapshot")
                         .HasColumnType("nvarchar(max)");
@@ -2985,6 +3098,76 @@ namespace ScoramAPI.Migrations
                         {
                             t.HasCheckConstraint("CK_StudyPartnerships_NotSelf", "[UserAId] <> [UserBId]");
                         });
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.StudyPlanTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DismissedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("GeneratedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateOnly>("PlanDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ProgressCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("SubjectName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("TargetCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TaskKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("TaskType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("TopicName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "PlanDate", "TaskKey")
+                        .IsUnique();
+
+                    b.ToTable("StudyPlanTasks");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.SyllabusTopic", b =>
@@ -3308,6 +3491,9 @@ namespace ScoramAPI.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("ShareStudyPlan")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("ShowOnLeaderboard")
                         .HasColumnType("bit");
@@ -3876,6 +4062,17 @@ namespace ScoramAPI.Migrations
                         .IsRequired();
 
                     b.Navigation("CreatedByAdmin");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.MistakeRevisionItem", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.MockTest", b =>
@@ -4449,6 +4646,17 @@ namespace ScoramAPI.Migrations
                     b.Navigation("ReferrerUser");
                 });
 
+            modelBuilder.Entity("ScoramAPI.Models.RevisionAttempt", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("ScoramAPI.Models.SharedStimulus", b =>
                 {
                     b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
@@ -4612,6 +4820,17 @@ namespace ScoramAPI.Migrations
                     b.Navigation("UserA");
 
                     b.Navigation("UserB");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.StudyPlanTask", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.TypingTestResult", b =>

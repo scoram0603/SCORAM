@@ -106,6 +106,20 @@ namespace ScoramAPI.Controllers
             });
         }
 
+        // PATCH /api/tests/attempts/{attemptId}/timings -- SMART PROGRESS: per-question time (running totals
+        // from the client, validated and clamped server-side). Only while InProgress; fire-and-forget for the
+        // clients; it never touches answers, the timer or grading.
+        [HttpPatch("{attemptId:guid}/timings")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("smart-progress-write")]
+        public async Task<ActionResult<TestTimingsResponseDto>> SaveTimings(
+            Guid attemptId, [FromBody] TestTimingsDto dto, [FromServices] IProgressAnalyticsService analytics, CancellationToken ct)
+        {
+            var outcome = await analytics.RecordTimingsAsync(User.GetUserId(), attemptId, dto, ct);
+            return outcome.Result != null
+                ? Ok(outcome.Result)
+                : StatusCode(outcome.StatusCode, new { message = outcome.Error ?? "Couldn't save timings." });
+        }
+
         // POST /api/tests/attempts/{attemptId}/submit -- grades server-side from whatever was
         // auto-saved (never trusts a score/answers payload from the client). Idempotent: submitting
         // an already-submitted attempt again just returns the existing result instead of re-grading
@@ -330,6 +344,7 @@ namespace ScoramAPI.Controllers
                     {
                         Id = a.Id,
                         QuestionOrder = a.QuestionOrder,
+                        TimeSpentSeconds = a.TimeSpentSeconds,
                         QuestionText = a.QuestionTextSnapshot,
                         OptionA = a.OptionASnapshot,
                         OptionB = a.OptionBSnapshot,

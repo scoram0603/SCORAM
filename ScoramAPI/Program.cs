@@ -57,6 +57,11 @@ builder.Services.AddScoped<INotificationFanOutService, NotificationFanOutService
 // STUDY PARTNER -- shared progress numbers (same definitions as the Progress page) used by
 // StudyPartnersController for profile / compare / leaderboard / challenges.
 builder.Services.AddScoped<IStudentProgressService, StudentProgressService>();
+// SMART PROGRESS -- thresholds (Analytics section) + analytics / Mistake Book / study plan services.
+builder.Services.Configure<ScoramAPI.Services.Analytics.AnalyticsOptions>(builder.Configuration.GetSection(ScoramAPI.Services.Analytics.AnalyticsOptions.SectionName));
+builder.Services.AddScoped<IProgressAnalyticsService, ProgressAnalyticsService>();
+builder.Services.AddScoped<IRevisionService, RevisionService>();
+builder.Services.AddScoped<IStudyPlanService, StudyPlanService>();
 builder.Services.AddSingleton<IDmViewingService, DmViewingService>(); // DIRECT MESSAGES -- which thread a student has open right now (suppresses redundant notifications)
 builder.Services.AddScoped<IAccountDeletionService, AccountDeletionService>(); // self-service account deletion -- see AccountDeletionService's own comment
 builder.Services.AddScoped<IMsg91Service, Msg91Service>();
@@ -195,6 +200,17 @@ builder.Services.AddRateLimiter(options =>
         factory: _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 30,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+
+    // SMART PROGRESS -- revision answers and per-question timing pings. Generous (a revision session
+    // answers up to ~20 questions in a few minutes; timings go out every ~20s) but bounded per student/IP.
+    options.AddPolicy("smart-progress-write", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: GetRateLimitPartitionKey(httpContext),
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 120,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));

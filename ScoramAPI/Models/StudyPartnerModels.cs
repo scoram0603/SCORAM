@@ -77,6 +77,10 @@ namespace ScoramAPI.Models
         /// <summary>False = nobody can send this student a new Study Partner request.</summary>
         public bool AllowStudyPartnerRequests { get; set; } = true;
 
+        /// <summary>SMART PROGRESS -- opt-in (default false): lets accepted Study Partners see this
+        /// week's study-plan completion and active days. Nothing else about the plan or any analytics.</summary>
+        public bool ShareStudyPlan { get; set; } = false;
+
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 

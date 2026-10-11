@@ -71,6 +71,12 @@ namespace ScoramAPI.Models
         // this each time); distinct from StudentTestResult.AttemptedAt, which is when the whole
         // attempt was submitted.
         public DateTime? AnsweredAt { get; set; }
+
+        // SMART PROGRESS -- seconds the student spent on this question, as the client's RUNNING TOTAL
+        // (validated and clamped server-side, only written while the attempt is InProgress). Null =
+        // never reported (every attempt from before this existed), which analytics treats as
+        // "timing not recorded", never as 0 seconds.
+        public int? TimeSpentSeconds { get; set; }
     }
 }
 

@@ -172,5 +172,7 @@ namespace ScoramAPI.DTOs
         [Required] public string ActivityVisibility { get; set; } = "StudyPartnersOnly";
         public bool ShowOnLeaderboard { get; set; } = true;
         public bool AllowStudyPartnerRequests { get; set; } = true;
+        /// <summary>SMART PROGRESS opt-in. Null on PUT = leave unchanged (older clients don't send it).</summary>
+        public bool? ShareStudyPlan { get; set; }
     }
 }

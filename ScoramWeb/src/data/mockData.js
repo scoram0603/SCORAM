@@ -54,6 +54,8 @@ export const sidebarNavItems = [
     items: [
       { to: "/bookmarks", label: "Bookmarks", icon: "Bookmark" },
       { to: "/progress", label: "My Progress", icon: "BarChart3" },
+      { to: "/mistake-book", label: "Mistake Book", icon: "NotebookPen" },
+      { to: "/study-plan", label: "Study Plan", icon: "CalendarCheck" },
     ],
   },
   {

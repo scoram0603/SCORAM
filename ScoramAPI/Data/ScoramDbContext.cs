@@ -74,6 +74,10 @@ namespace ScoramAPI.Data
         public DbSet<QuizChallenge> QuizChallenges => Set<QuizChallenge>();
         public DbSet<StudentTestResult> StudentTestResults => Set<StudentTestResult>();
         public DbSet<StudentAnswer> StudentAnswers => Set<StudentAnswer>();
+        // SMART PROGRESS
+        public DbSet<RevisionAttempt> RevisionAttempts => Set<RevisionAttempt>();
+        public DbSet<MistakeRevisionItem> MistakeRevisionItems => Set<MistakeRevisionItem>();
+        public DbSet<StudyPlanTask> StudyPlanTasks => Set<StudyPlanTask>();
         public DbSet<AdminTask> AdminTasks => Set<AdminTask>();
         public DbSet<Paper> Papers => Set<Paper>();
         // Previous Year Paper Practice -- existing Question Bank questions mapped onto a Paper.
@@ -1519,6 +1523,39 @@ namespace ScoramAPI.Data
                 .HasIndex(p => p.UserId)
                 .IsUnique()
                 .HasFilter("[IsPrimary] = 1");
+
+
+            // ==========================================================================
+            // SMART PROGRESS (Mistake Book revision loop + daily study plan)
+            // No FK to the question tables on purpose: history must survive a question being deleted.
+            // ==========================================================================
+            modelBuilder.Entity<RevisionAttempt>(e =>
+            {
+                e.Property(x => x.SelectedOption).HasConversion<string>().HasMaxLength(5);
+                e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+                e.HasIndex(x => new { x.UserId, x.AnsweredAt });
+                e.HasIndex(x => new { x.UserId, x.QuestionBankQuestionId });
+                e.HasIndex(x => new { x.UserId, x.QuestionId });
+                // Idempotency: a retried POST with the same ClientRequestId can never record twice.
+                e.HasIndex(x => new { x.UserId, x.ClientRequestId }).IsUnique().HasFilter("[ClientRequestId] IS NOT NULL");
+            });
+
+            modelBuilder.Entity<MistakeRevisionItem>(e =>
+            {
+                e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+                // One revision-state row per (student, question), per question source.
+                e.HasIndex(x => new { x.UserId, x.QuestionBankQuestionId }).IsUnique().HasFilter("[QuestionBankQuestionId] IS NOT NULL");
+                e.HasIndex(x => new { x.UserId, x.QuestionId }).IsUnique().HasFilter("[QuestionId] IS NOT NULL");
+            });
+
+            modelBuilder.Entity<StudyPlanTask>(e =>
+            {
+                e.Property(x => x.TaskType).HasConversion<string>().HasMaxLength(30);
+                e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+                e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+                // Deterministic TaskKey => generating a day's plan twice cannot duplicate tasks.
+                e.HasIndex(x => new { x.UserId, x.PlanDate, x.TaskKey }).IsUnique();
+            });
 
             // ==========================================================================
             // USER FEEDBACK (floating Feedback button -> Admin > Feedback)

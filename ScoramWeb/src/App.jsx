@@ -18,7 +18,6 @@ import NotFound from "./pages/NotFound";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Terms from "./pages/Terms";
 import DeleteAccount from "./pages/DeleteAccount";
-import OurTeam from "./pages/OurTeam";
 // SCORAM_TESTS
 import Tests from "./pages/Tests";
 import PracticeTests from "./pages/PracticeTests";
@@ -31,6 +30,11 @@ import PreExamInstructions from "./pages/PreExamInstructions";
 import Leaderboard from "./pages/Leaderboard";
 import ProgressPage from "./pages/Progress";
 import Referrals from "./pages/Referrals";
+// SMART PROGRESS
+import TopicProgress from "./pages/TopicProgress";
+import MistakeBook from "./pages/MistakeBook";
+import Revision from "./pages/Revision";
+import StudyPlan from "./pages/StudyPlan";
 import StudyPartners from "./pages/StudyPartners";
 import Bookmarks from "./pages/Bookmarks";
 import Settings from "./pages/Settings";
@@ -93,6 +97,10 @@ function AppRoutes() {
               a logged-in student too). */}
           <Route path="leaderboard" element={<Leaderboard />} />
           <Route path="progress" element={<ProgressPage />} />
+          <Route path="progress/topic" element={<TopicProgress />} />
+          <Route path="mistake-book" element={<MistakeBook />} />
+          <Route path="mistake-book/revise" element={<Revision />} />
+          <Route path="study-plan" element={<StudyPlan />} />
           <Route path="referrals" element={<Referrals />} />
           <Route path="study-partners" element={<StudyPartners />} />
         </Route>
@@ -113,9 +121,6 @@ function AppRoutes() {
       <Route path="terms" element={<Navigate to="/terms-and-conditions" replace />} />
       {/* Public on purpose: this is the Google Play Data Safety "delete account URL". */}
       <Route path="delete-account" element={<DeleteAccount />} />
-      {/* Public "Our Team" page -- same pattern as the legal pages above: own navbar/footer,
-          no app chrome, so a top-level route rather than nested under AppLayout. */}
-      <Route path="our-team" element={<OurTeam />} />
     </Routes>
   );
 }

@@ -31,6 +31,8 @@ namespace ScoramAPI.DTOs
         public List<Guid> StimulusIds { get; set; } = new();
         public string? SelectedOption { get; set; }
         public bool IsMarkedForReview { get; set; }
+        /// <summary>SMART PROGRESS -- running seconds already recorded for this question (null = none), so a resumed attempt keeps counting from there.</summary>
+        public int? TimeSpentSeconds { get; set; }
     }
 
     // Returned by both "start a Mock Test" and "generate/start a Practice Test" -- and again by

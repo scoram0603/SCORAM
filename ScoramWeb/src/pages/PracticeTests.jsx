@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Loader2, ChevronDown, Sparkles, Play } from "lucide-react";
 import { getQuestionBankSubjects, getQuestionBankTopics, getQuestionBankExams } from "../api/questionBank";
 import { listPracticeTestTemplates, DIFFICULTY_OPTIONS, LANGUAGE_OPTIONS } from "../api/practiceTests";
@@ -15,9 +15,12 @@ export default function PracticeTests() {
   const [topics, setTopics] = useState([]);
   const [exams, setExams] = useState([]);
 
-  const [subjectId, setSubjectId] = useState("");
-  const [topicId, setTopicId] = useState("");
-  const [examId, setExamId] = useState("");
+  // SMART PROGRESS -- "Practice this topic" deep links pre-select the filters (?subjectId=&topicId=&examId=).
+  // They are only initial values; the student can still change everything.
+  const [searchParams] = useSearchParams();
+  const [subjectId, setSubjectId] = useState(() => searchParams.get("subjectId") || "");
+  const [topicId, setTopicId] = useState(() => searchParams.get("topicId") || "");
+  const [examId, setExamId] = useState(() => searchParams.get("examId") || "");
   const [difficulty, setDifficulty] = useState("");
   const [language, setLanguage] = useState(""); // "" | "Hindi" | "English"
   const [questionCount, setQuestionCount] = useState(20);

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Loader2, Clock, Flag, ChevronLeft, ChevronRight, Menu, X, AlertTriangle } from "lucide-react";
 import { getAttempt, saveAnswer, submitTestAttempt } from "../../api/testAttempts";
+import { useQuestionTimings } from "../../hooks/useQuestionTimings";
 import { API_BASE_URL } from "../../api/client";
 import { MathText, RichQuestionBody } from "../questions/MathText";
 import { StimulusPanel, PaperInstructionsList } from "./PaperContent";
@@ -110,6 +111,9 @@ export default function TestRunner() {
 
   const current = questions[currentIndex];
 
+  // SMART PROGRESS -- per-question timing, fire-and-forget (see hooks/useQuestionTimings.js).
+  const timings = useQuestionTimings({ attemptId, questions, currentId: current?.id, enabled: status === "running" && !submitting });
+
   const counts = useMemo(() => {
     let answered = 0, markedForReview = 0, answeredAndMarked = 0, notVisited = 0;
     questions.forEach((q) => {
@@ -174,6 +178,7 @@ export default function TestRunner() {
     Object.values(saveTimersRef.current).forEach(clearTimeout);
 
     const timeTakenSeconds = Math.max(0, Math.round((Date.now() + clockOffsetRef.current - startedAtRef.current) / 1000));
+    timings.flush(); // not awaited: it must never delay or alter submission
     try {
       await submitTestAttempt(attemptId, timeTakenSeconds);
       navigate(`/tests/result/${attemptId}`, { replace: true });

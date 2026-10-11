@@ -1,40 +1,19 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Menu, X, ArrowRight } from "lucide-react";
 import logo from "../../assets/scoram-logo-horizontal.png";
 import { navLinks } from "../../data/landingContent";
 
-// `className` is shared by every state; `idleClassName` / `activeClassName` are mutually exclusive
-// so the two never fight over the same Tailwind property (e.g. two different text colors).
-function NavItem({ item, onClick, className = "", idleClassName = "", activeClassName = "" }) {
-  const { pathname } = useLocation();
-
+function NavItem({ item, onClick, className }) {
   if (item.to) {
-    const active = pathname === item.to;
     return (
-      <Link
-        to={item.to}
-        onClick={onClick}
-        aria-current={active ? "page" : undefined}
-        className={`${className} ${active ? activeClassName : idleClassName}`}
-      >
+      <Link to={item.to} onClick={onClick} className={className}>
         {item.label}
       </Link>
     );
   }
-
-  // In-page anchors ("#top", "#faq") only exist on the landing page. From any other public page
-  // (Our Team, legal pages) a bare "#faq" would silently do nothing, so route back to "/" + hash.
-  if (item.href?.startsWith("#") && pathname !== "/") {
-    return (
-      <Link to={{ pathname: "/", hash: item.href }} onClick={onClick} className={`${className} ${idleClassName}`}>
-        {item.label}
-      </Link>
-    );
-  }
-
   return (
-    <a href={item.href} onClick={onClick} className={`${className} ${idleClassName}`}>
+    <a href={item.href} onClick={onClick} className={className}>
       {item.label}
     </a>
   );
@@ -43,18 +22,6 @@ function NavItem({ item, onClick, className = "", idleClassName = "", activeClas
 export default function LandingNavbar() {
   const [scrolled, setScrolled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { pathname, hash } = useLocation();
-  const onLanding = pathname === "/";
-
-  // Arriving at "/#faq" from another public page (see NavItem) is a client-side navigation, so the
-  // browser does not scroll to the hash on its own -- do it once the landing page has mounted.
-  useEffect(() => {
-    if (!onLanding || !hash) return undefined;
-    const frame = requestAnimationFrame(() => {
-      document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [onLanding, hash]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -80,24 +47,16 @@ export default function LandingNavbar() {
         }`}
       >
         <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:h-20 lg:px-8" aria-label="Main">
-          {onLanding ? (
-            <a href="#top" className="flex shrink-0 items-center">
-              <img src={logo} alt="SCORAM — Learn, Discuss, Score" className="h-9 w-auto lg:h-11" />
-            </a>
-          ) : (
-            <Link to="/" className="flex shrink-0 items-center">
-              <img src={logo} alt="SCORAM — Learn, Discuss, Score" className="h-9 w-auto lg:h-11" />
-            </Link>
-          )}
+          <a href="#top" className="flex shrink-0 items-center">
+            <img src={logo} alt="SCORAM — Learn, Discuss, Score" className="h-9 w-auto lg:h-11" />
+          </a>
 
           <div className="hidden items-center gap-7 xl:flex">
             {navLinks.map((item) => (
               <NavItem
                 key={item.label}
                 item={item}
-                className="text-[15px] font-medium transition-colors"
-                idleClassName="text-ink-600 hover:text-primary-600"
-                activeClassName="text-primary-600 underline decoration-accent-500 decoration-2 underline-offset-[10px]"
+                className="text-[15px] font-medium text-ink-600 transition-colors hover:text-primary-600"
               />
             ))}
           </div>
@@ -176,9 +135,7 @@ export default function LandingNavbar() {
                 key={item.label}
                 item={item}
                 onClick={() => setDrawerOpen(false)}
-                className="rounded-xl px-3 py-3 text-[15px] font-medium"
-                idleClassName="text-ink-900 hover:bg-surface"
-                activeClassName="bg-primary-50 text-primary-600"
+                className="rounded-xl px-3 py-3 text-[15px] font-medium text-ink-900 hover:bg-surface"
               />
             ))}
           </div>

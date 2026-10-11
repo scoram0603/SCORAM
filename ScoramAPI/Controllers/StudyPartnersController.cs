@@ -523,6 +523,28 @@ namespace ScoramAPI.Controllers
             });
         }
 
+        /// <summary>SMART PROGRESS -- this week's study-plan completion and active days of an ACCEPTED Study
+        /// Partner, only if they opted in (ShareStudyPlan). Opt-out, removal as partner or a block makes this
+        /// 403/404 immediately; it never returns task titles, topics, mistakes or any analytics. Your own
+        /// summary is always available to you.</summary>
+        [HttpGet("{userId:guid}/study-plan")]
+        [ProducesResponseType(typeof(StudyPlanShareSummaryDto), StatusCodes.Status200OK)]
+        public async Task<ActionResult<StudyPlanShareSummaryDto>> GetStudyPlanSummary(
+            Guid userId, [FromServices] IStudyPlanService plan, CancellationToken ct)
+        {
+            var me = User.GetUserId();
+            if (userId != me)
+            {
+                if (await IsBlockedEitherWayAsync(me, userId)) return NotFound(new { message = "That student wasn't found." });
+                if (await GetPartnershipAsync(me, userId) == null)
+                    return StatusCode(403, new { message = "Only Study Partners can see this." });
+                var privacy = await GetPrivacyAsync(userId);
+                if (!privacy.ShareStudyPlan)
+                    return StatusCode(403, new { message = "This Study Partner hasn't chosen to share their study plan." });
+            }
+            return Ok(await plan.GetWeeklyShareSummaryAsync(userId, ct));
+        }
+
         /// <summary>Side-by-side progress with a Study Partner, overall or for one exam you BOTH have in My
         /// Exams. Same numbers as the Progress page (shared StudentProgressService).</summary>
         [HttpGet("{userId:guid}/compare")]
@@ -667,7 +689,8 @@ namespace ScoramAPI.Controllers
                 ProgressVisibility = p.ProgressVisibility.ToString(),
                 ActivityVisibility = p.ActivityVisibility.ToString(),
                 ShowOnLeaderboard = p.ShowOnLeaderboard,
-                AllowStudyPartnerRequests = p.AllowStudyPartnerRequests
+                AllowStudyPartnerRequests = p.AllowStudyPartnerRequests,
+                ShareStudyPlan = p.ShareStudyPlan
             });
         }
 
@@ -689,6 +712,7 @@ namespace ScoramAPI.Controllers
             row.ActivityVisibility = activity;
             row.ShowOnLeaderboard = dto.ShowOnLeaderboard;
             row.AllowStudyPartnerRequests = dto.AllowStudyPartnerRequests;
+            if (dto.ShareStudyPlan.HasValue) row.ShareStudyPlan = dto.ShareStudyPlan.Value;
             row.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
             return await GetPrivacy();

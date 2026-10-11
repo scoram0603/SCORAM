@@ -28,7 +28,6 @@ export const navLinks = [
   { label: "Quizzes", to: "/quizzes" },
   { label: "Community", to: "/chat" },
   { label: "Pricing", href: "#faq" },
-  { label: "Our Team", to: "/our-team" },
 ];
 
 export const footerLinks = {

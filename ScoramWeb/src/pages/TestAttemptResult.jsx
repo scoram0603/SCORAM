@@ -15,6 +15,11 @@ import LikeButton from "../components/questions/LikeButton";
 import ReportQuestionModal from "../components/questions/ReportQuestionModal";
 import { MathText, RichQuestionBody } from "../components/questions/MathText";
 import { StimulusPanel } from "../components/tests/PaperContent";
+// SMART PROGRESS -- per-assessment analytics tabs (data from GET /api/progress/assessments/{id}/analytics)
+import { getAttemptAnalytics } from "../api/smartProgress";
+import { useApiQuery } from "../hooks/useApiQuery";
+import AttemptAnalyticsPanel, { RESULT_TABS } from "../components/progress/AttemptAnalytics";
+import { ErrorState, SkeletonBlock } from "../components/progress/ui";
 
 function imgSrc(url) {
   if (!url) return null;
@@ -29,6 +34,9 @@ export default function TestAttemptResult() {
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState("loading");
   const [expandedIndex, setExpandedIndex] = useState(0);
+  const [tab, setTab] = useState("overview");
+  // Loaded in parallel with the existing result; its failure only affects the analytics tabs, never the score summary.
+  const analytics = useApiQuery((signal) => getAttemptAnalytics(attemptId, { signal }), [attemptId], { enabled: status === "success" });
 
   useEffect(() => {
     let cancelled = false;
@@ -100,18 +108,47 @@ export default function TestAttemptResult() {
       {result.testKind === "Quiz" && <ChallengeComparisonCards attemptId={attemptId} />}
       {result.testKind === "Quiz" && <ChallengeFriendCard attemptId={attemptId} />}
 
-      <h2 className="mt-6 text-sm font-bold text-ink-900">Question-wise Analysis</h2>
-      <div className="mt-2 flex flex-col gap-2">
-        {result.questions.map((q, i) => (
-          <QuestionReviewCard
-            key={q.studentAnswerId}
-            question={q}
-            stimuli={(q.stimulusIds || []).map((id) => (result.stimuli || []).find((s) => s.id === id)).filter(Boolean)}
-            index={i}
-            expanded={expandedIndex === i}
-            onToggle={() => setExpandedIndex(expandedIndex === i ? -1 : i)}
-          />
+      <div role="tablist" aria-label="Result sections" className="mt-6 flex gap-1.5 overflow-x-auto pb-1">
+        {RESULT_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`result-tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls="result-tabpanel"
+            onClick={() => setTab(t.id)}
+            className={`h-9 shrink-0 rounded-xl px-3 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-secondary-500 ${tab === t.id ? "bg-primary-600 text-white" : "bg-primary-50 text-ink-600 hover:bg-primary-100"}`}
+          >
+            {t.label}
+          </button>
         ))}
+      </div>
+
+      <div role="tabpanel" id="result-tabpanel" aria-labelledby={`result-tab-${tab}`} className="mt-3">
+        {tab === "review" ? (
+          <>
+            <h2 className="text-sm font-bold text-ink-900">Question-wise Analysis</h2>
+            <div className="mt-2 flex flex-col gap-2">
+              {result.questions.map((q, i) => (
+                <QuestionReviewCard
+                  key={q.studentAnswerId}
+                  question={q}
+                  stimuli={(q.stimulusIds || []).map((id) => (result.stimuli || []).find((s) => s.id === id)).filter(Boolean)}
+                  index={i}
+                  expanded={expandedIndex === i}
+                  onToggle={() => setExpandedIndex(expandedIndex === i ? -1 : i)}
+                />
+              ))}
+            </div>
+          </>
+        ) : analytics.initialLoading ? (
+          <SkeletonBlock rows={5} label="Loading analytics" />
+        ) : analytics.error && !analytics.data ? (
+          <ErrorState error={analytics.error} onRetry={analytics.reload} title="Couldn't load the analytics for this result." />
+        ) : analytics.data ? (
+          <AttemptAnalyticsPanel analytics={analytics.data} section={tab} />
+        ) : null}
       </div>
     </div>
   );

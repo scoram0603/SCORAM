@@ -233,15 +233,6 @@ function PermissionsEditor({ token, admin, onSaved, onCancel }) {
   );
 }
 
-function validateAdminPassword(pw) {
-  if (pw.length < 12) return "Password must be at least 12 characters.";
-  if (!/[A-Z]/.test(pw)) return "Password must contain at least one uppercase letter.";
-  if (!/[a-z]/.test(pw)) return "Password must contain at least one lowercase letter.";
-  if (!/[0-9]/.test(pw)) return "Password must contain at least one number.";
-  if (!/[^A-Za-z0-9]/.test(pw)) return "Password must contain at least one special character.";
-  return null;
-}
-
 function CreateAdminForm({ token, onCreated }) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -252,13 +243,6 @@ function CreateAdminForm({ token, onCreated }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    // Mirrors PasswordPolicy.Validate on the server (api: Extensions/PasswordPolicy.cs) so a weak
-    // password is caught here with a clear message instead of coming back as a bare 400.
-    const policyError = validateAdminPassword(password);
-    if (policyError) {
-      setError(policyError);
-      return;
-    }
     setIsSubmitting(true);
     setError(null);
     try {
@@ -281,8 +265,8 @@ function CreateAdminForm({ token, onCreated }) {
         <FormField label="Email">
           <TextInput required type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </FormField>
-        <FormField label="Temporary password" hint="At least 12 characters with an uppercase letter, a lowercase letter, a number and a special character. Share this with them securely.">
-          <TextInput required type="password" minLength={12} value={password} onChange={(e) => setPassword(e.target.value)} />
+        <FormField label="Temporary password" hint="At least 8 characters. Share this with them securely.">
+          <TextInput required type="password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
         </FormField>
         <FormField label="Role">
           <Select value={role} onChange={(e) => setRole(e.target.value)}>

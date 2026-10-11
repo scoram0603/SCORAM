@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, Flame, Zap, Snowflake, Lock, Award } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import SmartProgressSection from "../components/progress/SmartProgressSection";
 import { getGamificationSummary, getBadges, getProgressAnalytics } from "../api/gamification";
 
 // Mirrors GamificationService.LevelForXp on the backend -- used only to draw the XP progress bar
@@ -69,6 +70,12 @@ export default function Progress() {
       </button>
 
       <h1 className="mt-3 text-xl font-extrabold text-ink-900 sm:text-2xl">My Progress</h1>
+
+      {/* SMART PROGRESS -- server-computed analytics (see ScoramAPI/SMART_PROGRESS.md). The original
+          XP / streak / badges / activity blocks below are unchanged. */}
+      <SmartProgressSection />
+
+      <h2 className="mt-10 text-base font-extrabold text-ink-900">Streak, XP and badges</h2>
 
       {status === "loading" && (
         <div className="flex justify-center py-16 text-ink-400">
