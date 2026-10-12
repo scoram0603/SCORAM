@@ -80,6 +80,13 @@ builder.Services.AddScoped<ISubjectManagementService, SubjectManagementService>(
 builder.Services.AddScoped<IBusinessIdService, BusinessIdService>(); // Business IDs (EXMSSC001, SUB001, ...) -- SuperAdmin change + one-time backfill
 builder.Services.AddScoped<IGamificationService, GamificationService>(); // GAMIFICATION
 builder.Services.AddScoped<IMyExamScopeService, MyExamScopeService>(); // MY EXAMS -- strict per-student exam content scope, see MyExamScopeService
+// SHARED CONTENT / BULK QUESTION EDITOR -- these three were never registered, so every endpoint whose
+// controller (or [FromServices] parameter) needs them failed at DI resolution with a 500 before running
+// any code: /api/admin/bulk-question-editor/*, /api/admin/papers/{id}/stimulus-links/*,
+// /api/admin/papers/{id}/content-preview, and student test Start/GetAttempt/Submit for papers.
+builder.Services.AddScoped<IBulkQuestionEditService, BulkQuestionEditService>();
+builder.Services.AddScoped<IStimulusLinkService, StimulusLinkService>();
+builder.Services.AddScoped<IPaperContentService, PaperContentService>();
 // ---------- Redis (optional -- see ConnectionStrings:Redis) ----------
 // Everything below degrades gracefully to today's single-instance-only behavior when this isn't
 // configured, or when it's configured but unreachable at startup: SignalR keeps working exactly as
