@@ -161,19 +161,35 @@ function QuestionsStep({ token, paperIds, selection, setSelection }) {
 function StimulusPicker({ token, value, onChange, label }) {
   const [search, setSearch] = useState("");
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   useEffect(() => {
-    const t = setTimeout(() => listStimuli(token, { search, status: "Active", pageSize: 30 }).then((r) => setItems(r.items)).catch(() => {}), 250);
+    setLoading(true);
+    const t = setTimeout(() => {
+      listStimuli(token, { search, status: "Active", pageSize: 30 })
+        .then((r) => { setItems(r?.items || []); setError(null); })
+        .catch((e) => { setItems([]); setError(friendlyError(e)); })
+        .finally(() => setLoading(false));
+    }, 250);
     return () => clearTimeout(t);
   }, [token, search]);
+  const hint = error
+    ? null
+    : loading
+      ? "Loading…"
+      : items.length === 0
+        ? (search ? `No active shared content matches "${search}". Clear the search, or create it under Shared Content.` : "No active shared content yet. Create one under Shared Content first.")
+        : `${items.length} found`;
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       <FormField label={`${label} — search`}><TextInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Title / STM id" /></FormField>
-      <FormField label={label}>
+      <FormField label={label} hint={hint}>
         <Select value={value} onChange={(e) => onChange(e.target.value)}>
           <option value="">— select —</option>
           {items.map((i) => <option key={i.id} value={i.id}>{i.businessId} · {i.title}</option>)}
         </Select>
       </FormField>
+      {error && <div className="sm:col-span-2"><Alert>{error}</Alert></div>}
     </div>
   );
 }
