@@ -201,8 +201,16 @@ namespace ScoramAPI.Controllers
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 100);
 
+            // PERFORMANCE (output-identical): this list used to Include(r => r.Answers), i.e. load EVERY answer
+            // row -- each one carrying the full question/option/explanation snapshot text and content-block
+            // JSON -- for every attempt on the page, only to (a) count them for PercentageScore and (b) derive
+            // a title for a Quiz attempt that has no Quiz row. It is also read-only, so nothing needs change
+            // tracking. Now: no tracking, no Answers include, one small grouped COUNT query for (a), and the
+            // original full-answers load only for the rare attempts that really need answer content for (b).
+            // Every field of every returned item is computed from the same values as before; see
+            // MyAttemptsEquivalenceTests, which runs the previous implementation side by side.
             var query = _db.StudentTestResults
-                .Include(r => r.Answers)
+                .AsNoTracking()
                 .Include(r => r.MockTest)
                 .Include(r => r.PracticeTestTemplate)
                 .Include(r => r.Paper).ThenInclude(p => p!.Exam)
@@ -218,11 +226,37 @@ namespace ScoramAPI.Controllers
             var totalCount = await query.CountAsync();
             var items = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
 
-            var now = DateTime.UtcNow;
+            var pageIds = items.Select(r => r.Id).ToList();
+            var answerCounts = pageIds.Count == 0
+                ? new Dictionary<Guid, int>()
+                : await _db.StudentAnswers
+                    .AsNoTracking()
+                    .Where(a => pageIds.Contains(a.StudentTestResultId))
+                    .GroupBy(a => a.StudentTestResultId)
+                    .Select(g => new { Id = g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(x => x.Id, x => x.Count);
+
+            // The ONLY title rule that reads answer content: a Quiz attempt with no Quiz row is titled from
+            // its answers' subject snapshots (see QuizTitleFor). Those attempts get the exact load the old
+            // code used for everything, so their title is derived the same way as before.
+            var needsAnswerContent = items
+                .Where(r => r.TestKind == TestKind.Quiz && r.Quiz == null)
+                .Select(r => r.Id)
+                .ToList();
+            var withAnswers = needsAnswerContent.Count == 0
+                ? new Dictionary<Guid, Models.StudentTestResult>()
+                : (await _db.StudentTestResults
+                    .AsNoTracking()
+                    .Include(r => r.Answers)
+                    .Where(r => needsAnswerContent.Contains(r.Id))
+                    .ToListAsync())
+                    .ToDictionary(r => r.Id);
+
             var mapped = new List<MyTestAttemptSummaryDto>();
             foreach (var r in items)
             {
-                var title = TitleFor(r);
+                var title = TitleFor(withAnswers.TryGetValue(r.Id, out var full) ? full : r);
+                var answerCount = answerCounts.GetValueOrDefault(r.Id);
 
                 mapped.Add(new MyTestAttemptSummaryDto
                 {
@@ -231,7 +265,7 @@ namespace ScoramAPI.Controllers
                     Title = title,
                     Status = r.Status.ToString(),
                     Score = r.Status == TestAttemptStatus.InProgress ? null : r.Score,
-                    PercentageScore = ComputePercentage(r),
+                    PercentageScore = ComputePercentage(r, answerCount),
                     AccuracyPercent = ComputeAccuracy(r),
                     TimeTakenSeconds = r.TimeTakenSeconds,
                     StartedAt = r.StartedAt,
@@ -453,10 +487,13 @@ namespace ScoramAPI.Controllers
             };
         }
 
-        private static decimal? ComputePercentage(Models.StudentTestResult r)
+        private static decimal? ComputePercentage(Models.StudentTestResult r) => ComputePercentage(r, r.Answers.Count);
+
+        // Same formula, with the answer count supplied by the caller (Mine() counts answers in the database
+        // instead of loading them).
+        private static decimal? ComputePercentage(Models.StudentTestResult r, int total)
         {
             if (r.Status == TestAttemptStatus.InProgress) return null;
-            var total = r.Answers.Count;
             return total == 0 ? 0 : Math.Round(r.Score / total * 100, 2);
         }
 

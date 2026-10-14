@@ -36,8 +36,14 @@ builder.Host.UseSerilog((context, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration));
 
 // ---------- Database ----------
-builder.Services.AddDbContext<ScoramDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+// SlowQueryInterceptor only OBSERVES finished commands (it logs any slower than Observability:SlowQueryMs,
+// never alters a command or its result) -- see Data/SlowQueryInterceptor.cs.
+builder.Services.AddSingleton<SlowQueryInterceptor>();
+builder.Services.AddDbContext<ScoramDbContext>((serviceProvider, options) =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
+           .AddInterceptors(serviceProvider.GetRequiredService<SlowQueryInterceptor>()));
+// GET /health/ready (database reachability, cached for a few seconds) -- see Services/ReadinessCheck.cs.
+builder.Services.AddSingleton<ReadinessCheck>();
 
 // ---------- Services ----------
 builder.Services.AddScoped<ITokenService, TokenService>();
@@ -475,7 +481,11 @@ app.Use(async (context, next) =>
     await next();
 });
 
-// Must be the very first middleware so it can catch exceptions thrown by anything after it.
+// Diagnostics only: adds X-Trace-Id + Server-Timing response headers and a slow-request warning. Sits
+// outside the exception handler so even a 500 produced by it carries the trace id header.
+app.UseMiddleware<RequestTimingMiddleware>();
+
+// Must be the first middleware that can fail so it catches exceptions thrown by anything after it.
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseSerilogRequestLogging();
 
@@ -542,6 +552,17 @@ app.UseAuthorization();
 // database or Meilisearch, so a slow/unavailable dependency never gets the whole container marked
 // unhealthy and cycled. It only reports "the ASP.NET Core process is up and serving requests".
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+
+// Readiness: can this instance reach its database right now? NOT for the host's restart-on-failure health
+// check (keep that pointed at /health above) -- for deploy gates, uptime monitors and diagnosis. Reports
+// only up/down, never connection details. See Services/ReadinessCheck.cs.
+app.MapGet("/health/ready", async (ReadinessCheck readiness, CancellationToken cancellationToken) =>
+{
+    var result = await readiness.CheckAsync(cancellationToken);
+    return Results.Json(
+        new { status = result.Ready ? "ready" : "unavailable", database = result.Database },
+        statusCode: result.Ready ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
+});
 
 app.MapControllers();
 app.MapHub<ChatHub>("/hubs/chat");
