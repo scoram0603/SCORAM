@@ -64,6 +64,15 @@ namespace ScoramAPI.Controllers
             var pageSize = Math.Clamp(query.PageSize, 1, 100);
             var hasKeyword = !string.IsNullOrWhiteSpace(query.Search);
             var term = hasKeyword ? query.Search!.Trim() : null;
+            // Whitespace-insensitive LIKE pattern: a pasted multi-line question arrives with its
+            // newlines turned into spaces by the search <input>, but QuestionText stores the real
+            // "\n". "voice. The article" -> "%voice.%The%article%" matches space/newline/tab alike.
+            var likePattern = hasKeyword
+                ? "%" + string.Join("%", term!.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)) + "%"
+                : null;
+            // Full-text CONTAINS only for a single word; an unquoted multi-word sentence is a
+            // CONTAINS syntax error, which just forced a throw + LIKE fallback on every search.
+            var useFullText = hasKeyword && !term!.Any(char.IsWhiteSpace);
 
             // MY EXAMS -- strict scope for a signed-in student. Every Question Bank question is mapped
             // to at least one exam (admin create/import both require an Exam + Year), so "belongs to
@@ -95,7 +104,7 @@ namespace ScoramAPI.Controllers
                     // for duplicate detection).
                     filtered = useFullTextForKeyword
                         ? filtered.Where(x => EF.Functions.Contains(x.QuestionText, term!))
-                        : filtered.Where(x => EF.Functions.Like(x.QuestionText, $"%{term}%"));
+                        : filtered.Where(x => EF.Functions.Like(x.QuestionText, likePattern!));
                 }
 
                 // Multi-select: each non-empty filter narrows the result (AND across filters), matching
@@ -147,9 +156,9 @@ namespace ScoramAPI.Controllers
             {
                 try
                 {
-                    (totalCount, items) = await ExecuteAsync(BuildQuery(useFullTextForKeyword: true));
+                    (totalCount, items) = await ExecuteAsync(BuildQuery(useFullTextForKeyword: useFullText));
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (useFullText)
                 {
                     // Most commonly: no full-text catalog/index exists yet on QuestionBankQuestions
                     // (see Scripts/SetupFullTextSearch.sql), which SQL Server surfaces as an error on
