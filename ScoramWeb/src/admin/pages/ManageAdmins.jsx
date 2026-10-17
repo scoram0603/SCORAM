@@ -3,29 +3,8 @@ import { Plus, ShieldCheck, Shield, Settings2, Search } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { listAdmins, createAdmin, setAdminStatus, setAdminPermissions } from "../api/adminAuth";
 import { PageHeader, Card, Button, FormField, TextInput, Select, Alert } from "../components/AdminUI";
+import { PERMISSIONS, ROLE_PRESETS } from "../lib/permissions";
 import { BusinessIdBadge, BusinessIdChangeDialog, ChangeBusinessIdButton, matchesSearch } from "../components/BusinessId";
-
-const PERMISSIONS = [
-  { key: "UploadPaper", label: "Upload Paper", hint: "Create exams and upload new PYQ papers/questions" },
-  { key: "EditPaper", label: "Edit Paper", hint: "Edit questions in a Draft paper" },
-  { key: "DeletePaper", label: "Delete Paper", hint: "Delete papers and individual questions" },
-  { key: "PublishPaper", label: "Publish Paper", hint: "Approve/reject/publish/unpublish -- also skips review when this admin submits their own uploads" },
-  { key: "ModerateSolutions", label: "Moderate Solutions", hint: "Approve/reject student-submitted solutions, and post Official/Teacher solutions" },
-  { key: "ModerateDiscussions", label: "Moderate Discussions", hint: "Pin comments, mark reported comments resolved/removed, and post official replies" },
-  { key: "ManageQuestionBank", label: "Manage Question Bank", hint: "Add/edit/delete Question Bank questions, bulk Excel/JSON import, manage Subjects and Topics" },
-  { key: "ManageSubjects", label: "Manage Subjects", hint: "Rename, activate/deactivate, merge, reassign and delete Subjects (master data that every PYQ/PYP/test filter uses)" },
-  { key: "ManageFeedback", label: "Manage Feedback", hint: "View student feedback from the Feedback button and mark it In Review / Resolved / Rejected" },
-  { key: "ModerateQuestionReports", label: "Moderate Question Reports", hint: "Review \"Report Question\" submissions on PYQ and Question Bank questions" },
-  { key: "ManageTests", label: "Manage Tests", hint: "Create/edit/publish/schedule Mock Tests and Practice Test templates, view student attempts and results" },
-  { key: "ManageChatRooms", label: "Manage Chat Rooms", hint: "Create/rename/delete standalone group chat rooms (not tied to an exam)" },
-  { key: "ToggleChatLock", label: "Lock/Unlock Chat", hint: "Disable or re-enable posting in a room without deleting its history" },
-  { key: "RemoveGroupMembers", label: "Remove Group Members", hint: "Remove/ban a student from a chat room" },
-  { key: "PostNotices", label: "Post Notices", hint: "Post pinned/highlighted admin announcements into a chat room" },
-  { key: "CreatePolls", label: "Create Polls", hint: "Post a poll into a chat room" },
-  { key: "HandleChatReports", label: "Handle Chat Reports", hint: "Review and resolve reported chat messages" },
-  { key: "ManageBannedWords", label: "Manage Banned Words", hint: "Maintain the list of words/phrases blocked from chat messages" },
-  { key: "Audit", label: "Audit", hint: "View the audit log of admin activity (publishes, rejections, deletions, permission changes)" },
-];
 
 export default function ManageAdmins() {
   const { token, admin: currentAdmin, isSuperAdmin } = useAdminAuth();
@@ -206,6 +185,16 @@ function PermissionsEditor({ token, admin, onSaved, onCancel }) {
       <p className="mb-3 text-xs font-semibold text-ink-600">
         Permissions for {admin.fullName} — everything starts unchecked until granted.
       </p>
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        <span className="text-xs font-semibold text-ink-400">Start from:</span>
+        {ROLE_PRESETS.map((preset) => (
+          <button key={preset.name} type="button" onClick={() => setSelected(new Set(preset.keys))}
+            className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-600 hover:bg-primary-100">
+            {preset.name}
+          </button>
+        ))}
+        <button type="button" onClick={() => setSelected(new Set())} className="rounded-full px-2.5 py-1 text-xs font-semibold text-ink-400 hover:bg-primary-50">Clear</button>
+      </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {PERMISSIONS.map((p) => (
           <label key={p.key} className="flex items-start gap-2.5 rounded-xl2 border border-primary-100 p-3">

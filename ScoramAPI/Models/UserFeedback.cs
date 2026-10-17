@@ -39,5 +39,18 @@ namespace ScoramAPI.Models
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+        // ---- SUPPORT WORKFLOW (additive; existing rows default to Normal / unassigned / not resolved) ----
+        public FeedbackPriority Priority { get; set; } = FeedbackPriority.Normal;
+
+        // Which admin currently owns this ticket. Null = unassigned. SetNull on admin delete.
+        public Guid? AssignedToAdminId { get; set; }
+        public Admin? AssignedToAdmin { get; set; }
+
+        // Set when Status moves to Resolved/Rejected, cleared if it is re-opened. Lets support report
+        // time-to-resolution without reconstructing it from the audit log.
+        public DateTime? ResolvedAt { get; set; }
+
+        public ICollection<FeedbackNote> Notes { get; set; } = new List<FeedbackNote>();
     }
 }

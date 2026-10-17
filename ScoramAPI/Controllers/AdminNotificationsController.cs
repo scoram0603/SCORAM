@@ -117,5 +117,127 @@ namespace ScoramAPI.Controllers
             await _audit.LogAsync(User.GetAdminId(), "Notification.Announce", "Notification", announcementId);
             return Accepted(new { id = announcementId, target = audience.ToString() });
         }
+
+        // POST /api/admin/notifications/audience-preview -- "how many students will this reach?" before sending.
+        // Same audience rules as Announce / NotificationFanOutService (active students only).
+        [HttpPost("audience-preview")]
+        public async Task<IActionResult> AudiencePreview(AudiencePreviewDto dto)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.PostNotices)) return Forbid();
+
+            switch ((dto.Target ?? "AllStudents").Trim().ToLowerInvariant())
+            {
+                case "allstudents":
+                    return Ok(new { recipients = await _db.Users.CountAsync(u => u.IsActive) });
+
+                case "exams":
+                {
+                    var examIds = (dto.ExamIds ?? new()).Distinct().ToList();
+                    if (examIds.Count == 0) return Ok(new { recipients = 0 });
+                    var count = await _db.UserExamPreferences
+                        .Where(p => examIds.Contains(p.ExamId) && p.User!.IsActive)
+                        .Select(p => p.UserId).Distinct().CountAsync();
+                    return Ok(new { recipients = count });
+                }
+
+                case "users":
+                {
+                    var userIds = (dto.UserIds ?? new()).Distinct().ToList();
+                    if (userIds.Count > MaxTargetedUsers)
+                        return BadRequest(new { message = $"You can target at most {MaxTargetedUsers} users at once." });
+                    var count = await _db.Users.CountAsync(u => userIds.Contains(u.Id) && u.IsActive);
+                    return Ok(new { recipients = count });
+                }
+
+                default:
+                    return BadRequest(new { message = "Target must be AllStudents, Exams or Users." });
+            }
+        }
+
+        // GET /api/admin/notifications/find-users?q=  -- tiny lookup for "specific students" targeting.
+        // Returns id, username and name only (no contact details), at most 10, minimum 2 characters.
+        [HttpGet("find-users")]
+        public async Task<IActionResult> FindUsers([FromQuery] string q)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.PostNotices)) return Forbid();
+
+            var term = (q ?? string.Empty).Trim();
+            if (term.Length < 2) return Ok(Array.Empty<object>());
+            if (term.Length > 50) term = term.Substring(0, 50);
+            var pattern = "%" + term.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]") + "%";
+
+            var rows = await _db.Users.AsNoTracking()
+                .Where(u => u.IsActive && (EF.Functions.Like(u.Username, pattern) || EF.Functions.Like(u.FullName, pattern)))
+                .OrderBy(u => u.Username).Take(10)
+                .Select(u => new { u.Id, u.Username, u.FullName })
+                .ToListAsync();
+            return Ok(rows);
+        }
+
+        // GET /api/admin/notifications/campaigns?page=&pageSize=  -- history of admin announcements.
+        // A "campaign" is every Notification row sharing the announcement's DedupKey. Measurable per campaign:
+        // recipients (rows created) and in-app reads. Push DELIVERY results and clicks are not recorded by
+        // the platform, so they are not shown (and never estimated).
+        [HttpGet("campaigns")]
+        public async Task<IActionResult> Campaigns([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            if (!await _permissions.HasPermissionAsync(User, AdminPermission.PostNotices)) return Forbid();
+
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 50);
+
+            var baseQuery = _db.Notifications
+                .Where(n => n.Type == NotificationType.SystemAnnouncement && n.DedupKey != null);
+
+            var total = await baseQuery.Select(n => n.DedupKey).Distinct().CountAsync();
+
+            var rows = await baseQuery
+                .GroupBy(n => n.DedupKey)
+                .Select(g => new
+                {
+                    Key = g.Key,
+                    Title = g.Min(n => n.Title),
+                    Body = g.Min(n => n.Body),
+                    SentAt = g.Min(n => n.CreatedAt),
+                    Recipients = g.Count(),
+                    Read = g.Count(n => n.IsRead)
+                })
+                .OrderByDescending(x => x.SentAt)
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .ToListAsync();
+
+            // Who sent each one: the audit entry written by Announce (TargetId = the announcement id).
+            var ids = rows
+                .Select(r => r.Key != null && r.Key.StartsWith("Announcement:") && Guid.TryParse(r.Key.Substring("Announcement:".Length), out var g) ? g : (Guid?)null)
+                .Where(g => g != null).Select(g => g!.Value).ToList();
+            var senders = await _db.AuditLogs
+                .Where(a => a.Action == "Notification.Announce" && a.TargetId != null && ids.Contains(a.TargetId.Value))
+                .Select(a => new { a.TargetId, Admin = a.Admin != null ? a.Admin.FullName : "Unknown" })
+                .ToListAsync();
+            var senderMap = senders.Where(x => x.TargetId != null).GroupBy(x => x.TargetId!.Value).ToDictionary(g => g.Key, g => g.First().Admin);
+
+            return Ok(new
+            {
+                items = rows.Select(r =>
+                {
+                    Guid? campaignId = r.Key != null && r.Key.StartsWith("Announcement:") && Guid.TryParse(r.Key.Substring("Announcement:".Length), out var g) ? g : null;
+                    return new
+                    {
+                        id = r.Key,
+                        title = r.Title,
+                        body = r.Body,
+                        sentAt = r.SentAt,
+                        sentBy = campaignId != null && senderMap.TryGetValue(campaignId.Value, out var who) ? who : null,
+                        recipients = r.Recipients,
+                        read = r.Read,
+                        readRate = r.Recipients == 0 ? 0 : Math.Round(r.Read * 100.0 / r.Recipients, 1)
+                    };
+                }),
+                totalCount = total,
+                page,
+                pageSize,
+                note = "Delivered / failed / clicked counts are not available: the platform records recipients and in-app reads only."
+            });
+        }
     }
 }

@@ -40,6 +40,11 @@ namespace ScoramAPI.Data
         // "MY EXAMS" -- see Models/UserExamPreference.cs.
         public DbSet<UserExamPreference> UserExamPreferences => Set<UserExamPreference>();
         public DbSet<UserFeedback> UserFeedbacks => Set<UserFeedback>();
+        // SUPPORT WORKFLOW -- notes / responses / events on a feedback ticket. See Models/FeedbackNote.cs.
+        public DbSet<FeedbackNote> FeedbackNotes => Set<FeedbackNote>();
+        // ADMIN PLATFORM -- runtime app config + its append-only revision history. See Models/AppConfigModels.cs.
+        public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+        public DbSet<AppSettingRevision> AppSettingRevisions => Set<AppSettingRevision>();
         public DbSet<Question> Questions => Set<Question>();
         public DbSet<QuestionSolution> QuestionSolutions => Set<QuestionSolution>();
         public DbSet<QuestionReport> QuestionReports => Set<QuestionReport>();
@@ -1579,6 +1584,40 @@ namespace ScoramAPI.Data
             // Admin list: filter by status/type/platform, newest first.
             modelBuilder.Entity<UserFeedback>().HasIndex(f => new { f.Status, f.CreatedAt });
             modelBuilder.Entity<UserFeedback>().HasIndex(f => f.UserId);
+
+            // ==========================================================================
+            // SUPPORT WORKFLOW (priority / assignment / notes on top of UserFeedback)
+            // ==========================================================================
+            modelBuilder.Entity<UserFeedback>().Property(f => f.Priority).HasConversion<string>().HasMaxLength(10)
+                .HasDefaultValue(ScoramAPI.Enums.FeedbackPriority.Normal);
+            modelBuilder.Entity<UserFeedback>()
+                .HasOne(f => f.AssignedToAdmin)
+                .WithMany()
+                .HasForeignKey(f => f.AssignedToAdminId)
+                .OnDelete(DeleteBehavior.SetNull);
+            modelBuilder.Entity<UserFeedback>().HasIndex(f => f.AssignedToAdminId);
+
+            modelBuilder.Entity<FeedbackNote>()
+                .HasOne(n => n.Feedback)
+                .WithMany(f => f.Notes)
+                .HasForeignKey(n => n.FeedbackId)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<FeedbackNote>()
+                .HasOne(n => n.Admin)
+                .WithMany()
+                .HasForeignKey(n => n.AdminId)
+                // Restrict (not SetNull): Admins -> UserFeedbacks is already SET NULL and UserFeedbacks ->
+                // FeedbackNotes is CASCADE, so a second SET NULL path from Admins would be rejected by SQL
+                // Server ("multiple cascade paths"). Admin accounts are only ever deactivated, never deleted.
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<FeedbackNote>().HasIndex(n => new { n.FeedbackId, n.CreatedAt });
+
+            // ==========================================================================
+            // ADMIN PLATFORM -- app configuration (maintenance / feature flags / app versions)
+            // ==========================================================================
+            modelBuilder.Entity<AppSetting>().HasKey(a => a.Key);
+            modelBuilder.Entity<AppSettingRevision>().HasIndex(r => new { r.Key, r.ChangedAt });
+            modelBuilder.Entity<AppSettingRevision>().HasIndex(r => r.BatchId);
         }
     }
 

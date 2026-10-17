@@ -84,7 +84,7 @@ namespace ScoramAPI.Controllers
         private async Task<AuthResponseDto> IssueAuthResponseAsync(User user)
         {
             var (token, expiresAt) = _tokenService.GenerateToken(user);
-            var (refreshToken, _) = await _refreshTokens.IssueAsync(user.Id, isAdmin: false, HttpContext.Connection.RemoteIpAddress?.ToString());
+            var (refreshToken, _) = await _refreshTokens.IssueAsync(user.Id, isAdmin: false, HttpContext.Connection.RemoteIpAddress?.ToString(), HttpContext.GetUserAgent());
 
             return new AuthResponseDto
             {
@@ -106,6 +106,12 @@ namespace ScoramAPI.Controllers
         [EnableRateLimiting("register")]
         public async Task<ActionResult<AuthResponseDto>> Register(RegisterDto dto)
         {
+            // ADMIN PLATFORM -- feature flag "New student registration" (Admin > App Configuration). Checked first
+            // and fails OPEN (see AppConfigService.GetBoolAsync): a config read problem never blocks sign-ups.
+            if (!await HttpContext.RequestServices.GetRequiredService<IAppConfigService>().GetBoolAsync(AppConfigService.FeatureRegistration))
+                return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                    new { message = "New registrations are temporarily closed. Please try again later." });
+
             // Cheapest check first -- reject obvious bot/script submissions before spending an MSG91
             // API call verifying the phone OTP token below.
             if (!_captcha.Verify(dto.CaptchaId, dto.CaptchaAnswer))
@@ -302,7 +308,8 @@ namespace ScoramAPI.Controllers
                 IsAdmin = false,
                 TokenHash = _tokenService.HashRefreshToken(newRawToken),
                 ExpiresAt = newExpiresAt,
-                CreatedByIp = HttpContext.Connection.RemoteIpAddress?.ToString()
+                CreatedByIp = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = HttpContext.GetUserAgent()
             };
             if (!await _refreshTokens.RotateAsync(stored, replacement))
                 // Lost a race with a parallel refresh of the same token. 409 (not 401) so the client

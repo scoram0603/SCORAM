@@ -31,6 +31,12 @@ namespace ScoramAPI.Models
         // comment in Program.cs for why a client-controlled IP can't be fully trusted.
         public string? CreatedByIp { get; set; }
 
+        // ADMIN PLATFORM / SESSION MANAGEMENT -- the client's User-Agent header at login (truncated to
+        // 300 chars), so an admin can tell "Chrome on Windows" from "Android app". Informational only;
+        // like CreatedByIp it is client-supplied and never used for any security decision.
+        [System.ComponentModel.DataAnnotations.MaxLength(300)]
+        public string? UserAgent { get; set; }
+
         [NotMapped]
         public bool IsActive => RevokedAt == null && ExpiresAt > DateTime.UtcNow;
     }

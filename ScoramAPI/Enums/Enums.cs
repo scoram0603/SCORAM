@@ -216,7 +216,20 @@ namespace ScoramAPI.Enums
         // User Feedback (admin > Feedback): view the feedback students submit from the floating
         // feedback button, and move it through New -> In Review -> Resolved/Rejected. Separate from
         // every moderation permission -- it's product feedback, not content moderation.
-        ManageFeedback
+        ManageFeedback,
+        // ---- ADMIN PLATFORM EXPANSION (appended; stored by NAME, column is nvarchar(30), no migration) ----
+        // Analytics beyond the always-visible content KPIs: user growth, learning activity, community
+        // and moderation metrics. SuperAdmin holds it implicitly.
+        ViewAnalytics,
+        // Download CSV/Excel reports. Separate from ViewAnalytics so seeing a number never implies being
+        // able to take the underlying rows out of the system.
+        ExportReports,
+        // Student account administration: search, view profile/status history, suspend/reactivate,
+        // end student sessions. Never grants access to password hashes, tokens or OTP data.
+        ManageUsers,
+        // Runtime app configuration: maintenance mode, feature flags, minimum/recommended app versions.
+        // Changing a minimum supported version or maintenance mode additionally requires SuperAdmin.
+        ManageAppConfig
     }
 
     // Deliberately a small fixed set, per product decision -- not the free-text Language field
@@ -439,6 +452,15 @@ namespace ScoramAPI.Enums
         InReview,
         Resolved,
         Rejected
+    }
+
+    // SUPPORT WORKFLOW -- triage priority of a feedback item / support ticket. Stored by NAME.
+    public enum FeedbackPriority
+    {
+        Low,
+        Normal,
+        High,
+        Urgent
     }
 
     // Which client the feedback was sent from.

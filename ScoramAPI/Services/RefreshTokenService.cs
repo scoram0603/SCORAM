@@ -6,7 +6,7 @@ namespace ScoramAPI.Services
 {
     public interface IRefreshTokenService
     {
-        Task<(string rawToken, DateTime expiresAt)> IssueAsync(Guid principalId, bool isAdmin, string? createdByIp);
+        Task<(string rawToken, DateTime expiresAt)> IssueAsync(Guid principalId, bool isAdmin, string? createdByIp, string? userAgent = null);
 
         // Looks the token up by hash only -- does NOT check whether it's active. Callers must inspect
         // the returned row's RevokedAt/ExpiresAt themselves, because "already revoked" and "expired"
@@ -45,7 +45,7 @@ namespace ScoramAPI.Services
             _tokenService = tokenService;
         }
 
-        public async Task<(string rawToken, DateTime expiresAt)> IssueAsync(Guid principalId, bool isAdmin, string? createdByIp)
+        public async Task<(string rawToken, DateTime expiresAt)> IssueAsync(Guid principalId, bool isAdmin, string? createdByIp, string? userAgent = null)
         {
             var (rawToken, expiresAt) = _tokenService.GenerateRefreshToken();
             _db.RefreshTokens.Add(new RefreshToken
@@ -54,7 +54,8 @@ namespace ScoramAPI.Services
                 IsAdmin = isAdmin,
                 TokenHash = _tokenService.HashRefreshToken(rawToken),
                 ExpiresAt = expiresAt,
-                CreatedByIp = createdByIp
+                CreatedByIp = createdByIp,
+                UserAgent = userAgent
             });
             await _db.SaveChangesAsync();
             return (rawToken, expiresAt);

@@ -51,6 +51,12 @@ namespace ScoramAPI.Controllers
         [EnableRateLimiting("feedback")]
         public async Task<ActionResult<FeedbackSubmittedDto>> Submit(FeedbackCreateDto dto)
         {
+            // ADMIN PLATFORM -- feature flag "Student feedback submissions" (Admin > App Configuration); fails OPEN.
+            if (!await HttpContext.RequestServices.GetRequiredService<ScoramAPI.Services.IAppConfigService>()
+                    .GetBoolAsync(ScoramAPI.Services.AppConfigService.FeatureFeedback))
+                return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                    new { message = "Feedback is temporarily unavailable. Please try again later." });
+
             if (!TryParseEnum<FeedbackType>(dto.FeedbackType, out var type))
                 return BadRequest(new { message = "Please choose a feedback type." });
 
@@ -208,6 +214,10 @@ namespace ScoramAPI.Controllers
                 var previous = feedback.Status;
                 feedback.Status = newStatus;
                 feedback.UpdatedAt = DateTime.UtcNow;
+                // SUPPORT WORKFLOW: time-to-resolution is measured from ResolvedAt (cleared if re-opened).
+                feedback.ResolvedAt = newStatus == FeedbackStatus.Resolved || newStatus == FeedbackStatus.Rejected
+                    ? DateTime.UtcNow
+                    : null;
                 await _db.SaveChangesAsync();
                 await _audit.LogAsync(User.GetAdminId(), $"Feedback.{newStatus}", "UserFeedback", feedback.Id,
                     $"{ToCode(feedback.FeedbackNumber)}: {previous} -> {newStatus}");

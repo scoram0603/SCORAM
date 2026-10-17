@@ -63,6 +63,14 @@ namespace ScoramAPI.DTOs
     }
 
     // ADMIN BROADCAST -- see AdminNotificationsController.
+    public class AudiencePreviewDto
+    {
+        /// <summary>"AllStudents" | "Exams" | "Users".</summary>
+        public string? Target { get; set; } = "AllStudents";
+        public List<Guid>? ExamIds { get; set; }
+        public List<Guid>? UserIds { get; set; }
+    }
+
     public class SendAnnouncementDto
     {
         [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.MaxLength(120)]

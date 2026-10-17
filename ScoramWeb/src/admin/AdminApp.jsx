@@ -33,6 +33,16 @@ import AdminSecuritySettings from "./pages/AdminSecuritySettings";
 import AdminNotFound from "./pages/AdminNotFound";
 import SharedContent from "./pages/SharedContent";
 import BulkQuestionEditor from "./pages/BulkQuestionEditor";
+import AnalyticsPage from "./pages/AnalyticsPage";
+import UsersManagement from "./pages/UsersManagement";
+import ReportsExports from "./pages/ReportsExports";
+import NotificationCenter from "./pages/NotificationCenter";
+import AppConfiguration from "./pages/AppConfiguration";
+import AdminSessions from "./pages/AdminSessions";
+import SupportTickets from "./pages/SupportTickets";
+import SystemHealth from "./pages/SystemHealth";
+import ModerationOverview from "./pages/ModerationOverview";
+import RolesPermissions from "./pages/RolesPermissions";
 
 function AdminRoutes() {
   return (
@@ -109,6 +119,32 @@ function AdminRoutes() {
 
           <Route element={<RequireAdminPermission superAdminOnly />}>
             <Route path="admins" element={<ManageAdmins />} />
+            <Route path="roles" element={<RolesPermissions />} />
+            <Route path="sessions" element={<AdminSessions />} />
+          </Route>
+
+          {/* ADMIN PLATFORM -- every route below is mirrored by a server-side permission check */}
+          <Route element={<RequireAdminPermission permission="ViewAnalytics" />}>
+            <Route path="analytics" element={<AnalyticsPage />} />
+            <Route path="system-health" element={<SystemHealth />} />
+          </Route>
+          <Route element={<RequireAdminPermission permission="ManageUsers" />}>
+            <Route path="users" element={<UsersManagement />} />
+          </Route>
+          <Route element={<RequireAdminPermission permission="ExportReports" />}>
+            <Route path="reports" element={<ReportsExports />} />
+          </Route>
+          <Route element={<RequireAdminPermission permission="PostNotices" />}>
+            <Route path="notifications" element={<NotificationCenter />} />
+          </Route>
+          <Route element={<RequireAdminPermission permission="ManageAppConfig" />}>
+            <Route path="app-config" element={<AppConfiguration />} />
+          </Route>
+          <Route element={<RequireAdminPermission permission="ManageFeedback" />}>
+            <Route path="support" element={<SupportTickets />} />
+          </Route>
+          <Route element={<RequireAdminPermission anyOf={["PublishPaper", "ModerateQuestionReports", "ModerateSolutions", "ModerateDiscussions", "HandleChatReports"]} />}>
+            <Route path="moderation" element={<ModerationOverview />} />
           </Route>
 
           <Route path="*" element={<AdminNotFound />} />

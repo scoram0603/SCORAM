@@ -59,6 +59,9 @@ builder.Services.AddScoped<IPushNotificationService, PushNotificationService>();
 builder.Services.AddSingleton<INotificationWorkQueue, NotificationWorkQueue>();
 builder.Services.AddHostedService<NotificationWorker>();
 builder.Services.AddScoped<INotificationFanOutService, NotificationFanOutService>();
+// ADMIN PLATFORM -- app config / feature flags / version policy, and the analytics layer behind the new dashboard.
+builder.Services.AddScoped<IAppConfigService, AppConfigService>();
+builder.Services.AddScoped<IAdminAnalyticsService, AdminAnalyticsService>();
 
 // STUDY PARTNER -- shared progress numbers (same definitions as the Progress page) used by
 // StudyPartnersController for profile / compare / leaderboard / challenges.
@@ -427,6 +430,9 @@ builder.Services.AddCors(options =>
             policy.WithOrigins(corsOrigins)
                   .AllowAnyHeader()
                   .AllowAnyMethod()
+                  // Lets the admin web app read the download filename and the row-cap flag on report exports.
+                  // Only the listed ORIGINS above may read them; nothing else about CORS changes.
+                  .WithExposedHeaders("Content-Disposition", "X-Report-Truncated")
                   .AllowCredentials();
         }
     });
@@ -514,6 +520,8 @@ app.UseStaticFiles();
 app.UseCors("FrontendDev");
 app.UseHttpsRedirection();
 app.UseAuthentication();
+// ADMIN PLATFORM -- maintenance mode (fails open; admin routes and /api/app-config are exempt).
+app.UseMiddleware<ScoramAPI.Middleware.MaintenanceModeMiddleware>();
 
 // MY EXAMS -- fail CLOSED on the exam-scoped public routes. These endpoints stay open to anonymous
 // visitors (public catalog), and a signed-in student's exam scope is applied from their token. If a

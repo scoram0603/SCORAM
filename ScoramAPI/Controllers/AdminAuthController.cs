@@ -82,7 +82,7 @@ namespace ScoramAPI.Controllers
             }
 
             var (token, expiresAt) = _tokenService.GenerateAdminToken(admin);
-            var (refreshToken, _) = await _refreshTokens.IssueAsync(admin.Id, isAdmin: true, HttpContext.Connection.RemoteIpAddress?.ToString());
+            var (refreshToken, _) = await _refreshTokens.IssueAsync(admin.Id, isAdmin: true, HttpContext.Connection.RemoteIpAddress?.ToString(), HttpContext.GetUserAgent());
             await _audit.LogAsync(admin.Id, "Admin.Login", "Admin", admin.Id);
             return Ok(new AdminAuthResponseDto
             {
@@ -132,7 +132,7 @@ namespace ScoramAPI.Controllers
             await _db.SaveChangesAsync();
 
             var (token, expiresAt) = _tokenService.GenerateAdminToken(admin);
-            var (refreshToken, _) = await _refreshTokens.IssueAsync(admin.Id, isAdmin: true, HttpContext.Connection.RemoteIpAddress?.ToString());
+            var (refreshToken, _) = await _refreshTokens.IssueAsync(admin.Id, isAdmin: true, HttpContext.Connection.RemoteIpAddress?.ToString(), HttpContext.GetUserAgent());
             await _audit.LogAsync(admin.Id, "Admin.Login.MfaVerified", "Admin", admin.Id);
 
             return Ok(new AdminAuthResponseDto
@@ -333,7 +333,8 @@ namespace ScoramAPI.Controllers
                 IsAdmin = true,
                 TokenHash = _tokenService.HashRefreshToken(newRawToken),
                 ExpiresAt = newExpiresAt,
-                CreatedByIp = HttpContext.Connection.RemoteIpAddress?.ToString()
+                CreatedByIp = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = HttpContext.GetUserAgent()
             };
             if (!await _refreshTokens.RotateAsync(stored, replacement))
                 return Conflict(new { message = "Session refresh is already in progress. Please retry." });

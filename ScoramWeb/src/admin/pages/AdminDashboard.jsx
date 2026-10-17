@@ -1,230 +1,267 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
-  UploadCloud, ListChecks, Users, BookOpen, FileStack, ArrowRight, RefreshCw,
-  FileQuestion, CheckCircle2, FileEdit, ClipboardCheck, GraduationCap, Flag,
-  MessageCircle, Database, Search, HardDrive, ShieldAlert, TrendingUp, Copy,
+  UploadCloud, ListChecks, Users, FileStack, ArrowRight, RefreshCw, ClipboardCheck, Flag, FileDown,
+  MessageCircle, Database, Search, ShieldAlert, Copy,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { getDashboardStats } from "../api/dashboard";
+import { getOverview, getUsersAnalytics, getLearningAnalytics } from "../api/analytics";
 import { reindexSearch } from "../api/papers";
 import { backfillQuestionBankMirrors } from "../api/adminQuestions";
 import { PageHeader, Card, Button, Alert, StatusBadge, friendlyError } from "../components/AdminUI";
+import {
+  AXIS_PROPS, CHART_COLORS, ChartCard, DateRangeBar, GRID_PROPS, KpiCard, TOOLTIP_STYLE, UnavailableCard,
+  timeLabel, useLoader,
+} from "../components/analytics";
+import { resolvePreset } from "../lib/dateRange";
+
+const KPI_GROUP_ORDER = ["Users", "Learning", "Content", "Moderation", "Operations"];
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { admin, token, isSuperAdmin, hasPermission } = useAdminAuth();
-  const [stats, setStats] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
+  const canAnalytics = hasPermission("ViewAnalytics");
+  const [range, setRange] = useState(() => resolvePreset("30d"));
 
-  useEffect(() => {
-    let cancelled = false;
-    setIsLoading(true);
-    setLoadError(null);
-    getDashboardStats(token)
-      .then((res) => {
-        if (!cancelled) setStats(res);
-      })
-      .catch((err) => {
-        if (!cancelled) setLoadError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
+  // Every block loads independently: one failing aggregate shows an error in ITS card, never blanks the page.
+  const overview = useLoader((signal, refresh) => getOverview(token, range, { refresh, signal }), [token, range.from, range.to, range.tzOffsetMinutes]);
+  const users = useLoader(
+    (signal, refresh) => (canAnalytics ? getUsersAnalytics(token, range, { refresh, signal }) : Promise.resolve(null)),
+    [token, canAnalytics, range.from, range.to, range.tzOffsetMinutes]
+  );
+  const learning = useLoader(
+    (signal, refresh) => (canAnalytics ? getLearningAnalytics(token, range, { refresh, signal }) : Promise.resolve(null)),
+    [token, canAnalytics, range.from, range.to, range.tzOffsetMinutes]
+  );
+  const stats = useLoader(() => getDashboardStats(token), [token]);
+
+  const refreshAll = useCallback(() => {
+    overview.reload(true);
+    users.reload(true);
+    learning.reload(true);
+    stats.reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overview.reload, users.reload, learning.reload, stats.reload]);
+
+  const kpiGroups = KPI_GROUP_ORDER
+    .map((g) => ({ name: g, items: (overview.data?.kpis || []).filter((k) => k.group === g) }))
+    .filter((g) => g.items.length > 0);
+  const refreshing = overview.isLoading || users.isLoading || learning.isLoading;
 
   return (
     <div>
       <PageHeader title={`Welcome, ${admin?.fullName?.split(" ")[0] || "Admin"}`} subtitle={`Logged in as ${admin?.role}`} />
 
-      {isLoading && <p className="p-6 text-sm text-ink-400">Loading dashboard…</p>}
-      {loadError && <div className="p-6"><Alert>{loadError}</Alert></div>}
+      <div className="flex flex-col gap-5 p-4 sm:p-6">
+        <DateRangeBar
+          range={range}
+          onChange={setRange}
+          onRefresh={refreshAll}
+          refreshing={refreshing}
+          lastUpdated={timeLabel(overview.updatedAt)}
+        >
+          {hasPermission("ExportReports") && (
+            <Link to="/admin/reports" className="flex items-center gap-1.5 rounded-xl2 bg-primary-50 px-3 py-2 text-sm font-semibold text-primary-600 hover:bg-primary-100">
+              <FileDown className="h-4 w-4" strokeWidth={2.25} /> Export
+            </Link>
+          )}
+        </DateRangeBar>
 
-      {!isLoading && !loadError && stats && (
-        <div className="flex flex-col gap-4 p-6">
-          {/* Content overview -- clickable where a real destination exists */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            <StatCard icon={FileQuestion} label="Total questions" value={stats.content.totalQuestions} />
-            <StatCard
-              icon={FileStack}
-              label="Total papers"
-              value={stats.content.totalPapers}
-              onClick={() => navigate("/admin/papers")}
-            />
-            <StatCard icon={BookOpen} label="Total exams" value={stats.content.totalExams} onClick={() => navigate("/admin/upload")} />
-            <StatCard
-              icon={CheckCircle2}
-              label="Published papers"
-              value={stats.content.publishedPapers}
-              onClick={() => navigate("/admin/papers?status=Published")}
-            />
-            <StatCard
-              icon={FileEdit}
-              label="Draft papers"
-              value={stats.content.draftPapers}
-              onClick={() => navigate("/admin/papers?status=Draft")}
-            />
-            <StatCard
-              icon={ClipboardCheck}
-              label="Pending review"
-              value={stats.content.pendingReviewPapers}
-              onClick={hasPermission("PublishPaper") ? () => navigate("/admin/papers?status=PendingReview") : undefined}
-            />
-            <StatCard icon={GraduationCap} label="Mock tests" value={stats.content.totalMockTests} />
-            <StatCard
-              icon={UploadCloud}
-              label="Today's uploads"
-              value={stats.activity.todayUploads}
-              onClick={() => navigate("/admin/papers")}
-            />
+        {overview.error && <Alert>{overview.error}</Alert>}
+
+        {overview.isLoading && !overview.data && (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4" aria-busy="true" aria-label="Loading dashboard">
+            {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-32 animate-pulse rounded-xl2 bg-white shadow-card" />)}
           </div>
+        )}
 
-          {/* Activity signals */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <StatCard icon={Users} label="Active today" value={stats.activity.todayActiveUsers} tone="secondary" />
-            <StatCard icon={Flag} label="Pending question reports" value={stats.activity.pendingQuestionReports} tone="accent" />
-            <StatCard icon={MessageCircle} label="Pending chat reports" value={stats.activity.pendingChatReports} tone="accent" />
-            <StatCard icon={ListChecks} label="Total admins" value={stats.adminPerformance.length} tone="secondary" />
-          </div>
+        {overview.data?.restricted && (
+          <p className="rounded-xl2 bg-primary-50 px-3 py-2 text-xs text-primary-600">
+            User and learning metrics are hidden because your account doesn't have the View Analytics permission.
+          </p>
+        )}
 
-          {/* Graphs */}
+        {kpiGroups.map((group) => (
+          <section key={group.name} aria-label={`${group.name} metrics`}>
+            <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-400">{group.name}</h2>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+              {group.items.map((k) => <KpiCard key={k.key} kpi={k} />)}
+            </div>
+          </section>
+        ))}
+
+        {overview.data?.unavailable?.length > 0 && (
+          <section aria-label="Metrics not available yet">
+            <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-400">Not tracked yet</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {overview.data.unavailable.map((u) => <UnavailableCard key={u.key} item={u} />)}
+            </div>
+          </section>
+        )}
+
+        {canAnalytics && (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <GraphCard title="Uploads — last 7 days" data={stats.dailyUploads} />
-            <GraphCard title="Uploads — last 6 months" data={stats.monthlyUploads} />
-          </div>
+            <ChartCard
+              title="New students & active learners"
+              subtitle="Active learner = a student who started a test that day"
+              isLoading={users.isLoading && !users.data}
+              error={users.error}
+              isEmpty={!users.data?.series?.some((p) => p.newUsers || p.activeLearners)}
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={users.data?.series || []} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+                  <CartesianGrid {...GRID_PROPS} />
+                  <XAxis dataKey="label" {...AXIS_PROPS} minTickGap={24} />
+                  <YAxis allowDecimals={false} {...AXIS_PROPS} />
+                  <Tooltip {...TOOLTIP_STYLE} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  <Line type="monotone" dataKey="newUsers" name="New students" stroke={CHART_COLORS.blue} strokeWidth={2.5} dot={false} />
+                  <Line type="monotone" dataKey="activeLearners" name="Active learners" stroke={CHART_COLORS.orange} strokeWidth={2.5} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
 
+            <ChartCard
+              title="Total registered students"
+              subtitle="Running total across the selected period"
+              isLoading={users.isLoading && !users.data}
+              error={users.error}
+              isEmpty={!users.data?.series?.length}
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={users.data?.series || []} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
+                  <CartesianGrid {...GRID_PROPS} />
+                  <XAxis dataKey="label" {...AXIS_PROPS} minTickGap={24} />
+                  <YAxis allowDecimals={false} {...AXIS_PROPS} domain={["dataMin", "auto"]} />
+                  <Tooltip {...TOOLTIP_STYLE} />
+                  <Area type="monotone" dataKey="cumulativeUsers" name="Total students" stroke={CHART_COLORS.primary} fill={CHART_COLORS.blue} fillOpacity={0.15} strokeWidth={2.5} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard
+              title="Test attempts"
+              subtitle="Started attempts by outcome"
+              isLoading={learning.isLoading && !learning.data}
+              error={learning.error}
+              isEmpty={!learning.data?.activity?.some((p) => p.started)}
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={learning.data?.activity || []} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+                  <CartesianGrid {...GRID_PROPS} />
+                  <XAxis dataKey="label" {...AXIS_PROPS} minTickGap={24} />
+                  <YAxis allowDecimals={false} {...AXIS_PROPS} />
+                  <Tooltip {...TOOLTIP_STYLE} cursor={{ fill: "#EAF1FD" }} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="completed" name="Completed" stackId="a" fill={CHART_COLORS.green} />
+                  <Bar dataKey="inProgress" name="In progress" stackId="a" fill={CHART_COLORS.blue} />
+                  <Bar dataKey="abandoned" name="Abandoned" stackId="a" fill={CHART_COLORS.grey} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard
+              title="Papers uploaded — last 7 days"
+              subtitle="Always the last 7 days, regardless of the range above"
+              isLoading={overview.isLoading && !overview.data}
+              error={overview.error}
+              isEmpty={!overview.data?.uploadsLast7Days?.some((p) => p.count)}
+              emptyText="No papers uploaded in the last 7 days."
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={overview.data?.uploadsLast7Days || []} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+                  <CartesianGrid {...GRID_PROPS} />
+                  <XAxis dataKey="label" {...AXIS_PROPS} />
+                  <YAxis allowDecimals={false} {...AXIS_PROPS} />
+                  <Tooltip {...TOOLTIP_STYLE} cursor={{ fill: "#EAF1FD" }} />
+                  <Bar dataKey="count" name="Papers uploaded" fill={CHART_COLORS.blue} radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+        )}
+
+        {!canAnalytics && (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <ChartCard
+              title="Papers uploaded — last 7 days"
+              isLoading={overview.isLoading && !overview.data}
+              error={overview.error}
+              isEmpty={!overview.data?.uploadsLast7Days?.some((p) => p.count)}
+              emptyText="No papers uploaded in the last 7 days."
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={overview.data?.uploadsLast7Days || []} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+                  <CartesianGrid {...GRID_PROPS} />
+                  <XAxis dataKey="label" {...AXIS_PROPS} />
+                  <YAxis allowDecimals={false} {...AXIS_PROPS} />
+                  <Tooltip {...TOOLTIP_STYLE} cursor={{ fill: "#EAF1FD" }} />
+                  <Bar dataKey="count" name="Papers uploaded" fill={CHART_COLORS.blue} radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+            <ChartCard
+              title="Papers uploaded — last 6 months"
+              isLoading={overview.isLoading && !overview.data}
+              error={overview.error}
+              isEmpty={!overview.data?.uploadsLast6Months?.some((p) => p.count)}
+              emptyText="No papers uploaded in the last 6 months."
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={overview.data?.uploadsLast6Months || []} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+                  <CartesianGrid {...GRID_PROPS} />
+                  <XAxis dataKey="label" {...AXIS_PROPS} />
+                  <YAxis allowDecimals={false} {...AXIS_PROPS} />
+                  <Tooltip {...TOOLTIP_STYLE} cursor={{ fill: "#EAF1FD" }} />
+                  <Bar dataKey="count" name="Papers uploaded" fill={CHART_COLORS.teal} radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+        )}
+
+        {stats.error && <Alert>{stats.error}</Alert>}
+        {stats.data && (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="flex flex-col gap-4 lg:col-span-2">
-              <LatestUploadsCard uploads={stats.latestUploads} onOpen={(id) => navigate(`/admin/papers/${id}`)} />
-              {hasPermission("Audit") && <RecentActivityCard entries={stats.recentActivity} />}
+              <LatestUploadsCard uploads={stats.data.latestUploads} onOpen={(id) => navigate(`/admin/papers/${id}`)} />
+              {hasPermission("Audit") && <RecentActivityCard entries={stats.data.recentActivity} />}
             </div>
-
             <div className="flex flex-col gap-4">
-              <SystemStatusCard system={stats.system} token={token} isSuperAdmin={isSuperAdmin} />
-              {stats.adminPerformance.length > 0 && <AdminPerformanceCard admins={stats.adminPerformance} />}
+              <SystemStatusCard system={stats.data.system} token={token} isSuperAdmin={isSuperAdmin} />
+              {stats.data.adminPerformance.length > 0 && <AdminPerformanceCard admins={stats.data.adminPerformance} />}
             </div>
           </div>
+        )}
 
-          {/* Quick actions -- only real, working destinations. Bulk Import, Mock Test creation, and
-              Quiz creation aren't built yet (later phases), so they're deliberately left out rather
-              than linking to something that doesn't exist. */}
-          <div>
-            <h2 className="mb-3 text-sm font-bold text-ink-900">Quick actions</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <ShortcutCard
-                icon={UploadCloud}
-                title="Upload PYQ"
-                description="Choose or create an exam, pick a language, and add a question."
-                onClick={() => navigate("/admin/upload")}
-              />
-              <ShortcutCard
-                icon={FileStack}
-                title="Uploaded Papers"
-                description="See every paper's status and pick up where you left off."
-                onClick={() => navigate("/admin/papers")}
-              />
-              {hasPermission("PublishPaper") && (
-                <ShortcutCard
-                  icon={ClipboardCheck}
-                  title="Review Queue"
-                  description="Approve or reject papers waiting on your review."
-                  onClick={() => navigate("/admin/review")}
-                />
-              )}
-              <ShortcutCard
-                icon={ListChecks}
-                title="Tasks"
-                description="View your assigned tasks and update their status."
-                onClick={() => navigate("/admin/tasks")}
-              />
-              <ShortcutCard
-                icon={MessageCircle}
-                title="Chat Moderation"
-                description="Handle reported messages, banned words, and muted users."
-                onClick={() => navigate("/admin/chat")}
-              />
-              {hasPermission("Audit") && (
-                <ShortcutCard
-                  icon={ShieldAlert}
-                  title="Audit Log"
-                  description="Review who published, rejected, or deleted what, and when."
-                  onClick={() => navigate("/admin/audit-log")}
-                />
-              )}
-              {isSuperAdmin && (
-                <ShortcutCard
-                  icon={Users}
-                  title="Manage Admins"
-                  description="Create admin accounts and control access."
-                  onClick={() => navigate("/admin/admins")}
-                />
-              )}
-            </div>
+        {/* Quick actions -- only real, working destinations. */}
+        <div>
+          <h2 className="mb-3 text-sm font-bold text-ink-900">Quick actions</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <ShortcutCard icon={UploadCloud} title="Upload PYQ" description="Choose or create an exam, pick a language, and add a question." onClick={() => navigate("/admin/upload")} />
+            <ShortcutCard icon={FileStack} title="Uploaded Papers" description="See every paper's status and pick up where you left off." onClick={() => navigate("/admin/papers")} />
+            {hasPermission("PublishPaper") && (
+              <ShortcutCard icon={ClipboardCheck} title="Review Queue" description="Approve or reject papers waiting on your review." onClick={() => navigate("/admin/review")} />
+            )}
+            <ShortcutCard icon={ListChecks} title="Tasks" description="View your assigned tasks and update their status." onClick={() => navigate("/admin/tasks")} />
+            <ShortcutCard icon={MessageCircle} title="Chat Moderation" description="Handle reported messages, banned words, and muted users." onClick={() => navigate("/admin/chat")} />
+            {hasPermission("Audit") && (
+              <ShortcutCard icon={ShieldAlert} title="Audit Log" description="Review who published, rejected, or deleted what, and when." onClick={() => navigate("/admin/audit-log")} />
+            )}
+            {isSuperAdmin && (
+              <ShortcutCard icon={Users} title="Manage Admins" description="Create admin accounts and control access." onClick={() => navigate("/admin/admins")} />
+            )}
+            {hasPermission("ModerateQuestionReports") && (
+              <ShortcutCard icon={Flag} title="Question Reports" description="Review reports students filed against questions." onClick={() => navigate("/admin/question-bank/reports")} />
+            )}
           </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-const TONE_STYLES = {
-  primary: "bg-primary-50 text-primary-600",
-  secondary: "bg-secondary-50 text-secondary-500",
-  accent: "bg-accent-50 text-accent-600",
-};
-
-function StatCard({ icon: Icon, label, value, onClick, tone = "primary" }) {
-  const content = (
-    <Card className={`flex items-center gap-3 ${onClick ? "transition-shadow hover:shadow-cardHover" : ""}`}>
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl2 ${TONE_STYLES[tone]}`}>
-        <Icon className="h-5 w-5" strokeWidth={2.25} />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-xl font-extrabold text-ink-900">{value ?? "—"}</span>
-        <span className="block truncate text-xs text-ink-400">{label}</span>
-      </span>
-    </Card>
-  );
-
-  if (!onClick) return content;
-  return (
-    <button type="button" onClick={onClick} className="text-left">
-      {content}
-    </button>
-  );
-}
-
-function GraphCard({ title, data }) {
-  const hasAnyUploads = data.some((d) => d.count > 0);
-  return (
-    <Card>
-      <div className="mb-3 flex items-center gap-2">
-        <TrendingUp className="h-4 w-4 text-secondary-500" strokeWidth={2.25} />
-        <h3 className="text-sm font-bold text-ink-900">{title}</h3>
       </div>
-      {!hasAnyUploads ? (
-        <p className="py-8 text-center text-xs text-ink-400">No papers uploaded in this window yet.</p>
-      ) : (
-        <div className="h-52">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
-              <Tooltip
-                cursor={{ fill: "#EAF1FD" }}
-                contentStyle={{ borderRadius: 12, border: "1px solid #CFE1FA", fontSize: 12 }}
-              />
-              <Bar dataKey="count" name="Papers uploaded" fill="#1E63D5" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-    </Card>
+    </div>
   );
 }
 
@@ -274,11 +311,6 @@ function SystemStatusCard({ system, token, isSuperAdmin }) {
       <div className="flex flex-col gap-2.5">
         <StatusRow icon={Database} label="Database" healthy={system.databaseHealthy} />
         <StatusRow icon={Search} label="Search index" healthy={system.searchIndexHealthy} />
-        <div className="flex items-center gap-2.5 text-sm">
-          <HardDrive className="h-4 w-4 shrink-0 text-ink-400" strokeWidth={2.25} />
-          <span className="text-ink-600">Uploads storage</span>
-          <span className="ml-auto font-semibold text-ink-900">{system.storageUsedMb} MB</span>
-        </div>
       </div>
 
       {isSuperAdmin && (

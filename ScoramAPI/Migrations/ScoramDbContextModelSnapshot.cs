@@ -153,6 +153,70 @@ namespace ScoramAPI.Migrations
                     b.ToTable("AdminTasks");
                 });
 
+            modelBuilder.Entity("ScoramAPI.Models.AppSetting", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("AppSettings");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.AppSettingRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ChangedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ChangedByAdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("NewValue")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("OldValue")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
+
+                    b.HasIndex("Key", "ChangedAt");
+
+                    b.ToTable("AppSettingRevisions");
+                });
+
             modelBuilder.Entity("ScoramAPI.Models.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1056,6 +1120,40 @@ namespace ScoramAPI.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("ExamCalendarEvents");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.FeedbackNote", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("FeedbackId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AdminId");
+
+                    b.HasIndex("FeedbackId", "CreatedAt");
+
+                    b.ToTable("FeedbackNotes");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.ImportJob", b =>
@@ -2589,6 +2687,10 @@ namespace ScoramAPI.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TokenHash")
@@ -3415,6 +3517,9 @@ namespace ScoramAPI.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("AssignedToAdminId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -3439,8 +3544,18 @@ namespace ScoramAPI.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("Normal");
+
                     b.Property<int?>("Rating")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Source")
                         .HasMaxLength(100)
@@ -3458,6 +3573,8 @@ namespace ScoramAPI.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AssignedToAdminId");
 
                     b.HasIndex("FeedbackNumber")
                         .IsUnique();
@@ -4901,13 +5018,38 @@ namespace ScoramAPI.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("ScoramAPI.Models.FeedbackNote", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "Admin")
+                        .WithMany()
+                        .HasForeignKey("AdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoramAPI.Models.UserFeedback", "Feedback")
+                        .WithMany("Notes")
+                        .HasForeignKey("FeedbackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Admin");
+
+                    b.Navigation("Feedback");
+                });
+
             modelBuilder.Entity("ScoramAPI.Models.UserFeedback", b =>
                 {
+                    b.HasOne("ScoramAPI.Models.Admin", "AssignedToAdmin")
+                        .WithMany()
+                        .HasForeignKey("AssignedToAdminId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("ScoramAPI.Models.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("AssignedToAdmin");
 
                     b.Navigation("User");
                 });
@@ -4973,6 +5115,11 @@ namespace ScoramAPI.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.UserFeedback", b =>
+                {
+                    b.Navigation("Notes");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.Admin", b =>
