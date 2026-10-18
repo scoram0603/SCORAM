@@ -31,6 +31,9 @@ namespace ScoramAPI.DTOs
         public List<Guid> StimulusIds { get; set; } = new();
         public string? SelectedOption { get; set; }
         public bool IsMarkedForReview { get; set; }
+        // Sectional Mock Tests only (null otherwise): the section this question belongs to.
+        public int? SectionOrder { get; set; }
+        public string? SectionName { get; set; }
         /// <summary>SMART PROGRESS -- running seconds already recorded for this question (null = none), so a resumed attempt keeps counting from there.</summary>
         public int? TimeSpentSeconds { get; set; }
     }
@@ -59,6 +62,41 @@ namespace ScoramAPI.DTOs
         public List<StudentPaperInstructionDto> PaperInstructions { get; set; } = new();
         public List<StudentStimulusDto> Stimuli { get; set; } = new();
         public List<TestAttemptQuestionDto> Questions { get; set; } = new();
+
+        // SECTION-WISE TIMING -- empty / false for every test that isn't sectional, so existing clients
+        // are unaffected. When IsSectional, the client shows one section at a time with its own countdown
+        // (SectionExpiresAt) and calls POST .../sections/advance to move on; DurationMinutes/ExpiresAt above
+        // still describe the whole attempt (sum of the sections).
+        public bool IsSectional { get; set; }
+        public List<TestAttemptSectionDto> Sections { get; set; } = new();
+        public int? CurrentSectionOrder { get; set; }
+        public DateTime? SectionStartedAt { get; set; }
+        public DateTime? SectionExpiresAt { get; set; }
+    }
+
+    public class TestAttemptSectionDto
+    {
+        public int Order { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public int DurationMinutes { get; set; }
+        public int QuestionCount { get; set; }
+    }
+
+    // POST /api/tests/attempts/{attemptId}/sections/advance -- body. FromSectionOrder is the section the
+    // client believes it is leaving; if the server already moved past it (the client's clock and the
+    // server's raced) the call just reports the current state instead of skipping another section.
+    public class SectionAdvanceDto
+    {
+        public int FromSectionOrder { get; set; }
+    }
+
+    public class SectionStateDto
+    {
+        public int? CurrentSectionOrder { get; set; }
+        public DateTime? SectionStartedAt { get; set; }
+        public DateTime? SectionExpiresAt { get; set; }
+        public DateTime ServerTime { get; set; }
+        public bool IsLastSection { get; set; }
     }
 
     // PATCH /api/tests/attempts/answers/{studentAnswerId} -- auto-save, called on every answer
@@ -114,6 +152,8 @@ namespace ScoramAPI.DTOs
         public string? Explanation { get; set; }
         public string? Subject { get; set; }
         public string? Topic { get; set; }
+        public int? SectionOrder { get; set; }
+        public string? SectionName { get; set; }
 
         // Optional (Shared Stimulus): ids into TestSubmitResultDto.Stimuli. Empty for questions without shared content.
         public List<Guid> StimulusIds { get; set; } = new();
@@ -144,9 +184,30 @@ namespace ScoramAPI.DTOs
         public int? Rank { get; set; }
         public int? Percentile { get; set; }
         public DateTime AttemptedAt { get; set; }
+
+        // RESULT RELEASE -- true while the admin is holding this Mock Test's result back (see
+        // MockTest.ResultReleaseMode). While locked, the score/count fields above are zero and Questions
+        // is empty -- nothing about the answers is sent -- and ResultReleaseAt says when it opens (null =
+        // opens by itself at some unspecified later time).
+        public bool IsResultLocked { get; set; }
+        public DateTime? ResultReleaseAt { get; set; }
+
+        // Section-wise score breakdown; empty for a test without sections.
+        public List<SectionResultDto> SectionResults { get; set; } = new();
         public List<TestAnswerReviewDto> Questions { get; set; } = new();
         // Optional (Shared Stimulus): each active stimulus once; questions reference it via StimulusIds.
         public List<StudentStimulusDto> Stimuli { get; set; } = new();
+    }
+
+    public class SectionResultDto
+    {
+        public int Order { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public int TotalQuestions { get; set; }
+        public int CorrectCount { get; set; }
+        public int WrongCount { get; set; }
+        public int SkippedCount { get; set; }
+        public decimal Score { get; set; }
     }
 
     // Lightweight row for "My Tests" -- In Progress / Completed, Practice + Mock mixed together
@@ -166,5 +227,8 @@ namespace ScoramAPI.DTOs
         // True if Status == InProgress AND the attempt hasn't timed out yet -- the frontend uses this
         // to decide whether to offer "Resume" vs just showing it as an expired/stale row.
         public bool CanResume { get; set; }
+        // RESULT RELEASE -- see TestSubmitResultDto.IsResultLocked. Score/Percentage/Accuracy above are null while locked.
+        public bool IsResultLocked { get; set; }
+        public DateTime? ResultReleaseAt { get; set; }
     }
 }

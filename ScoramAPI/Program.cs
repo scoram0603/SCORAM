@@ -84,6 +84,7 @@ builder.Services.AddScoped<IQuestionBankMirrorService, QuestionBankMirrorService
 builder.Services.AddScoped<IBulkImportCommitService, BulkImportCommitService>(); // extracted from BulkImportController.Commit -- see that class's own comment
 builder.Services.AddScoped<IBulkPaperImportCommitService, BulkPaperImportCommitService>(); // extracted from BulkPaperImportController.Commit
 builder.Services.AddScoped<IQuestionBankImportCommitService, QuestionBankImportCommitService>(); // extracted from QuestionBankAdminController.Commit
+builder.Services.AddScoped<ITestBulkImportService, TestBulkImportService>(); // Mock Test / Practice Template bulk upload
 builder.Services.AddScoped<ITestAttemptService, TestAttemptService>(); // SCORAM_TESTS
 builder.Services.AddScoped<ISubjectManagementService, SubjectManagementService>(); // Subject Management (admin)
 builder.Services.AddScoped<IBusinessIdService, BusinessIdService>(); // Business IDs (EXMSSC001, SUB001, ...) -- SuperAdmin change + one-time backfill

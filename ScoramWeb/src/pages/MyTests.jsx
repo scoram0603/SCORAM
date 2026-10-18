@@ -77,7 +77,11 @@ export default function MyTests() {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-ink-900">{a.title}</p>
                   <p className="mt-0.5 text-xs text-ink-400">
-                    {a.status === "InProgress" ? "In progress" : `${a.percentageScore ?? 0}% · ${timeAgo(a.submittedAt)}`}
+                    {a.status === "InProgress"
+                      ? "In progress"
+                      : a.isResultLocked
+                      ? `Result ${a.resultReleaseAt ? `on ${new Date(a.resultReleaseAt).toLocaleString()}` : "coming soon"} · ${timeAgo(a.submittedAt)}`
+                      : `${a.percentageScore ?? 0}% · ${timeAgo(a.submittedAt)}`}
                   </p>
                 </div>
               </div>

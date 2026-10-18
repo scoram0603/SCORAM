@@ -43,7 +43,7 @@ namespace ScoramAPI.Controllers
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 100);
 
-            var query = _db.MockTests.Include(t => t.MockTestQuestions).AsQueryable();
+            var query = _db.MockTests.Include(t => t.MockTestQuestions).Include(t => t.Sections).AsQueryable();
             if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<TestPublishStatus>(status, true, out var parsed))
                 query = query.Where(t => t.Status == parsed);
 
@@ -87,6 +87,7 @@ namespace ScoramAPI.Controllers
                 MaxAttempts = t.MaxAttempts,
                 AttemptCount = attemptCounts.GetValueOrDefault(t.Id, 0)
             }).ToList();
+            for (var i = 0; i < items.Count; i++) MockTestsController.ApplySettingsSummary(items[i], tests[i]);
 
             return Ok(new PagedResult<MockTestSummaryDto> { Items = items, TotalCount = totalCount, Page = page, PageSize = pageSize });
         }
@@ -100,8 +101,11 @@ namespace ScoramAPI.Controllers
             var test = await _db.MockTests
                 .Include(t => t.MockTestQuestions).ThenInclude(mq => mq.Question)
                 .Include(t => t.MockTestQuestions).ThenInclude(mq => mq.QuestionBankQuestion)
+                .Include(t => t.Sections)
                 .FirstOrDefaultAsync(t => t.Id == id);
             if (test == null) return NotFound();
+
+            var sectionOrderById = test.Sections.ToDictionary(x => x.Id, x => x.SectionOrder);
 
             return Ok(new
             {
@@ -120,10 +124,22 @@ namespace ScoramAPI.Controllers
                 Status = test.Status.ToString(),
                 test.MaxAttempts,
                 test.Instructions,
+                test.IsSectional,
+                Sections = test.Sections.OrderBy(x => x.SectionOrder).Select(x => new
+                {
+                    Order = x.SectionOrder,
+                    x.Name,
+                    x.DurationMinutes,
+                    QuestionCount = test.MockTestQuestions.Count(mq => mq.SectionId == x.Id)
+                }),
+                ResultReleaseMode = test.ResultReleaseMode.ToString(),
+                test.ResultDelayMinutes,
+                test.ResultReleaseAt,
                 Questions = test.MockTestQuestions.OrderBy(mq => mq.QuestionOrder).Select(mq => new
                 {
                     mq.Id,
                     mq.QuestionOrder,
+                    SectionOrder = mq.SectionId != null && sectionOrderById.TryGetValue(mq.SectionId.Value, out var so) ? (int?)so : null,
                     QuestionId = mq.QuestionId,
                     QuestionBankQuestionId = mq.QuestionBankQuestionId,
                     IsQuestionBank = mq.QuestionBankQuestionId != null,
@@ -144,8 +160,34 @@ namespace ScoramAPI.Controllers
         {
             if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageTests)) return Forbid();
 
-            var test = await _db.MockTests.FindAsync(id);
+            var test = await _db.MockTests.Include(t => t.Sections).FirstOrDefaultAsync(t => t.Id == id);
             if (test == null) return NotFound();
+
+            // RESULT RELEASE + SECTIONS. Sections can be renamed / re-timed here, but not added or removed
+            // (the questions are already assigned to them); omit Sections to leave them untouched.
+            if (!MockTestRules.TryParseReleaseMode(dto.ResultReleaseMode, out var releaseMode))
+                return BadRequest(new { message = "Result release must be Instant, AfterDelay, OnDate or AfterWindowEnds." });
+            var releaseError = MockTestRules.ValidateResultRelease(releaseMode, dto.ResultDelayMinutes, dto.ResultReleaseAt, dto.EndAt);
+            if (releaseError != null) return BadRequest(new { message = releaseError });
+
+            var orderedSections = test.Sections.OrderBy(x => x.SectionOrder).ToList();
+            var sectionsChanged = false;
+            var isSectional = test.IsSectional;
+            int sectionTotal = 0;
+            if (dto.Sections != null && (dto.Sections.Count > 0 || orderedSections.Count > 0))
+            {
+                if (dto.Sections.Count != orderedSections.Count)
+                    return BadRequest(new { message = "The number of sections can't be changed after creation. Create a new test instead." });
+                var input = dto.Sections.Select(x => (x.Name ?? string.Empty, x.DurationMinutes)).ToList();
+                var sectionError = MockTestRules.ValidateSections(input, out isSectional, out sectionTotal);
+                if (sectionError != null) return BadRequest(new { message = sectionError });
+                for (var i = 0; i < orderedSections.Count; i++)
+                {
+                    orderedSections[i].Name = input[i].Item1.Trim();
+                    orderedSections[i].DurationMinutes = input[i].DurationMinutes;
+                }
+                sectionsChanged = true;
+            }
 
             // "MY EXAMS" -- same ExamId->ExamName sync as MockTestsController.Create; a legacy
             // caller that only sends ExamName (no ExamId) keeps updating exactly as before.
@@ -161,7 +203,8 @@ namespace ScoramAPI.Controllers
             test.ExamName = examName;
             test.ExamId = dto.ExamId;
             test.TestType = dto.TestType;
-            test.DurationMinutes = dto.DurationMinutes;
+            test.DurationMinutes = sectionsChanged && isSectional ? sectionTotal : dto.DurationMinutes;
+            if (sectionsChanged) test.IsSectional = isSectional;
             test.NegativeMarkingRatio = dto.NegativeMarkingRatio;
             test.IsRandomOrder = dto.IsRandomOrder;
             test.IsShuffleOptions = dto.IsShuffleOptions;
@@ -170,6 +213,9 @@ namespace ScoramAPI.Controllers
             test.EndAt = dto.EndAt;
             test.MaxAttempts = dto.MaxAttempts;
             test.Instructions = dto.Instructions;
+            test.ResultReleaseMode = releaseMode;
+            test.ResultDelayMinutes = releaseMode == ResultReleaseMode.AfterDelay ? dto.ResultDelayMinutes : null;
+            test.ResultReleaseAt = releaseMode == ResultReleaseMode.OnDate ? dto.ResultReleaseAt : null;
 
             await _db.SaveChangesAsync();
             await _audit.LogAsync(User.GetAdminId(), "MockTest.Update", "MockTest", id);
@@ -226,7 +272,7 @@ namespace ScoramAPI.Controllers
         {
             if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageTests)) return Forbid();
 
-            var source = await _db.MockTests.Include(t => t.MockTestQuestions).FirstOrDefaultAsync(t => t.Id == id);
+            var source = await _db.MockTests.Include(t => t.MockTestQuestions).Include(t => t.Sections).FirstOrDefaultAsync(t => t.Id == id);
             if (source == null) return NotFound();
 
             var adminId = User.GetAdminId();
@@ -234,6 +280,12 @@ namespace ScoramAPI.Controllers
             {
                 Title = $"{source.Title} (Copy)",
                 ExamName = source.ExamName,
+                ExamId = source.ExamId,
+                IsSectional = source.IsSectional,
+                ResultReleaseMode = source.ResultReleaseMode,
+                ResultDelayMinutes = source.ResultDelayMinutes,
+                // A fixed release date is usually in the past by the time a test is reused -> don't carry it over.
+                ResultReleaseAt = null,
                 TestType = source.TestType,
                 DurationMinutes = source.DurationMinutes,
                 NegativeMarkingRatio = source.NegativeMarkingRatio,
@@ -249,12 +301,23 @@ namespace ScoramAPI.Controllers
             _db.MockTests.Add(copy);
             await _db.SaveChangesAsync();
 
+            if (copy.ResultReleaseMode == ResultReleaseMode.OnDate) copy.ResultReleaseMode = ResultReleaseMode.Instant;
+
+            var sectionMap = new Dictionary<Guid, Guid>();
+            foreach (var sec in source.Sections.OrderBy(x => x.SectionOrder))
+            {
+                var newSec = new MockTestSection { MockTestId = copy.Id, Name = sec.Name, SectionOrder = sec.SectionOrder, DurationMinutes = sec.DurationMinutes };
+                _db.MockTestSections.Add(newSec);
+                sectionMap[sec.Id] = newSec.Id; // Guid is client-generated on Add
+            }
+
             var copiedQuestions = source.MockTestQuestions.OrderBy(q => q.QuestionOrder).Select(q => new MockTestQuestion
             {
                 MockTestId = copy.Id,
                 QuestionId = q.QuestionId,
                 QuestionBankQuestionId = q.QuestionBankQuestionId,
-                QuestionOrder = q.QuestionOrder
+                QuestionOrder = q.QuestionOrder,
+                SectionId = q.SectionId != null && sectionMap.TryGetValue(q.SectionId.Value, out var ns) ? ns : null
             });
             _db.MockTestQuestions.AddRange(copiedQuestions);
             await _db.SaveChangesAsync();
@@ -272,8 +335,12 @@ namespace ScoramAPI.Controllers
             if (!await _permissions.HasPermissionAsync(User, AdminPermission.ManageTests)) return Forbid();
             if (refs == null || refs.Count == 0) return BadRequest(new { message = "Provide at least one question." });
 
-            var test = await _db.MockTests.Include(t => t.MockTestQuestions).FirstOrDefaultAsync(t => t.Id == id);
+            var test = await _db.MockTests.Include(t => t.MockTestQuestions).Include(t => t.Sections).FirstOrDefaultAsync(t => t.Id == id);
             if (test == null) return NotFound();
+
+            var sectionByOrder = test.Sections.ToDictionary(x => x.SectionOrder);
+            if (test.IsSectional && refs.Any(r => r.SectionOrder == null || !sectionByOrder.ContainsKey(r.SectionOrder.Value)))
+                return BadRequest(new { message = "This test has sections -- every added question needs a valid sectionOrder." });
 
             var nextOrder = test.MockTestQuestions.Count > 0 ? test.MockTestQuestions.Max(q => q.QuestionOrder) + 1 : 1;
             var toAdd = refs.Select((r, i) => new MockTestQuestion
@@ -281,7 +348,8 @@ namespace ScoramAPI.Controllers
                 MockTestId = id,
                 QuestionId = r.QuestionId,
                 QuestionBankQuestionId = r.QuestionBankQuestionId,
-                QuestionOrder = nextOrder + i
+                QuestionOrder = nextOrder + i,
+                SectionId = test.IsSectional ? sectionByOrder[r.SectionOrder!.Value].Id : null
             }).ToList();
 
             _db.MockTestQuestions.AddRange(toAdd);

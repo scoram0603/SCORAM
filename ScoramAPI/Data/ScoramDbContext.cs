@@ -74,6 +74,8 @@ namespace ScoramAPI.Data
         public DbSet<BannedWord> BannedWords => Set<BannedWord>();
         public DbSet<MockTest> MockTests => Set<MockTest>();
         public DbSet<MockTestQuestion> MockTestQuestions => Set<MockTestQuestion>();
+        public DbSet<MockTestSection> MockTestSections => Set<MockTestSection>();
+        public DbSet<TestImportJob> TestImportJobs => Set<TestImportJob>();
         public DbSet<Quiz> Quizzes => Set<Quiz>();
         public DbSet<QuizQuestion> QuizQuestions => Set<QuizQuestion>();
         public DbSet<QuizChallenge> QuizChallenges => Set<QuizChallenge>();
@@ -362,6 +364,36 @@ namespace ScoramAPI.Data
             modelBuilder.Entity<QuestionReport>().Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<MockTest>().Property(m => m.TestType).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<MockTest>().Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
+            // Result release (Instant / AfterDelay / OnDate / AfterWindowEnds) -- readable string column like Status.
+            modelBuilder.Entity<MockTest>().Property(m => m.ResultReleaseMode).HasConversion<string>().HasMaxLength(20).HasDefaultValue(ScoramAPI.Enums.ResultReleaseMode.Instant);
+            modelBuilder.Entity<MockTest>().HasIndex(m => m.ImportJobId);
+            modelBuilder.Entity<PracticeTestTemplate>().HasIndex(t => t.ImportJobId);
+            modelBuilder.Entity<QuestionBankQuestion>().HasIndex(q => q.TestImportJobId);
+
+            // Section-wise timing. A section's own questions are protected from cascade (Restrict) -- the
+            // import rollback removes questions, then sections, then the test, in that order -- and the test
+            // -> sections cascade is a single path (no other FK reaches MockTestSections from MockTests).
+            modelBuilder.Entity<MockTestSection>()
+                .HasOne(s => s.MockTest)
+                .WithMany(t => t.Sections)
+                .HasForeignKey(s => s.MockTestId)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<MockTestSection>().HasIndex(s => new { s.MockTestId, s.SectionOrder });
+            modelBuilder.Entity<MockTestQuestion>()
+                .HasOne(mq => mq.Section)
+                .WithMany()
+                .HasForeignKey(mq => mq.SectionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<TestImportJob>()
+                .HasOne(j => j.CreatedByAdmin)
+                .WithMany()
+                .HasForeignKey(j => j.CreatedByAdminId)
+                .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<TestImportJob>().HasIndex(j => j.CreatedAt);
+            modelBuilder.Entity<TestImportJob>().Property(j => j.Kind).HasConversion<string>().HasMaxLength(20);
+            modelBuilder.Entity<TestImportJob>().Property(j => j.Format).HasConversion<string>().HasMaxLength(20);
+            modelBuilder.Entity<TestImportJob>().Property(j => j.Status).HasConversion<string>().HasMaxLength(20);
             // "MY EXAMS" -- nullable FK alongside the pre-existing free-text ExamName (see
             // MockTest.ExamId's own comment in Models/MockTestModels.cs). Restrict, same reasoning
             // as every other student-facing Exam FK in this file.

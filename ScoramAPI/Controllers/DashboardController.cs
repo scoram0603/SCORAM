@@ -43,7 +43,7 @@ namespace ScoramAPI.Controllers
             // counted twice and the total would be inflated instead of correct).
             var totalPypQuestions = await _db.Questions.CountAsync();
             var totalPyqQuestions = await _db.QuestionBankQuestions
-                .CountAsync(x => x.IsActive && !_db.Questions.Any(q => q.MirroredToQuestionBankQuestionId == x.Id));
+                .CountAsync(x => x.IsActive && !x.IsTestOnly && !_db.Questions.Any(q => q.MirroredToQuestionBankQuestionId == x.Id));
 
             var content = new DashboardContentStatsDto
             {

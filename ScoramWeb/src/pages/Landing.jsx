@@ -15,6 +15,7 @@ import CommunitySection from "../components/landing/CommunitySection";
 import HowItWorksSection from "../components/landing/HowItWorksSection";
 import PopularExamsSection from "../components/landing/PopularExamsSection";
 import TestimonialsSection from "../components/landing/TestimonialsSection";
+import OurTeamSection from "../components/landing/OurTeamSection";
 import AppPromotionSection from "../components/landing/AppPromotionSection";
 import FAQSection from "../components/landing/FAQSection";
 import FinalCTA from "../components/landing/FinalCTA";
@@ -87,6 +88,7 @@ export default function Landing() {
         <HowItWorksSection />
         <PopularExamsSection />
         <TestimonialsSection />
+        <OurTeamSection />
         <AppPromotionSection />
         <FinalCTA />
         <FAQSection />

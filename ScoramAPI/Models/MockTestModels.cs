@@ -68,13 +68,54 @@ namespace ScoramAPI.Models
 
         public string? Instructions { get; set; }
 
+        // SECTION-WISE TIMING -- real exams give each section its own clock (Maths 25 min, Reasoning
+        // 25 min, ...). True only when this test has Sections AND every one of them has a duration; the
+        // student then moves through the sections in order, each with its own countdown, and can't go
+        // back to a finished section. DurationMinutes above is kept equal to the sum of the sections'
+        // durations so everything that only knows "total duration" (expiry, listings) keeps working.
+        // False (the default, and every test created before this existed) = one clock for the whole test.
+        public bool IsSectional { get; set; } = false;
+
+        // RESULT RELEASE -- when students may see their score and answer key after submitting. Defaults to
+        // Instant, i.e. exactly the behavior before this setting existed. See Services/TestResultVisibility.cs.
+        public ResultReleaseMode ResultReleaseMode { get; set; } = ResultReleaseMode.Instant;
+        // ResultReleaseMode.AfterDelay: minutes after each student's own submission.
+        public int? ResultDelayMinutes { get; set; }
+        // ResultReleaseMode.OnDate: the moment (UTC) results open for everyone.
+        public DateTime? ResultReleaseAt { get; set; }
+
+        // Set when this test was created by a bulk upload (Models/TestImportJob) -- lets the import's
+        // rollback find exactly what it created.
+        public Guid? ImportJobId { get; set; }
+
         public Guid CreatedByAdminId { get; set; }
         public Admin? CreatedByAdmin { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public ICollection<MockTestQuestion> MockTestQuestions { get; set; } = new List<MockTestQuestion>();
+        public ICollection<MockTestSection> Sections { get; set; } = new List<MockTestSection>();
         public ICollection<StudentTestResult> Results { get; set; } = new List<StudentTestResult>();
+    }
+
+    // One section of a Mock Test ("Quantitative Aptitude", 25 min). A test with no sections behaves
+    // exactly as before. See MockTest.IsSectional for how DurationMinutes is used.
+    public class MockTestSection
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+
+        public Guid MockTestId { get; set; }
+        public MockTest? MockTest { get; set; }
+
+        [Required, MaxLength(100)]
+        public string Name { get; set; } = string.Empty;
+
+        // 1-based position; sections are attempted in this order.
+        public int SectionOrder { get; set; }
+
+        // Minutes allowed for this section. Null = this section has no clock of its own (only valid
+        // when the whole test isn't sectional -- sections are then just labels / a result breakdown).
+        public int? DurationMinutes { get; set; }
     }
 
     public class MockTestQuestion
@@ -94,6 +135,10 @@ namespace ScoramAPI.Models
         public QuestionBankQuestion? QuestionBankQuestion { get; set; }
 
         public int QuestionOrder { get; set; }
+
+        // Which section this question belongs to (null for a test without sections).
+        public Guid? SectionId { get; set; }
+        public MockTestSection? Section { get; set; }
     }
 
     public class StudentTestResult
@@ -130,6 +175,15 @@ namespace ScoramAPI.Models
         // the attempt itself (not just looked up via PracticeTestTemplateId) so it stays accurate
         // even for template-less ad-hoc attempts, and even if a template is edited/deleted later.
         // All null for TestKind.Mock (MockTest already carries its own settings).
+        // SECTION-WISE TIMING (sectional Mock Tests only; all null otherwise). The section plan is
+        // frozen onto the attempt at start ([{order,name,durationMinutes}] as JSON) so a later admin edit
+        // can't move the goalposts mid-attempt. CurrentSectionOrder/CurrentSectionStartedAt are the server's
+        // own record of where the student is -- the server, not the browser, decides which section accepts
+        // answers (see Services/SectionedAttempts.cs).
+        public string? SectionPlanJson { get; set; }
+        public int? CurrentSectionOrder { get; set; }
+        public DateTime? CurrentSectionStartedAt { get; set; }
+
         public Guid? PracticeSubjectId { get; set; }
         public Guid? PracticeTopicId { get; set; }
         public Guid? PracticeExamId { get; set; }

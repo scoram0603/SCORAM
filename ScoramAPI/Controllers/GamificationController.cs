@@ -83,7 +83,7 @@ namespace ScoramAPI.Controllers
 
             // Only the columns the maths needs -- never the full StudentAnswer rows (each carries the
             // question text/options/explanation snapshot) for every attempt the student ever made.
-            var completedAttempts = await _db.StudentTestResults.AsNoTracking()
+            var completedAttempts = await _db.StudentTestResults.AsNoTracking().WhereReleased()
                 .Where(r => r.UserId == userId && r.Status != TestAttemptStatus.InProgress)
                 .OrderBy(r => r.AttemptedAt)
                 .Select(r => new AttemptRow
@@ -99,7 +99,7 @@ namespace ScoramAPI.Controllers
             // Question/QuestionBank record), so a subject renamed/retagged later never retroactively
             // reshuffles old history. Skipped questions are excluded: not attempting isn't the same
             // signal as attempting and getting it wrong. Grouped in SQL.
-            var subjectRows = await _db.StudentAnswers.AsNoTracking()
+            var subjectRows = await _db.StudentAnswers.AsNoTracking().WhereReleased()
                 .Where(a => a.StudentTestResult!.UserId == userId
                             && a.StudentTestResult.Status != TestAttemptStatus.InProgress
                             && a.SubjectSnapshot != null && a.SelectedOption != null)

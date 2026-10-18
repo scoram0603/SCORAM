@@ -51,7 +51,7 @@ export default function LandingNavbar() {
             <img src={logo} alt="SCORAM — Learn, Discuss, Score" className="h-9 w-auto lg:h-11" />
           </a>
 
-          <div className="hidden items-center gap-7 xl:flex">
+          <div className="hidden items-center gap-5 xl:flex 2xl:gap-7">
             {navLinks.map((item) => (
               <NavItem
                 key={item.label}

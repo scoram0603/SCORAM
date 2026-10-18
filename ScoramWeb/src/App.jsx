@@ -13,6 +13,7 @@ import QuestionBankSearch from "./pages/QuestionBankSearch";
 import QuestionBankQuestionDetail from "./pages/QuestionBankQuestionDetail";
 import PreviousYearPapers from "./pages/PreviousYearPapers";
 import Quizzes from "./pages/Quizzes";
+import OurTeam from "./pages/OurTeam";
 import NotFound from "./pages/NotFound";
 // LANDING PAGE -- public support pages linked from the new marketing footer
 import PrivacyPolicy from "./pages/PrivacyPolicy";
@@ -114,6 +115,7 @@ function AppRoutes() {
 
       {/* LANDING PAGE -- public support pages, own navbar/footer (LegalPage), no app chrome,
           so these are top-level routes rather than nested under AppLayout or AuthLayout. */}
+      <Route path="our-team" element={<OurTeam />} />
       <Route path="privacy-policy" element={<PrivacyPolicy />} />
       <Route path="terms-and-conditions" element={<Terms />} />
       {/* "/terms" was the original URL for this page -- kept as a redirect so links already shared,

@@ -320,7 +320,7 @@ namespace ScoramAPI.Services
             var qbIds = keys.Where(k => k.QuestionBankQuestionId.HasValue).Select(k => k.QuestionBankQuestionId!.Value).ToList();
             var qIds = keys.Where(k => k.QuestionId.HasValue).Select(k => k.QuestionId!.Value).ToList();
 
-            var rows = await _db.StudentAnswers.AsNoTracking()
+            var rows = await _db.StudentAnswers.AsNoTracking().WhereReleased()
                 .Where(a => a.StudentTestResult!.UserId == userId
                             && a.StudentTestResult.Status != TestAttemptStatus.InProgress
                             && ((a.QuestionBankQuestionId != null && qbIds.Contains(a.QuestionBankQuestionId.Value))
@@ -536,7 +536,7 @@ namespace ScoramAPI.Services
             var qIds = keys.Where(k => k.QuestionId.HasValue).Select(k => k.QuestionId!.Value).ToList();
 
             // Newest snapshot per question; the answer key columns are deliberately NOT selected.
-            var rows = await _db.StudentAnswers.AsNoTracking()
+            var rows = await _db.StudentAnswers.AsNoTracking().WhereReleased()
                 .Where(a => a.StudentTestResult!.UserId == userId
                             && a.StudentTestResult.Status != TestAttemptStatus.InProgress
                             && ((a.QuestionBankQuestionId != null && qbIds.Contains(a.QuestionBankQuestionId.Value))

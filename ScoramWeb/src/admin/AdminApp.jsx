@@ -22,6 +22,7 @@ import SolutionsQueue from "./pages/SolutionsQueue";
 import CommentReportsQueue from "./pages/CommentReportsQueue";
 import QuestionBankManagement from "./pages/QuestionBankManagement";
 import QuestionBankUploadWizard from "./pages/QuestionBankUploadWizard";
+import TestBulkUpload from "./pages/TestBulkUpload";
 import QuestionBankSubjectsTopics from "./pages/QuestionBankSubjectsTopics";
 import SubjectManagement from "./pages/SubjectManagement";
 import QuestionBankReportsQueue from "./pages/QuestionBankReportsQueue";
@@ -114,6 +115,7 @@ function AdminRoutes() {
           <Route element={<RequireAdminPermission permission="ManageTests" />}>
             <Route path="mock-tests" element={<MockTestManagement />} />
             <Route path="practice-tests" element={<PracticeTestManagement />} />
+            <Route path="test-import/:kind" element={<TestBulkUpload />} />
             <Route path="quizzes" element={<QuizManagement />} />
           </Route>
 

@@ -77,6 +77,7 @@ namespace ScoramAPI.Controllers
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Include(t => t.MockTestQuestions)
+                .Include(t => t.Sections)
                 .ToListAsync();
 
             var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
@@ -135,6 +136,7 @@ namespace ScoramAPI.Controllers
                 AttemptCount = attemptCounts.GetValueOrDefault(t.Id, 0),
                 IsBookmarked = bookmarkedIds.Contains(t.Id)
             }).ToList();
+            for (var i = 0; i < items.Count; i++) ApplySettingsSummary(items[i], tests[i]);
 
             return Ok(new PagedResult<MockTestSummaryDto>
             {
@@ -154,7 +156,7 @@ namespace ScoramAPI.Controllers
         [HttpGet("{id:guid}/summary")]
         public async Task<ActionResult<MockTestSummaryDto>> GetSummary(Guid id)
         {
-            var test = await _db.MockTests.Include(t => t.MockTestQuestions).FirstOrDefaultAsync(t => t.Id == id);
+            var test = await _db.MockTests.Include(t => t.MockTestQuestions).Include(t => t.Sections).FirstOrDefaultAsync(t => t.Id == id);
             if (test == null) return NotFound();
 
             var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
@@ -173,7 +175,7 @@ namespace ScoramAPI.Controllers
                 .Distinct()
                 .CountAsync();
 
-            return Ok(new MockTestSummaryDto
+            var summary = new MockTestSummaryDto
             {
                 Id = test.Id,
                 Title = test.Title,
@@ -193,7 +195,9 @@ namespace ScoramAPI.Controllers
                 MyAttemptCount = isAuthenticated ? myAttemptCount : null,
                 AttemptCount = attemptCount,
                 IsBookmarked = isBookmarked
-            });
+            };
+            ApplySettingsSummary(summary, test);
+            return Ok(summary);
         }
 
         // GET /api/mocktests/{id}
@@ -263,6 +267,12 @@ namespace ScoramAPI.Controllers
                 .FirstOrDefaultAsync(t => t.Id == id);
 
             if (test == null) return NotFound(new { message = "Mock test not found." });
+
+            // This old one-shot endpoint grades and returns the full answer key in the same response, so it
+            // can't honour a result-release setting (or section timing) -- those tests only run through the
+            // start -> auto-save -> submit flow.
+            if (test.ResultReleaseMode != ResultReleaseMode.Instant || test.IsSectional)
+                return BadRequest(new { message = "This mock test must be taken through the regular test screen." });
 
             var userId = User.GetUserId();
             // SCORAM_TESTS: keyed by "whichever id represents this question" (legacy or Question
@@ -407,17 +417,19 @@ namespace ScoramAPI.Controllers
                 .Take(pageSize)
                 .ToListAsync();
 
+            var nowUtc = DateTime.UtcNow;
             var items = rows.Select(r =>
             {
                 var maxPossible = r.CorrectCount + r.WrongCount + r.SkippedCount;
+                var locked = TestResultVisibility.IsLocked(r, nowUtc, out _);
                 return new AttemptSummaryDto
                 {
                     AttemptId = r.Id,
                     MockTestTitle = r.MockTest!.Title,
                     ExamName = r.MockTest.ExamName,
-                    Score = r.Score,
+                    Score = locked ? 0 : r.Score,
                     MaxPossibleScore = maxPossible,
-                    AccuracyPercent = maxPossible == 0 ? 0 : Math.Round((decimal)r.CorrectCount / maxPossible * 100, 2),
+                    AccuracyPercent = locked || maxPossible == 0 ? 0 : Math.Round((decimal)r.CorrectCount / maxPossible * 100, 2),
                     TimeTakenSeconds = r.TimeTakenSeconds,
                     AttemptedAt = r.AttemptedAt
                 };
@@ -451,6 +463,8 @@ namespace ScoramAPI.Controllers
             // Practice attempt has no MockTestId/MockTest at all, so it's simply not found here
             // (it's reachable instead via the new shared GET /api/tests/attempts/{id}).
             if (result.MockTestId == null || result.MockTest == null) return NotFound();
+            if (TestResultVisibility.IsLocked(result, DateTime.UtcNow, out var releaseAtUtc))
+                return BadRequest(new { message = "The result for this test hasn't been released yet.", resultReleaseAt = releaseAtUtc });
 
             var answers = await _db.StudentAnswers
                 .Where(a => a.StudentTestResultId == attemptId)
@@ -511,6 +525,18 @@ namespace ScoramAPI.Controllers
             var validationError = await ValidateQuestionRefsAsync(refs);
             if (validationError != null) return BadRequest(new { message = validationError });
 
+            // SECTION-WISE TIMING + RESULT RELEASE (both optional; omitted = behaves exactly as before).
+            var sectionInput = (dto.Sections ?? new List<MockTestSectionDto>()).Select(x => (x.Name ?? string.Empty, x.DurationMinutes)).ToList();
+            var sectionError = MockTestRules.ValidateSections(sectionInput, out var isSectional, out var sectionTotalMinutes);
+            if (sectionError != null) return BadRequest(new { message = sectionError });
+            if (sectionInput.Count > 0 && refs.Any(r => r.SectionOrder == null || r.SectionOrder < 1 || r.SectionOrder > sectionInput.Count))
+                return BadRequest(new { message = "Every question must be assigned to one of the test's sections." });
+
+            if (!MockTestRules.TryParseReleaseMode(dto.ResultReleaseMode, out var releaseMode))
+                return BadRequest(new { message = "Result release must be Instant, AfterDelay, OnDate or AfterWindowEnds." });
+            var releaseError = MockTestRules.ValidateResultRelease(releaseMode, dto.ResultDelayMinutes, dto.ResultReleaseAt, dto.EndAt);
+            if (releaseError != null) return BadRequest(new { message = releaseError });
+
             if (!Enum.TryParse<TestPublishStatus>(dto.Status, true, out var status))
                 status = TestPublishStatus.Draft;
 
@@ -533,7 +559,8 @@ namespace ScoramAPI.Controllers
                 ExamName = examName,
                 ExamId = examId,
                 TestType = dto.TestType,
-                DurationMinutes = dto.DurationMinutes,
+                // A sectional test's total time is the sum of its sections' times.
+                DurationMinutes = isSectional ? sectionTotalMinutes : dto.DurationMinutes,
                 NegativeMarkingRatio = dto.NegativeMarkingRatio,
                 IsRandomOrder = dto.IsRandomOrder,
                 IsShuffleOptions = dto.IsShuffleOptions,
@@ -543,6 +570,10 @@ namespace ScoramAPI.Controllers
                 Status = status,
                 MaxAttempts = dto.MaxAttempts,
                 Instructions = dto.Instructions,
+                IsSectional = isSectional,
+                ResultReleaseMode = releaseMode,
+                ResultDelayMinutes = releaseMode == ResultReleaseMode.AfterDelay ? dto.ResultDelayMinutes : null,
+                ResultReleaseAt = releaseMode == ResultReleaseMode.OnDate ? dto.ResultReleaseAt : null,
                 CreatedByAdminId = adminId,
                 CreatedAt = DateTime.UtcNow
             };
@@ -550,12 +581,22 @@ namespace ScoramAPI.Controllers
             _db.MockTests.Add(test);
             await _db.SaveChangesAsync();
 
+            var sections = sectionInput.Select((x, i) => new MockTestSection
+            {
+                MockTestId = test.Id,
+                Name = x.Item1.Trim(),
+                SectionOrder = i + 1,
+                DurationMinutes = x.DurationMinutes
+            }).ToList();
+            if (sections.Count > 0) _db.MockTestSections.AddRange(sections);
+
             var mockTestQuestions = refs.Select((r, index) => new MockTestQuestion
             {
                 MockTestId = test.Id,
                 QuestionId = r.QuestionId,
                 QuestionBankQuestionId = r.QuestionBankQuestionId,
-                QuestionOrder = index + 1
+                QuestionOrder = index + 1,
+                SectionId = sections.Count > 0 ? sections[r.SectionOrder!.Value - 1].Id : null
             });
             _db.MockTestQuestions.AddRange(mockTestQuestions);
             await _db.SaveChangesAsync();
@@ -576,7 +617,18 @@ namespace ScoramAPI.Controllers
                 EndAt = test.EndAt,
                 Status = test.Status.ToString(),
                 AvailabilityStatus = ComputeAvailability(test, DateTime.UtcNow),
-                MaxAttempts = test.MaxAttempts
+                MaxAttempts = test.MaxAttempts,
+                IsSectional = test.IsSectional,
+                Sections = sections.Select(x => new MockTestSectionSummaryDto
+                {
+                    Order = x.SectionOrder,
+                    Name = x.Name,
+                    DurationMinutes = x.DurationMinutes,
+                    QuestionCount = refs.Count(r => r.SectionOrder == x.SectionOrder)
+                }).ToList(),
+                ResultReleaseMode = test.ResultReleaseMode.ToString(),
+                ResultDelayMinutes = test.ResultDelayMinutes,
+                ResultReleaseAt = test.ResultReleaseAt
             });
         }
 
@@ -588,7 +640,7 @@ namespace ScoramAPI.Controllers
         [Authorize(Roles = "Student")]
         public async Task<ActionResult<TestAttemptStartResponseDto>> Start(Guid id)
         {
-            var test = await _db.MockTests.Include(t => t.MockTestQuestions).FirstOrDefaultAsync(t => t.Id == id);
+            var test = await _db.MockTests.Include(t => t.MockTestQuestions).Include(t => t.Sections).FirstOrDefaultAsync(t => t.Id == id);
             if (test == null) return NotFound(new { message = "Mock test not found." });
             if (test.Status != TestPublishStatus.Published) return NotFound(new { message = "Mock test not found." });
 
@@ -606,6 +658,8 @@ namespace ScoramAPI.Controllers
             if (existing != null)
             {
                 existing.MockTest = test;
+                // SECTION-WISE TIMING -- resume lands in the section whose clock is really running now.
+                if (SectionedAttempts.Normalize(existing, now)) await _db.SaveChangesAsync();
                 return Ok(TestAttemptsController.ToStartResponse(existing));
             }
 
@@ -620,16 +674,26 @@ namespace ScoramAPI.Controllers
                     return BadRequest(new { message = $"You've used all {effectiveMax} attempt(s) for this mock test." });
             }
 
-            var orderedQuestions = test.MockTestQuestions.OrderBy(mq => mq.QuestionOrder).ToList();
-            var refs = orderedQuestions.Select((mq, i) => new QuestionRef(mq.QuestionId, mq.QuestionBankQuestionId, i + 1));
+            // Questions are laid out section by section (sections in their set order); inside a section they keep
+            // the admin's order, or are shuffled when IsRandomOrder. A test without sections is one group.
+            var sectionById = test.Sections.ToDictionary(sec => sec.Id);
+            var orderedQuestions = test.MockTestQuestions
+                .OrderBy(mq => mq.SectionId != null && sectionById.TryGetValue(mq.SectionId.Value, out var sec) ? sec.SectionOrder : 0)
+                .ThenBy(mq => mq.QuestionOrder)
+                .ToList();
+            var refs = orderedQuestions.Select((mq, i) =>
+            {
+                MockTestSection? section = null;
+                if (mq.SectionId != null) sectionById.TryGetValue(mq.SectionId.Value, out section);
+                return new QuestionRef(mq.QuestionId, mq.QuestionBankQuestionId, i + 1, section?.SectionOrder, section?.Name);
+            });
             var answers = await _attemptService.BuildSnapshotAnswersAsync(_db, refs);
 
-            if (test.IsRandomOrder)
-            {
-                var shuffled = answers.OrderBy(_ => Random.Shared.Next()).ToList();
-                for (var i = 0; i < shuffled.Count; i++) shuffled[i].QuestionOrder = i + 1;
-                answers = shuffled;
-            }
+            var laidOut = new List<StudentAnswer>();
+            foreach (var group in answers.GroupBy(a => a.SectionOrder ?? 0).OrderBy(g => g.Key))
+                laidOut.AddRange(test.IsRandomOrder ? group.OrderBy(_ => Random.Shared.Next()) : group.OrderBy(a => a.QuestionOrder));
+            for (var i = 0; i < laidOut.Count; i++) laidOut[i].QuestionOrder = i + 1;
+            answers = laidOut;
 
             var attempt = new StudentTestResult
             {
@@ -640,6 +704,20 @@ namespace ScoramAPI.Controllers
                 Status = TestAttemptStatus.InProgress,
                 StartedAt = now
             };
+            // SECTION-WISE TIMING -- freeze the plan onto the attempt and start the clock of section 1.
+            if (test.IsSectional)
+            {
+                var plan = test.Sections.OrderBy(sec => sec.SectionOrder)
+                    .Where(sec => sec.DurationMinutes.HasValue)
+                    .Select(sec => new SectionPlanItem(sec.SectionOrder, sec.Name, sec.DurationMinutes!.Value))
+                    .ToList();
+                if (plan.Count > 0)
+                {
+                    attempt.SectionPlanJson = SectionedAttempts.Serialize(plan);
+                    attempt.CurrentSectionOrder = plan[0].Order;
+                    attempt.CurrentSectionStartedAt = now;
+                }
+            }
             foreach (var a in answers) attempt.Answers.Add(a);
 
             _db.StudentTestResults.Add(attempt);
@@ -650,6 +728,19 @@ namespace ScoramAPI.Controllers
         }
 
         // ---------- helpers ----------
+
+        // SECTION-WISE TIMING / RESULT RELEASE fields shared by every MockTestSummaryDto this controller (and the
+        // admin controller) builds. test.Sections and test.MockTestQuestions must be loaded.
+        internal static void ApplySettingsSummary(MockTestSummaryDto dto, MockTest test)
+        {
+            dto.IsSectional = test.IsSectional;
+            dto.Sections = MockTestRules.SummarizeSections(test)
+                .Select(x => new MockTestSectionSummaryDto { Order = x.Order, Name = x.Name, DurationMinutes = x.DurationMinutes, QuestionCount = x.QuestionCount })
+                .ToList();
+            dto.ResultReleaseMode = test.ResultReleaseMode.ToString();
+            dto.ResultDelayMinutes = test.ResultDelayMinutes;
+            dto.ResultReleaseAt = test.ResultReleaseAt;
+        }
 
         // Same tolerant parse as QuestionBankAdminController.ParseLanguage -- an empty/unrecognized
         // value just leaves the Mock Test's medium untagged rather than erroring the whole request.

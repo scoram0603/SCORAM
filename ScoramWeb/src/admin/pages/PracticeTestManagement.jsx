@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Plus, X, Trash2, Search } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, X, Trash2, Search, UploadCloud } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import {
   listPracticeTestTemplatesAdmin, getPracticeTestTemplateAdmin, createPracticeTestTemplate,
@@ -13,6 +14,7 @@ import { PageHeader, Card, Button, FormField, TextInput, Select, Alert, friendly
 
 export default function PracticeTestManagement() {
   const { token, isSuperAdmin } = useAdminAuth();
+  const navigate = useNavigate();
   const [mode, setMode] = useState("list");
   const [editingId, setEditingId] = useState(null);
   const [items, setItems] = useState([]);
@@ -58,10 +60,16 @@ export default function PracticeTestManagement() {
         title="Practice Test Templates"
         subtitle="Named, browsable Practice Tests — curated question list or a saved filter"
         action={
-          <Button onClick={() => { setEditingId(null); setMode("form"); }}>
-            <Plus className="h-4 w-4" strokeWidth={2.5} />
-            Create Template
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => navigate("/admin/test-import/practice")}>
+              <UploadCloud className="h-4 w-4" strokeWidth={2.5} />
+              Bulk Upload
+            </Button>
+            <Button onClick={() => { setEditingId(null); setMode("form"); }}>
+              <Plus className="h-4 w-4" strokeWidth={2.5} />
+              Create Template
+            </Button>
+          </div>
         }
       />
 

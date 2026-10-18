@@ -40,3 +40,15 @@ export function submitTestAttempt(attemptId, timeTakenSeconds) {
 export function getMyTestAttempts(params = {}, opts = {}) {
   return apiFetch(`/api/tests/attempts/mine${toQueryString(params)}`, { ...opts, auth: true });
 }
+
+// POST /api/tests/attempts/{attemptId}/sections/advance -- SECTION-WISE TIMING: leave the current section
+// (locks it for good) and start the next section's clock. fromSectionOrder is the section the client
+// thinks it is leaving; if the server already moved on it just returns the current state.
+// Returns { currentSectionOrder, sectionStartedAt, sectionExpiresAt, serverTime, isLastSection }.
+export function advanceSection(attemptId, fromSectionOrder) {
+  return apiFetch(`/api/tests/attempts/${attemptId}/sections/advance`, {
+    method: "POST",
+    auth: true,
+    body: { fromSectionOrder },
+  });
+}

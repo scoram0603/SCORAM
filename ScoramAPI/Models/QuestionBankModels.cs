@@ -139,6 +139,17 @@ namespace ScoramAPI.Models
         public Guid? ImportJobId { get; set; }
         public QuestionBankImportJob? ImportJob { get; set; }
 
+        // TEST-ONLY QUESTION -- created by a Mock Test / Practice Template bulk upload for a test's own
+        // use (not a previous-year question). Hidden from every student-facing Question Bank surface
+        // (PYQs search, counts, Practice/Quiz pools) so original mock questions never show up as PYQs, but
+        // fully usable inside tests. It is promoted to a normal question (flag cleared) the moment a PYQ/PYP
+        // import or mirror matches the same question and gives it a real Exam + Year.
+        public bool IsTestOnly { get; set; } = false;
+
+        // The Mock/Practice bulk upload (Models/TestImportJob) that created this question, if any --
+        // used only by that upload's rollback. A plain column, not a foreign key.
+        public Guid? TestImportJobId { get; set; }
+
         public bool IsActive { get; set; } = true;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

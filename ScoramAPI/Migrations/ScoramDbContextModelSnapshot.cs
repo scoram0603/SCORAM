@@ -1332,10 +1332,16 @@ namespace ScoramAPI.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<Guid?>("ImportJobId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Instructions")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("IsRandomOrder")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSectional")
                         .HasColumnType("bit");
 
                     b.Property<bool>("IsShuffleOptions")
@@ -1350,6 +1356,19 @@ namespace ScoramAPI.Migrations
                     b.Property<decimal>("NegativeMarkingRatio")
                         .HasPrecision(4, 2)
                         .HasColumnType("decimal(4,2)");
+
+                    b.Property<int?>("ResultDelayMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ResultReleaseAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ResultReleaseMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Instant");
 
                     b.Property<DateTime?>("ScheduledAt")
                         .HasColumnType("datetime2");
@@ -1380,6 +1399,8 @@ namespace ScoramAPI.Migrations
 
                     b.HasIndex("ExamId");
 
+                    b.HasIndex("ImportJobId");
+
                     b.ToTable("MockTests");
                 });
 
@@ -1401,6 +1422,9 @@ namespace ScoramAPI.Migrations
                     b.Property<int>("QuestionOrder")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("SectionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MockTestId");
@@ -1409,7 +1433,36 @@ namespace ScoramAPI.Migrations
 
                     b.HasIndex("QuestionId");
 
+                    b.HasIndex("SectionId");
+
                     b.ToTable("MockTestQuestions");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.MockTestSection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("DurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("MockTestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("SectionOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MockTestId", "SectionOrder");
+
+                    b.ToTable("MockTestSections");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.Notification", b =>
@@ -1745,6 +1798,9 @@ namespace ScoramAPI.Migrations
                     b.Property<Guid?>("ExamId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ImportJobId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<bool>("IsRandomOrder")
                         .HasColumnType("bit");
 
@@ -1790,6 +1846,8 @@ namespace ScoramAPI.Migrations
                     b.HasIndex("CreatedByAdminId");
 
                     b.HasIndex("ExamId");
+
+                    b.HasIndex("ImportJobId");
 
                     b.HasIndex("SubjectId");
 
@@ -2132,6 +2190,9 @@ namespace ScoramAPI.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsTestOnly")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Language")
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
@@ -2182,6 +2243,9 @@ namespace ScoramAPI.Migrations
                     b.Property<Guid>("SubjectId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("TestImportJobId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("TopicId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2197,6 +2261,8 @@ namespace ScoramAPI.Migrations
                     b.HasIndex("Language");
 
                     b.HasIndex("NormalizedQuestionText");
+
+                    b.HasIndex("TestImportJobId");
 
                     b.HasIndex("TopicId");
 
@@ -2890,6 +2956,12 @@ namespace ScoramAPI.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("SectionName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("SectionOrder")
+                        .HasColumnType("int");
+
                     b.Property<string>("SelectedOption")
                         .HasMaxLength(5)
                         .HasColumnType("nvarchar(5)");
@@ -2958,6 +3030,12 @@ namespace ScoramAPI.Migrations
                     b.Property<int>("CorrectCount")
                         .HasColumnType("int");
 
+                    b.Property<int?>("CurrentSectionOrder")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CurrentSectionStartedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("MockTestId")
                         .HasColumnType("uniqueidentifier");
 
@@ -3005,6 +3083,9 @@ namespace ScoramAPI.Migrations
                     b.Property<decimal>("Score")
                         .HasPrecision(6, 2)
                         .HasColumnType("decimal(6,2)");
+
+                    b.Property<string>("SectionPlanJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("SkippedCount")
                         .HasColumnType("int");
@@ -3299,6 +3380,71 @@ namespace ScoramAPI.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("SyllabusTopics");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.TestImportJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CommittedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ExistingQuestionsReused")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("ImportedTests")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InvalidTests")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("NewQuestionsCreated")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("RolledBackAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("TotalTests")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ValidTests")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("CreatedByAdminId");
+
+                    b.ToTable("TestImportJobs");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.TypingTestResult", b =>
@@ -4151,6 +4297,24 @@ namespace ScoramAPI.Migrations
                     b.Navigation("Organization");
                 });
 
+            modelBuilder.Entity("ScoramAPI.Models.FeedbackNote", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "Admin")
+                        .WithMany()
+                        .HasForeignKey("AdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoramAPI.Models.UserFeedback", "Feedback")
+                        .WithMany("Notes")
+                        .HasForeignKey("FeedbackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Admin");
+
+                    b.Navigation("Feedback");
+                });
+
             modelBuilder.Entity("ScoramAPI.Models.ImportJob", b =>
                 {
                     b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
@@ -4228,11 +4392,29 @@ namespace ScoramAPI.Migrations
                         .HasForeignKey("QuestionId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("ScoramAPI.Models.MockTestSection", "Section")
+                        .WithMany()
+                        .HasForeignKey("SectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("MockTest");
 
                     b.Navigation("Question");
 
                     b.Navigation("QuestionBankQuestion");
+
+                    b.Navigation("Section");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.MockTestSection", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.MockTest", "MockTest")
+                        .WithMany("Sections")
+                        .HasForeignKey("MockTestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MockTest");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.Notification", b =>
@@ -4950,6 +5132,17 @@ namespace ScoramAPI.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("ScoramAPI.Models.TestImportJob", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByAdmin");
+                });
+
             modelBuilder.Entity("ScoramAPI.Models.TypingTestResult", b =>
                 {
                     b.HasOne("ScoramAPI.Models.User", "User")
@@ -5016,24 +5209,6 @@ namespace ScoramAPI.Migrations
                     b.Navigation("Exam");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("ScoramAPI.Models.FeedbackNote", b =>
-                {
-                    b.HasOne("ScoramAPI.Models.Admin", "Admin")
-                        .WithMany()
-                        .HasForeignKey("AdminId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("ScoramAPI.Models.UserFeedback", "Feedback")
-                        .WithMany("Notes")
-                        .HasForeignKey("FeedbackId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Admin");
-
-                    b.Navigation("Feedback");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.UserFeedback", b =>
@@ -5117,11 +5292,6 @@ namespace ScoramAPI.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("ScoramAPI.Models.UserFeedback", b =>
-                {
-                    b.Navigation("Notes");
-                });
-
             modelBuilder.Entity("ScoramAPI.Models.Admin", b =>
                 {
                     b.Navigation("AssignedTasks");
@@ -5187,6 +5357,8 @@ namespace ScoramAPI.Migrations
                     b.Navigation("MockTestQuestions");
 
                     b.Navigation("Results");
+
+                    b.Navigation("Sections");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.Organization", b =>
@@ -5287,6 +5459,11 @@ namespace ScoramAPI.Migrations
                     b.Navigation("UserStreak");
 
                     b.Navigation("UserXP");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.UserFeedback", b =>
+                {
+                    b.Navigation("Notes");
                 });
 #pragma warning restore 612, 618
         }

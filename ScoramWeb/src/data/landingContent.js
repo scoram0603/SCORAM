@@ -27,6 +27,7 @@ export const navLinks = [
   { label: "Mock Tests", to: "/tests/mock" },
   { label: "Quizzes", to: "/quizzes" },
   { label: "Community", to: "/chat" },
+  { label: "The Vision", to: "/our-team" },
   { label: "Pricing", href: "#faq" },
 ];
 
@@ -38,6 +39,7 @@ export const footerLinks = {
     { label: "Tests", to: "/tests" },
     { label: "Mock Tests", to: "/tests/mock" },
     { label: "Quizzes", to: "/quizzes" },
+    { label: "Our Team", to: "/our-team" },
   ],
   community: [
     { label: "Group Chat", to: "/chat" },

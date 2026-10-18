@@ -19,7 +19,8 @@ namespace ScoramAPI.Services.Analytics
         {
             var q = db.StudentAnswers.AsNoTracking()
                 .Where(a => a.StudentTestResult!.UserId == userId
-                            && a.StudentTestResult.Status != TestAttemptStatus.InProgress);
+                            && a.StudentTestResult.Status != TestAttemptStatus.InProgress)
+                .WhereReleased(); // RESULT RELEASE: a held-back Mock Test result must not leak via analytics
 
             if (kind.HasValue)
             {
@@ -54,7 +55,8 @@ namespace ScoramAPI.Services.Analytics
             ScoramDbContext db, Guid userId, TestKind? kind, IReadOnlyCollection<Guid>? examIds, DateTime? from, DateTime? to)
         {
             var q = db.StudentTestResults.AsNoTracking()
-                .Where(r => r.UserId == userId && r.Status != TestAttemptStatus.InProgress);
+                .Where(r => r.UserId == userId && r.Status != TestAttemptStatus.InProgress)
+                .WhereReleased();
 
             if (kind.HasValue)
             {

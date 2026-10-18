@@ -60,6 +60,9 @@ namespace ScoramAPI.Models
 
         public TestPublishStatus Status { get; set; } = TestPublishStatus.Draft;
 
+        // Set when this template was created by a bulk upload (Models/TestImportJob).
+        public Guid? ImportJobId { get; set; }
+
         public Guid CreatedByAdminId { get; set; }
         public Admin? CreatedByAdmin { get; set; }
 

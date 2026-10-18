@@ -60,6 +60,7 @@ namespace ScoramAPI.Services
         {
             var query = _db.StudentTestResults
                 .AsNoTracking()
+                .WhereReleased()
                 .Where(r => userIds.Contains(r.UserId) && r.Status != TestAttemptStatus.InProgress);
 
             if (from.HasValue) query = query.Where(r => r.AttemptedAt >= from.Value);

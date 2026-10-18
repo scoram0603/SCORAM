@@ -81,6 +81,7 @@ namespace ScoramAPI.Services
                     .FirstOrDefault(SameQuestion);
                 if (existing != null)
                 {
+                    if (existing.IsTestOnly) existing.IsTestOnly = false; // now a real PYQ too
                     var alreadyTagged =
                         db.QuestionBankExamMappings.Local.Any(m => m.QuestionBankQuestionId == existing.Id && m.ExamId == examId && m.Year == year)
                         || await db.QuestionBankExamMappings

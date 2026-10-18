@@ -36,7 +36,7 @@ export default function TestAttemptResult() {
   const [expandedIndex, setExpandedIndex] = useState(0);
   const [tab, setTab] = useState("overview");
   // Loaded in parallel with the existing result; its failure only affects the analytics tabs, never the score summary.
-  const analytics = useApiQuery((signal) => getAttemptAnalytics(attemptId, { signal }), [attemptId], { enabled: status === "success" });
+  const analytics = useApiQuery((signal) => getAttemptAnalytics(attemptId, { signal }), [attemptId], { enabled: status === "success" && !result?.isResultLocked });
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +73,28 @@ export default function TestAttemptResult() {
     );
   }
 
+  // RESULT RELEASE -- the admin is holding this Mock Test's result back; the server sends no score or answers yet.
+  if (result.isResultLocked) {
+    return (
+      <div className="px-4 pb-10 pt-4 sm:px-6 lg:px-8 lg:pt-6">
+        <button type="button" onClick={() => navigate("/tests/my")} className="flex items-center gap-1.5 text-sm font-semibold text-secondary-500">
+          <ArrowLeft className="h-4 w-4" strokeWidth={2.5} />
+          My Tests
+        </button>
+        <div className="mx-auto mt-6 max-w-md rounded-xl2 border border-primary-100 bg-white p-6 text-center shadow-card">
+          <Clock className="mx-auto h-8 w-8 text-accent-500" strokeWidth={2} />
+          <h1 className="mt-2 text-lg font-extrabold text-ink-900">{result.title}</h1>
+          <p className="mt-1 text-sm font-semibold text-ink-900">Your test is submitted.</p>
+          <p className="mt-1 text-sm text-ink-600">
+            {result.resultReleaseAt
+              ? `Your result will be available on ${new Date(result.resultReleaseAt).toLocaleString()}.`
+              : "Your result will be available soon."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 pb-10 pt-4 sm:px-6 lg:px-8 lg:pt-6">
       <button type="button" onClick={() => navigate("/tests/my")} className="flex items-center gap-1.5 text-sm font-semibold text-secondary-500">
@@ -103,6 +125,28 @@ export default function TestAttemptResult() {
           <Stat icon={Clock} color="text-accent-600" label="Time" value={formatDuration(result.timeTakenSeconds)} />
         </div>
         {result.rank && <p className="mt-3 text-xs font-semibold text-ink-400">Rank #{result.rank}{result.percentile ? ` · ${result.percentile}th percentile` : ""}</p>}
+
+        {result.sectionResults?.length > 0 && (
+          <div className="mt-4 overflow-x-auto">
+            <p className="mb-1.5 text-xs font-bold text-ink-900">Section-wise score</p>
+            <table className="w-full text-left text-xs">
+              <thead className="text-ink-400">
+                <tr><th className="py-1 pr-3">Section</th><th className="pr-3">Score</th><th className="pr-3">Correct</th><th className="pr-3">Wrong</th><th>Skipped</th></tr>
+              </thead>
+              <tbody>
+                {result.sectionResults.map((s) => (
+                  <tr key={s.order} className="border-t border-primary-50 text-ink-600">
+                    <td className="py-1.5 pr-3 font-medium text-ink-900">{s.name}</td>
+                    <td className="pr-3 font-semibold">{s.score} / {s.totalQuestions}</td>
+                    <td className="pr-3 text-mint-500">{s.correctCount}</td>
+                    <td className="pr-3 text-red-500">{s.wrongCount}</td>
+                    <td>{s.skippedCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {result.testKind === "Quiz" && <ChallengeComparisonCards attemptId={attemptId} />}

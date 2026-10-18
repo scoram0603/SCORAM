@@ -56,6 +56,11 @@ namespace ScoramAPI.Controllers
                 return Ok(graded);
             }
 
+            // SECTION-WISE TIMING -- a section whose clock ran out while the student was away is closed here,
+            // so a resume always lands in the section that is really running now.
+            if (SectionedAttempts.Normalize(attempt, DateTime.UtcNow))
+                await _db.SaveChangesAsync();
+
             var started = ToStartResponse(attempt);
             await content.EnrichAsync(started, attempt); // adds paper instructions/stimuli for Previous Year Papers only
             return Ok(started);
@@ -76,6 +81,19 @@ namespace ScoramAPI.Controllers
 
             if (answer.StudentTestResult!.Status != TestAttemptStatus.InProgress)
                 return BadRequest(new { message = "This attempt has already been submitted and can't be changed." });
+
+            // SECTION-WISE TIMING -- only the section that is running right now accepts answers; a finished
+            // (or not yet started) section is locked. Enforced here so it can't be bypassed from the browser.
+            var attemptRow = answer.StudentTestResult;
+            if (SectionedAttempts.IsSectional(attemptRow))
+            {
+                SectionedAttempts.Normalize(attemptRow, DateTime.UtcNow);
+                if (answer.SectionOrder != attemptRow.CurrentSectionOrder)
+                {
+                    await _db.SaveChangesAsync(); // keep any section advance Normalize just made
+                    return BadRequest(new { message = "This section is locked -- its time is over or it hasn't started yet.", code = "SectionLocked" });
+                }
+            }
 
             // SelectedOption is nullable-and-present-vs-absent matters: the DTO always carries the
             // field (frontend always sends it, even as null for "Clear Response"), so we always
@@ -105,6 +123,41 @@ namespace ScoramAPI.Controllers
                 AnsweredAt = answer.AnsweredAt
             });
         }
+
+        // POST /api/tests/attempts/{attemptId}/sections/advance -- SECTION-WISE TIMING: the student finishes the
+        // current section (early, or because its clock hit zero) and the next one starts. Idempotent against
+        // double calls: FromSectionOrder names the section the client is leaving, and if the server has
+        // already moved past it the call only reports the current state.
+        [HttpPost("{attemptId:guid}/sections/advance")]
+        public async Task<ActionResult<SectionStateDto>> AdvanceSection(Guid attemptId, SectionAdvanceDto dto)
+        {
+            var userId = User.GetUserId();
+            var attempt = await _db.StudentTestResults.FirstOrDefaultAsync(r => r.Id == attemptId && r.UserId == userId);
+            if (attempt == null) return NotFound(new { message = "Attempt not found." });
+            if (attempt.Status != TestAttemptStatus.InProgress)
+                return BadRequest(new { message = "This attempt has already been submitted." });
+            if (!SectionedAttempts.IsSectional(attempt))
+                return BadRequest(new { message = "This test has no sections." });
+
+            var now = DateTime.UtcNow;
+            SectionedAttempts.Normalize(attempt, now);
+            if (attempt.CurrentSectionOrder == dto.FromSectionOrder)
+            {
+                if (!SectionedAttempts.Advance(attempt, now))
+                    return BadRequest(new { message = "This is the last section -- submit the test instead." });
+            }
+            await _db.SaveChangesAsync();
+            return Ok(ToSectionState(attempt, now));
+        }
+
+        internal static SectionStateDto ToSectionState(Models.StudentTestResult attempt, DateTime now) => new SectionStateDto
+        {
+            CurrentSectionOrder = attempt.CurrentSectionOrder,
+            SectionStartedAt = attempt.CurrentSectionStartedAt,
+            SectionExpiresAt = SectionedAttempts.CurrentDeadline(attempt),
+            ServerTime = now,
+            IsLastSection = SectionedAttempts.IsLastSection(attempt)
+        };
 
         // PATCH /api/tests/attempts/{attemptId}/timings -- SMART PROGRESS: per-question time (running totals
         // from the client, validated and clamped server-side). Only while InProgress; fire-and-forget for the
@@ -253,10 +306,13 @@ namespace ScoramAPI.Controllers
                     .ToDictionary(r => r.Id);
 
             var mapped = new List<MyTestAttemptSummaryDto>();
+            var nowUtc = DateTime.UtcNow;
             foreach (var r in items)
             {
                 var title = TitleFor(withAnswers.TryGetValue(r.Id, out var full) ? full : r);
                 var answerCount = answerCounts.GetValueOrDefault(r.Id);
+                // RESULT RELEASE -- a Mock Test result the admin is still holding back shows no score here.
+                var resultLocked = TestResultVisibility.IsLocked(r, nowUtc, out var releaseAtUtc);
 
                 mapped.Add(new MyTestAttemptSummaryDto
                 {
@@ -264,9 +320,11 @@ namespace ScoramAPI.Controllers
                     TestKind = r.TestKind.ToString(),
                     Title = title,
                     Status = r.Status.ToString(),
-                    Score = r.Status == TestAttemptStatus.InProgress ? null : r.Score,
-                    PercentageScore = ComputePercentage(r, answerCount),
-                    AccuracyPercent = ComputeAccuracy(r),
+                    Score = r.Status == TestAttemptStatus.InProgress || resultLocked ? null : r.Score,
+                    PercentageScore = resultLocked ? null : ComputePercentage(r, answerCount),
+                    AccuracyPercent = resultLocked ? null : ComputeAccuracy(r),
+                    IsResultLocked = resultLocked,
+                    ResultReleaseAt = releaseAtUtc,
                     TimeTakenSeconds = r.TimeTakenSeconds,
                     StartedAt = r.StartedAt,
                     SubmittedAt = r.Status == TestAttemptStatus.InProgress ? null : r.AttemptedAt,
@@ -325,7 +383,8 @@ namespace ScoramAPI.Controllers
 
         internal static int DurationMinutesFor(Models.StudentTestResult attempt) => attempt.TestKind switch
         {
-            TestKind.Mock => attempt.MockTest?.DurationMinutes ?? 0,
+            // A sectional attempt's total is the sum of its (frozen) section durations.
+            TestKind.Mock => SectionedAttempts.TotalMinutes(attempt) ?? attempt.MockTest?.DurationMinutes ?? 0,
             TestKind.PreviousYearPaper => attempt.Paper?.DurationMinutes ?? 0,
             TestKind.Quiz => attempt.Quiz?.DurationMinutes ?? attempt.QuizDurationMinutes ?? EstimateDurationMinutes(attempt),
             _ => attempt.PracticeTestTemplate?.DurationMinutes ?? attempt.PracticeDurationMinutes ?? EstimateDurationMinutes(attempt)
@@ -361,7 +420,7 @@ namespace ScoramAPI.Controllers
         {
             var durationMinutes = DurationMinutesFor(attempt);
 
-            return new TestAttemptStartResponseDto
+            var dto = new TestAttemptStartResponseDto
             {
                 AttemptId = attempt.Id,
                 TestKind = attempt.TestKind.ToString(),
@@ -391,9 +450,31 @@ namespace ScoramAPI.Controllers
                         OptionDImageUrl = a.OptionDImageUrlSnapshot,
                         ContentBlocks = ContentBlocksJsonHelper.Parse(a.ContentBlocksJsonSnapshot),
                         SelectedOption = a.SelectedOption?.ToString(),
-                        IsMarkedForReview = a.IsMarkedForReview
+                        IsMarkedForReview = a.IsMarkedForReview,
+                        SectionOrder = a.SectionOrder,
+                        SectionName = a.SectionName
                     }).ToList()
             };
+
+            // SECTION-WISE TIMING -- only a sectional Mock Test carries a plan; for everything else these stay empty.
+            var plan = SectionedAttempts.Parse(attempt.SectionPlanJson);
+            if (plan.Count > 0)
+            {
+                var current = SectionedAttempts.Current(attempt);
+                dto.IsSectional = true;
+                dto.Sections = plan.Select(p => new TestAttemptSectionDto
+                {
+                    Order = p.Order,
+                    Name = p.Name,
+                    DurationMinutes = p.DurationMinutes,
+                    QuestionCount = attempt.Answers.Count(a => a.SectionOrder == p.Order)
+                }).ToList();
+                dto.CurrentSectionOrder = current?.Order;
+                dto.SectionStartedAt = attempt.CurrentSectionStartedAt ?? attempt.StartedAt;
+                dto.SectionExpiresAt = SectionedAttempts.CurrentDeadline(attempt)
+                    ?? (current == null ? null : attempt.StartedAt.AddMinutes(current.DurationMinutes));
+            }
+            return dto;
         }
 
         // Shared "what do we call this attempt" logic -- used by ToStartResponse, ToResultDto, and
@@ -438,6 +519,45 @@ namespace ScoramAPI.Controllers
         {
             var total = attempt.Answers.Count;
 
+            // RESULT RELEASE -- while the admin is holding this Mock Test's result back, hand out a shell only:
+            // no score, no counts and above all no questions/answer key. Every screen that shows a result goes
+            // through here, so this is the single gate.
+            if (TestResultVisibility.IsLocked(attempt, DateTime.UtcNow, out var releaseAtUtc))
+            {
+                return new TestSubmitResultDto
+                {
+                    AttemptId = attempt.Id,
+                    TestKind = attempt.TestKind.ToString(),
+                    Title = TitleFor(attempt),
+                    MaxPossibleScore = total,
+                    TotalQuestions = total,
+                    TimeTakenSeconds = attempt.TimeTakenSeconds,
+                    AttemptedAt = attempt.AttemptedAt,
+                    IsResultLocked = true,
+                    ResultReleaseAt = releaseAtUtc
+                };
+            }
+
+            var sectionResults = attempt.Answers
+                .Where(a => a.SectionOrder != null)
+                .GroupBy(a => new { Order = a.SectionOrder!.Value, Name = a.SectionName ?? string.Empty })
+                .OrderBy(g => g.Key.Order)
+                .Select(g =>
+                {
+                    var correct = g.Count(a => a.SelectedOption != null && a.IsCorrect);
+                    var wrong = g.Count(a => a.SelectedOption != null && !a.IsCorrect);
+                    return new SectionResultDto
+                    {
+                        Order = g.Key.Order,
+                        Name = g.Key.Name,
+                        TotalQuestions = g.Count(),
+                        CorrectCount = correct,
+                        WrongCount = wrong,
+                        SkippedCount = g.Count(a => a.SelectedOption == null),
+                        Score = correct - (wrong * attempt.NegativeMarkingRatio)
+                    };
+                }).ToList();
+
             return new TestSubmitResultDto
             {
                 AttemptId = attempt.Id,
@@ -455,6 +575,7 @@ namespace ScoramAPI.Controllers
                 Rank = attempt.Rank,
                 Percentile = null, // no cross-student ranking pool computed yet -- see plan notes
                 AttemptedAt = attempt.AttemptedAt,
+                SectionResults = sectionResults,
                 Questions = attempt.Answers
                     .OrderBy(a => a.QuestionOrder)
                     .Select(a => new TestAnswerReviewDto
@@ -480,6 +601,8 @@ namespace ScoramAPI.Controllers
                         Explanation = a.ExplanationSnapshot,
                         Subject = a.SubjectSnapshot,
                         Topic = a.TopicSnapshot,
+                        SectionOrder = a.SectionOrder,
+                        SectionName = a.SectionName,
                         SourceQuestionId = a.QuestionId,
                         SourceQuestionBankQuestionId = a.QuestionBankQuestionId,
                         IsQuestionBank = a.QuestionBankQuestionId != null

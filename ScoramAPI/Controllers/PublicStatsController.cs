@@ -39,7 +39,7 @@ namespace ScoramAPI.Controllers
         {
             var paperQuestions = await _db.Questions.CountAsync();
             var bankQuestions = await _db.QuestionBankQuestions
-                .CountAsync(x => !_db.Questions.Any(q => q.MirroredToQuestionBankQuestionId == x.Id));
+                .CountAsync(x => !x.IsTestOnly && !_db.Questions.Any(q => q.MirroredToQuestionBankQuestionId == x.Id));
             var exams = await _db.Exams.CountAsync(e => !e.IsBlocked);
             var students = await _db.Users.CountAsync(u => u.IsActive);
 

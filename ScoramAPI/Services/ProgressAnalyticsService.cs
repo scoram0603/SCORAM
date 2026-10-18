@@ -774,7 +774,7 @@ namespace ScoramAPI.Services
 
         public async Task<AttemptAnalyticsDto?> GetAttemptAnalyticsAsync(Guid userId, Guid attemptId, CancellationToken ct)
         {
-            var attempt = await WithTitleIncludes(_db.StudentTestResults.AsNoTracking())
+            var attempt = await WithTitleIncludes(_db.StudentTestResults.AsNoTracking().WhereReleased())
                 .FirstOrDefaultAsync(r => r.Id == attemptId && r.UserId == userId && r.Status != TestAttemptStatus.InProgress, ct);
             if (attempt == null) return null; // not found, not yours, or not finished: all look identical to the caller
 
@@ -1050,7 +1050,7 @@ namespace ScoramAPI.Services
         /// topic selection). Attempts with no stable source (a generated Weak-Topics quiz) have none.</summary>
         private async Task<StudentTestResult?> FindPreviousComparableAsync(Guid userId, StudentTestResult a, CancellationToken ct)
         {
-            var q = _db.StudentTestResults.AsNoTracking()
+            var q = _db.StudentTestResults.AsNoTracking().WhereReleased()
                 .Where(r => r.UserId == userId && r.Id != a.Id && r.Status != TestAttemptStatus.InProgress && r.TestKind == a.TestKind
                             && r.AttemptedAt < a.AttemptedAt);
 

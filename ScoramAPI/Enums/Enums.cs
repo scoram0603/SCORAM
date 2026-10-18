@@ -104,6 +104,28 @@ namespace ScoramAPI.Enums
         Archived
     }
 
+    // When a student can see their score/answer review for a Mock Test attempt (MockTest.ResultReleaseMode).
+    // Stored as a string column, so adding members later never renumbers anything.
+    public enum ResultReleaseMode
+    {
+        // Default -- result is visible the moment the attempt is submitted (the behavior every Mock Test had
+        // before this setting existed).
+        Instant = 0,
+        // N minutes after the student's own submission (MockTest.ResultDelayMinutes).
+        AfterDelay = 1,
+        // A fixed date/time for everybody (MockTest.ResultReleaseAt) -- e.g. "results on Sunday 6 PM".
+        OnDate = 2,
+        // When the test's availability window closes (MockTest.EndAt) -- so nobody sees answers while others can still attempt.
+        AfterWindowEnds = 3
+    }
+
+    // What a TestImportJob (bulk upload of Mock Tests / Practice Test templates) created.
+    public enum TestImportKind
+    {
+        MockTest = 0,
+        PracticeTemplate = 1
+    }
+
     public enum UserLevel
     {
         Beginner,

@@ -809,7 +809,7 @@ namespace ScoramAPI.Controllers
             var pypCount = await db.Questions.CountAsync(q => q.ExamId == examId)
                 + await db.Papers.Where(p => p.ExamId == examId).SelectMany(p => p.Questions).CountAsync();
             var pyqCount = await db.QuestionBankQuestions
-                .CountAsync(x => x.IsActive
+                .CountAsync(x => x.IsActive && !x.IsTestOnly
                     && x.ExamMappings.Any(m => m.ExamId == examId)
                     && !db.Questions.Any(q => q.MirroredToQuestionBankQuestionId == x.Id));
             return pypCount + pyqCount;
@@ -830,7 +830,7 @@ namespace ScoramAPI.Controllers
             var mirroredSet = mirroredBankQuestionIds.ToHashSet();
 
             var pairs = await db.QuestionBankQuestions
-                .Where(x => x.IsActive)
+                .Where(x => x.IsActive && !x.IsTestOnly)
                 .SelectMany(x => x.ExamMappings.Select(m => new { QuestionId = x.Id, m.ExamId }))
                 .Distinct()
                 .ToListAsync();

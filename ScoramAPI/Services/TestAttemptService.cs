@@ -7,7 +7,7 @@ namespace ScoramAPI.Services
 {
     // A question reference resolved down to just what BuildSnapshotAnswersAsync needs -- kept
     // separate from the DTO layer so this service doesn't depend on ScoramAPI.DTOs.
-    public record QuestionRef(Guid? QuestionId, Guid? QuestionBankQuestionId, int Order);
+    public record QuestionRef(Guid? QuestionId, Guid? QuestionBankQuestionId, int Order, int? SectionOrder = null, string? SectionName = null);
 
     // One subject's accuracy across a student's own graded history -- used to pick which subjects a
     // Weak Topics Quiz should draw from. Kept here rather than in ScoramAPI.DTOs for the same reason
@@ -91,6 +91,8 @@ namespace ScoramAPI.Services
                     {
                         QuestionId = q.Id,
                         QuestionOrder = r.Order,
+                        SectionOrder = r.SectionOrder,
+                        SectionName = r.SectionName,
                         QuestionTextSnapshot = q.QuestionText,
                         OptionASnapshot = q.OptionA,
                         OptionBSnapshot = q.OptionB,
@@ -115,6 +117,8 @@ namespace ScoramAPI.Services
                     {
                         QuestionBankQuestionId = qb.Id,
                         QuestionOrder = r.Order,
+                        SectionOrder = r.SectionOrder,
+                        SectionName = r.SectionName,
                         QuestionTextSnapshot = qb.QuestionText,
                         OptionASnapshot = qb.OptionA,
                         OptionBSnapshot = qb.OptionB,
@@ -148,7 +152,7 @@ namespace ScoramAPI.Services
             // Question Bank is the pool for Practice Tests (spec's own architecture diagram: Question
             // Bank -> Practice Tests) -- legacy PYQ Papers aren't included here, since those questions
             // are already reachable through the Question Bank once imported/added there.
-            var pool = db.QuestionBankQuestions.Where(q => q.IsActive).AsQueryable();
+            var pool = db.QuestionBankQuestions.Where(q => q.IsActive && !q.IsTestOnly).AsQueryable();
 
             if (subjectId.HasValue) pool = pool.Where(q => q.SubjectId == subjectId);
             if (topicId.HasValue) pool = pool.Where(q => q.TopicId == topicId);
@@ -228,7 +232,7 @@ namespace ScoramAPI.Services
             // pool is empty -- see the interface remarks).
             var hasExamScope = examIds != null;
 
-            var pool = db.QuestionBankQuestions.Where(q => q.IsActive).Include(q => q.Subject).AsQueryable();
+            var pool = db.QuestionBankQuestions.Where(q => q.IsActive && !q.IsTestOnly).Include(q => q.Subject).AsQueryable();
             if (hasExamScope)
                 pool = pool.Where(q => q.ExamMappings.Any(m => examIds!.Contains(m.ExamId)));
             if (targetSubjects.Count > 0)
@@ -242,7 +246,7 @@ namespace ScoramAPI.Services
             // Exams scope here -- it must keep applying even once the weak-subject signal runs out.
             if (eligibleIds.Count == 0)
             {
-                var fallbackPool = db.QuestionBankQuestions.Where(q => q.IsActive).AsQueryable();
+                var fallbackPool = db.QuestionBankQuestions.Where(q => q.IsActive && !q.IsTestOnly).AsQueryable();
                 if (hasExamScope)
                     fallbackPool = fallbackPool.Where(q => q.ExamMappings.Any(m => examIds!.Contains(m.ExamId)));
                 eligibleIds = await fallbackPool.Select(q => q.Id).ToListAsync();

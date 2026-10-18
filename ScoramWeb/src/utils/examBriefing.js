@@ -25,6 +25,16 @@ function detailRows(pairs) {
   return pairs.filter(([, value]) => value !== null && value !== undefined && value !== "").map(([label, value]) => ({ label, value }));
 }
 
+// RESULT RELEASE -- only shown when the admin is holding results back (Instant = nothing to say).
+function resultReleaseText(t) {
+  switch (t.resultReleaseMode) {
+    case "AfterDelay": return t.resultDelayMinutes ? `${t.resultDelayMinutes} min after you submit` : null;
+    case "OnDate": return t.resultReleaseAt ? new Date(t.resultReleaseAt).toLocaleString() : null;
+    case "AfterWindowEnds": return t.endAt ? `After the test closes (${new Date(t.endAt).toLocaleString()})` : "After the test closes";
+    default: return null;
+  }
+}
+
 export const MISSING_STATE_ERROR = "MISSING_STATE";
 
 export async function loadBriefing(kind, id, state) {
@@ -105,6 +115,8 @@ async function loadMock(id) {
     details: detailRows([
       ["Exam", t.examName],
       ["Closes", t.endAt ? new Date(t.endAt).toLocaleString() : null],
+      ["Sections", t.isSectional && t.sections?.length ? t.sections.map((x) => `${x.name} (${x.durationMinutes} min)`).join(" → ") : null],
+      ["Result", resultReleaseText(t)],
       ["Attempts used", t.maxAttempts != null ? `${t.myAttemptCount || 0} / ${t.maxAttempts}` : null],
     ]),
     questionCount: t.questionCount,

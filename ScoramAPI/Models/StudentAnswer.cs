@@ -34,6 +34,11 @@ namespace ScoramAPI.Models
         // for a Practice attempt there's no catalog ordering to mirror, so this IS the order.
         public int QuestionOrder { get; set; }
 
+        // Sectional Mock Tests only (null otherwise): which section this question sits in, frozen at
+        // attempt-start like the rest of the snapshot.
+        public int? SectionOrder { get; set; }
+        public string? SectionName { get; set; }
+
         // ---- Snapshot, captured once at attempt-start ----
         public string QuestionTextSnapshot { get; set; } = string.Empty;
         public string OptionASnapshot { get; set; } = string.Empty;

@@ -50,7 +50,7 @@ namespace ScoramAPI.Controllers
         // still means exactly what it always did (an admin's own manual enable/disable of a Bank
         // question), just ANDed with this new "not still-only-a-draft" condition.
         private IQueryable<QuestionBankQuestion> VisibleQuestions() =>
-            _db.QuestionBankQuestions.Where(x => x.IsActive
+            _db.QuestionBankQuestions.Where(x => x.IsActive && !x.IsTestOnly
                 && (!_db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == x.Id)
                     || _db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == x.Id && src.Paper!.Status == PaperStatus.Published)));
 
@@ -300,7 +300,7 @@ namespace ScoramAPI.Controllers
                     // runs inside a Select projection over QuestionBankSubjects, not QuestionBankQuestions) --
                     // otherwise a subject's count would include questions still sitting in an
                     // unpublished paper's Draft, which is exactly the leak this fixes.
-                    QuestionCount = s.Questions.Count(q => q.IsActive
+                    QuestionCount = s.Questions.Count(q => q.IsActive && !q.IsTestOnly
                         && (!_db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id)
                             || _db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id && src.Paper!.Status == PaperStatus.Published))
                         && (!scoped || q.ExamMappings.Any(m => allowedExamIds.Contains(m.ExamId))))
@@ -334,7 +334,7 @@ namespace ScoramAPI.Controllers
                     IsActive = t.IsActive,
                     // Same visibility rule as VisibleQuestions() above, see GetSubjects's own comment
                     // on why this is inlined here instead of reused directly.
-                    QuestionCount = t.Questions.Count(q => q.IsActive
+                    QuestionCount = t.Questions.Count(q => q.IsActive && !q.IsTestOnly
                         && (!_db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id)
                             || _db.Questions.Any(src => src.MirroredToQuestionBankQuestionId == q.Id && src.Paper!.Status == PaperStatus.Published))
                         && (!scoped || q.ExamMappings.Any(m => allowedExamIds.Contains(m.ExamId))))

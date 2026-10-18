@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Loader2, Clock, Flag, ChevronLeft, ChevronRight, Menu, X, AlertTriangle } from "lucide-react";
-import { getAttempt, saveAnswer, submitTestAttempt } from "../../api/testAttempts";
+import { getAttempt, saveAnswer, submitTestAttempt, advanceSection } from "../../api/testAttempts";
 import { useQuestionTimings } from "../../hooks/useQuestionTimings";
 import { API_BASE_URL } from "../../api/client";
 import { MathText, RichQuestionBody } from "../questions/MathText";
@@ -41,6 +41,16 @@ export default function TestRunner() {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+  // SECTION-WISE TIMING (sectional Mock Tests only): one section at a time, each with its own countdown.
+  const [sectional, setSectional] = useState(false);
+  const [sections, setSections] = useState([]); // [{ order, name, durationMinutes, questionCount }]
+  const [currentSectionOrder, setCurrentSectionOrder] = useState(null);
+  const [sectionExpiresAtMs, setSectionExpiresAtMs] = useState(null);
+  const [sectionRemaining, setSectionRemaining] = useState(0);
+  const [confirmAdvance, setConfirmAdvance] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
+  const advancingRef = useRef(false);
+  const pendingSavesRef = useRef({}); // studentAnswerId -> latest unsent payload
 
   const startedAtRef = useRef(null);
   // serverTime - device time, in ms. Added to Date.now() everywhere we compare against the server's
@@ -70,6 +80,15 @@ export default function TestRunner() {
         });
         setQuestions(data.questions);
         setStimuli(data.stimuli || []);
+        const isSec = Boolean(data.isSectional) && Array.isArray(data.sections) && data.sections.length > 0 && data.currentSectionOrder != null;
+        setSectional(isSec);
+        if (isSec) {
+          setSections([...data.sections].sort((a, b) => a.order - b.order));
+          setCurrentSectionOrder(data.currentSectionOrder);
+          setSectionExpiresAtMs(data.sectionExpiresAt ? new Date(data.sectionExpiresAt).getTime() : null);
+          const firstIdx = data.questions.findIndex((q) => q.sectionOrder === data.currentSectionOrder);
+          setCurrentIndex(Math.max(0, firstIdx));
+        }
         startedAtRef.current = new Date(data.startedAt).getTime();
         const serverNow = data.serverTime ? new Date(data.serverTime).getTime() : NaN;
         clockOffsetRef.current = Number.isFinite(serverNow) ? serverNow - Date.now() : 0;
@@ -89,15 +108,26 @@ export default function TestRunner() {
     const expiresAt = new Date(meta.expiresAt).getTime();
 
     function tick() {
-      const secondsLeft = Math.max(0, Math.round((expiresAt - (Date.now() + clockOffsetRef.current)) / 1000));
+      const now = Date.now() + clockOffsetRef.current;
+      const secondsLeft = Math.max(0, Math.round((expiresAt - now) / 1000));
       setRemainingSeconds(secondsLeft);
-      if (secondsLeft <= 0) handleSubmit(true);
+      if (secondsLeft <= 0) { handleSubmit(true); return; }
+
+      if (sectional && sectionExpiresAtMs) {
+        const left = Math.max(0, Math.round((sectionExpiresAtMs - now) / 1000));
+        setSectionRemaining(left);
+        // The section's time is up: move on by itself (or finish the test after the last section).
+        if (left <= 0) {
+          if (isLastSectionRef.current) handleSubmit(true);
+          else doAdvance(true);
+        }
+      }
     }
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, meta]);
+  }, [status, meta, sectional, sectionExpiresAtMs, currentSectionOrder]);
 
   useEffect(() => {
     if (status !== "running") return;
@@ -111,19 +141,38 @@ export default function TestRunner() {
 
   const current = questions[currentIndex];
 
+  // The slice of questions (contiguous -- the server lays them out section by section) the student can reach now.
+  const sectionRange = useMemo(() => {
+    if (!sectional) return { start: 0, end: questions.length - 1 };
+    let start = -1;
+    let end = -1;
+    questions.forEach((q, i) => {
+      if (q.sectionOrder === currentSectionOrder) {
+        if (start < 0) start = i;
+        end = i;
+      }
+    });
+    return start < 0 ? { start: 0, end: questions.length - 1 } : { start, end };
+  }, [sectional, questions, currentSectionOrder]);
+  const visibleQuestions = useMemo(() => questions.slice(sectionRange.start, sectionRange.end + 1), [questions, sectionRange]);
+  const currentSection = sectional ? sections.find((x) => x.order === currentSectionOrder) : null;
+  const isLastSection = sectional && sections.length > 0 && currentSectionOrder === sections[sections.length - 1].order;
+  const isLastSectionRef = useRef(false);
+  isLastSectionRef.current = isLastSection;
+
   // SMART PROGRESS -- per-question timing, fire-and-forget (see hooks/useQuestionTimings.js).
   const timings = useQuestionTimings({ attemptId, questions, currentId: current?.id, enabled: status === "running" && !submitting });
 
   const counts = useMemo(() => {
     let answered = 0, markedForReview = 0, answeredAndMarked = 0, notVisited = 0;
-    questions.forEach((q) => {
+    visibleQuestions.forEach((q) => {
       if (q.selectedOption && q.isMarkedForReview) answeredAndMarked++;
       else if (q.selectedOption) answered++;
       else if (q.isMarkedForReview) markedForReview++;
       else notVisited++;
     });
-    return { answered, markedForReview, answeredAndMarked, notVisited, notAnswered: questions.length - answered - answeredAndMarked };
-  }, [questions]);
+    return { answered, markedForReview, answeredAndMarked, notVisited, notAnswered: visibleQuestions.length - answered - answeredAndMarked };
+  }, [visibleQuestions]);
 
   // Stimuli of the question on screen, in the order the admin set. Empty for every ordinary question, so papers
   // without shared content render exactly as before.
@@ -140,10 +189,52 @@ export default function TestRunner() {
 
   const queueSave = useCallback((studentAnswerId, payload) => {
     if (saveTimersRef.current[studentAnswerId]) clearTimeout(saveTimersRef.current[studentAnswerId]);
+    pendingSavesRef.current[studentAnswerId] = payload;
     saveTimersRef.current[studentAnswerId] = setTimeout(() => {
+      delete pendingSavesRef.current[studentAnswerId];
       saveAnswer(studentAnswerId, payload).catch(() => {});
     }, SAVE_DEBOUNCE_MS);
   }, []);
+
+  // Sends every not-yet-saved answer right now (used before leaving a section: once the server moves on,
+  // it refuses answers for the section we left).
+  async function flushPendingSaves() {
+    Object.values(saveTimersRef.current).forEach(clearTimeout);
+    const pending = Object.entries(pendingSavesRef.current);
+    pendingSavesRef.current = {};
+    await Promise.allSettled(pending.map(([id, payload]) => saveAnswer(id, payload)));
+  }
+
+  async function doAdvance(isAuto = false) {
+    if (advancingRef.current || submittedRef.current || currentSectionOrder == null) return;
+    advancingRef.current = true;
+    setAdvancing(true);
+    try {
+      await flushPendingSaves();
+      timings.flush();
+      const state = await advanceSection(attemptId, currentSectionOrder);
+      const now = Date.now() + clockOffsetRef.current;
+      if (state.serverTime) clockOffsetRef.current = new Date(state.serverTime).getTime() - Date.now();
+      if (state.currentSectionOrder == null) {
+        // Nothing left to advance to -- the test is over.
+        advancingRef.current = false;
+        setConfirmAdvance(false);
+        handleSubmit(true);
+        return;
+      }
+      setCurrentSectionOrder(state.currentSectionOrder);
+      setSectionExpiresAtMs(state.sectionExpiresAt ? new Date(state.sectionExpiresAt).getTime() : null);
+      const firstIdx = questions.findIndex((q) => q.sectionOrder === state.currentSectionOrder);
+      setCurrentIndex(Math.max(0, firstIdx));
+      setConfirmAdvance(false);
+      void now;
+    } catch (err) {
+      if (!isAuto) window.alert(err.message || "Couldn't move to the next section. Please try again.");
+    } finally {
+      advancingRef.current = false;
+      setAdvancing(false);
+    }
+  }
 
   function handleSelectOption(letter) {
     updateCurrentQuestion({ selectedOption: letter });
@@ -162,7 +253,7 @@ export default function TestRunner() {
   }
 
   function goTo(index) {
-    setCurrentIndex(Math.max(0, Math.min(questions.length - 1, index)));
+    setCurrentIndex(Math.max(sectionRange.start, Math.min(sectionRange.end, index)));
     setPaletteOpen(false);
   }
 
@@ -210,7 +301,7 @@ export default function TestRunner() {
   }
 
   if (showInstructions) {
-    return <InstructionsScreen meta={meta} questionCount={questions.length} onStart={() => setShowInstructions(false)} />;
+    return <InstructionsScreen meta={meta} questionCount={questions.length} sections={sectional ? sections : []} onStart={() => setShowInstructions(false)} />;
   }
 
   return (
@@ -218,12 +309,14 @@ export default function TestRunner() {
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-primary-100 bg-white px-4 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-ink-900">{meta.title}</p>
-          <p className="text-xs text-ink-400">Question {currentIndex + 1} of {questions.length}</p>
+          <p className="text-xs text-ink-400">
+            {sectional && currentSection ? `${currentSection.name} · ` : ""}Question {currentIndex - sectionRange.start + 1} of {visibleQuestions.length}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <span className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-bold tabular-nums ${remainingSeconds < 60 ? "bg-red-50 text-red-600" : "bg-primary-50 text-primary-600"}`}>
             <Clock className="h-4 w-4" strokeWidth={2.25} />
-            {formatTime(remainingSeconds)}
+            {formatTime(sectional ? sectionRemaining : remainingSeconds)}
           </span>
           {meta.paperInstructions?.length > 0 && (
             <button type="button" onClick={() => setInstructionsOpen(true)} className="rounded-lg border border-primary-100 px-2.5 py-1.5 text-xs font-semibold text-ink-600">
@@ -235,6 +328,25 @@ export default function TestRunner() {
           </button>
         </div>
       </header>
+
+      {sectional && (
+        <nav className="flex items-center gap-1.5 overflow-x-auto border-b border-primary-100 bg-white px-4 py-2" aria-label="Sections">
+          {sections.map((sec) => {
+            const state = sec.order === currentSectionOrder ? "current" : sec.order < currentSectionOrder ? "done" : "upcoming";
+            return (
+              <span
+                key={sec.order}
+                className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${
+                  state === "current" ? "bg-primary-600 text-white" : state === "done" ? "bg-mint-50 text-mint-500" : "bg-primary-50 text-ink-400"
+                }`}
+              >
+                {sec.name} · {sec.durationMinutes}m{state === "done" ? " ✓" : ""}
+              </span>
+            );
+          })}
+          <span className="ml-auto whitespace-nowrap pl-3 text-[11px] text-ink-400">Total left {formatTime(remainingSeconds)}</span>
+        </nav>
+      )}
 
       <div className="flex flex-1">
         <main className="flex-1 px-4 py-5 sm:px-6">
@@ -301,14 +413,14 @@ export default function TestRunner() {
                 <button
                   type="button"
                   onClick={() => goTo(currentIndex - 1)}
-                  disabled={currentIndex === 0}
+                  disabled={currentIndex <= sectionRange.start}
                   className="flex items-center gap-1 rounded-xl2 border border-primary-100 px-4 py-2.5 text-sm font-semibold text-ink-600 disabled:opacity-40"
                 >
                   <ChevronLeft className="h-4 w-4" strokeWidth={2.5} />
                   Previous
                 </button>
 
-                {currentIndex < questions.length - 1 ? (
+                {currentIndex < sectionRange.end ? (
                   <button
                     type="button"
                     onClick={() => goTo(currentIndex + 1)}
@@ -316,6 +428,10 @@ export default function TestRunner() {
                   >
                     Next
                     <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
+                  </button>
+                ) : sectional && !isLastSection ? (
+                  <button type="button" onClick={() => setConfirmAdvance(true)} className="rounded-xl2 bg-accent-500 px-5 py-2.5 text-sm font-semibold text-white">
+                    Submit Section &amp; Next
                   </button>
                 ) : (
                   <button type="button" onClick={() => handleSubmit(false)} className="rounded-xl2 bg-accent-500 px-5 py-2.5 text-sm font-semibold text-white">
@@ -328,7 +444,14 @@ export default function TestRunner() {
         </main>
 
         <aside className="hidden w-72 shrink-0 border-l border-primary-100 bg-white p-4 lg:block">
-          <QuestionPalette questions={questions} currentIndex={currentIndex} onSelect={goTo} counts={counts} onSubmit={() => handleSubmit(false)} />
+          <QuestionPalette
+            questions={visibleQuestions}
+            currentIndex={currentIndex - sectionRange.start}
+            onSelect={(i) => goTo(sectionRange.start + i)}
+            counts={counts}
+            onSubmit={() => (sectional && !isLastSection ? setConfirmAdvance(true) : handleSubmit(false))}
+            submitLabel={sectional && !isLastSection ? "Submit Section & Next" : "Submit Test"}
+          />
         </aside>
 
         {paletteOpen && (
@@ -340,7 +463,14 @@ export default function TestRunner() {
                   <X className="h-5 w-5 text-ink-400" strokeWidth={2.25} />
                 </button>
               </div>
-              <QuestionPalette questions={questions} currentIndex={currentIndex} onSelect={goTo} counts={counts} onSubmit={() => handleSubmit(false)} />
+              <QuestionPalette
+            questions={visibleQuestions}
+            currentIndex={currentIndex - sectionRange.start}
+            onSelect={(i) => goTo(sectionRange.start + i)}
+            counts={counts}
+            onSubmit={() => (sectional && !isLastSection ? setConfirmAdvance(true) : handleSubmit(false))}
+            submitLabel={sectional && !isLastSection ? "Submit Section & Next" : "Submit Test"}
+          />
             </div>
           </div>
         )}
@@ -356,6 +486,34 @@ export default function TestRunner() {
               </button>
             </div>
             <PaperInstructionsList instructions={meta.paperInstructions} />
+          </div>
+        </div>
+      )}
+
+      {confirmAdvance && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink-900/40 px-6">
+          <div className="w-full max-w-sm rounded-xl2 bg-white p-5 shadow-xl">
+            <h3 className="text-sm font-bold text-ink-900">Submit this section?</h3>
+            <p className="mt-1.5 text-sm text-ink-600">
+              {counts.notVisited + counts.markedForReview > 0
+                ? `You still have ${counts.notVisited + counts.markedForReview} question(s) unanswered or marked for review in ${currentSection?.name}. `
+                : `You've answered every question in ${currentSection?.name}. `}
+              You won't be able to come back to this section after moving on.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button type="button" onClick={() => setConfirmAdvance(false)} className="flex-1 rounded-xl2 border border-primary-100 py-2.5 text-sm font-semibold text-ink-600">
+                Keep working
+              </button>
+              <button
+                type="button"
+                onClick={() => doAdvance(false)}
+                disabled={advancing}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl2 bg-accent-500 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {advancing && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.5} />}
+                Next section
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -391,7 +549,7 @@ export default function TestRunner() {
   );
 }
 
-function InstructionsScreen({ meta, questionCount, onStart }) {
+function InstructionsScreen({ meta, questionCount, sections = [], onStart }) {
   const label = meta.testKind === "Mock" ? "Mock Test" : meta.testKind === "PreviousYearPaper" ? "Previous Year Paper" : "Practice Test";
   return (
     <div className={`mx-auto flex min-h-[80vh] ${meta.paperInstructions?.length > 0 ? "max-w-2xl" : "max-w-lg"} flex-col justify-center px-6 py-10`}>
@@ -404,6 +562,23 @@ function InstructionsScreen({ meta, questionCount, onStart }) {
         <Stat label="Marks / Question" value="1" />
         <Stat label="Negative Marking" value={meta.negativeMarkingRatio > 0 ? `-${meta.negativeMarkingRatio}` : "None"} />
       </div>
+
+      {sections.length > 0 && (
+        <div className="mt-5 rounded-xl2 border border-primary-100 bg-white p-4 text-sm text-ink-600">
+          <p className="mb-2 font-bold text-ink-900">Sections &amp; timing</p>
+          <table className="w-full text-left text-xs">
+            <thead className="text-ink-400"><tr><th className="py-1">Section</th><th>Time</th><th>Questions</th></tr></thead>
+            <tbody>
+              {sections.map((sec) => (
+                <tr key={sec.order} className="border-t border-primary-50"><td className="py-1.5 font-medium text-ink-900">{sec.name}</td><td>{sec.durationMinutes} min</td><td>{sec.questionCount}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-2 text-xs text-ink-400">
+            Each section has its own timer. When it ends you move to the next section automatically, and you can't return to a section you've left.
+          </p>
+        </div>
+      )}
 
       {meta.instructions && (
         <div className="mt-5 rounded-xl2 border border-primary-100 bg-white p-4 text-sm leading-relaxed text-ink-600">
@@ -433,7 +608,7 @@ function Stat({ label, value }) {
   );
 }
 
-function QuestionPalette({ questions, currentIndex, onSelect, counts, onSubmit }) {
+function QuestionPalette({ questions, currentIndex, onSelect, counts, onSubmit, submitLabel = "Submit Test" }) {
   return (
     <div className="flex h-full flex-col">
       <div className="grid grid-cols-2 gap-1.5 text-[11px]">
@@ -467,7 +642,7 @@ function QuestionPalette({ questions, currentIndex, onSelect, counts, onSubmit }
       </div>
 
       <button type="button" onClick={onSubmit} className="mt-4 rounded-xl2 bg-accent-500 py-2.5 text-sm font-semibold text-white">
-        Submit Test
+        {submitLabel}
       </button>
     </div>
   );

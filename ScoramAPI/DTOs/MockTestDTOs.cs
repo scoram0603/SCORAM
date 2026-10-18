@@ -9,6 +9,26 @@ namespace ScoramAPI.DTOs
     {
         public Guid? QuestionId { get; set; }
         public Guid? QuestionBankQuestionId { get; set; }
+        // Sectional Mock Tests only: 1-based position in MockTestCreateDto.Sections of the section this
+        // question belongs to. Ignored for Practice templates and for tests without sections.
+        public int? SectionOrder { get; set; }
+    }
+
+    // One section of a Mock Test as entered by an admin. Order = position in the list (1-based).
+    public class MockTestSectionDto
+    {
+        public string Name { get; set; } = string.Empty;
+        // Minutes for this section. Leave every section's blank for an untimed test; fill every one for
+        // section-wise timing (the test's total duration then becomes their sum).
+        public int? DurationMinutes { get; set; }
+    }
+
+    public class MockTestSectionSummaryDto
+    {
+        public int Order { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public int? DurationMinutes { get; set; }
+        public int QuestionCount { get; set; }
     }
 
     // PATCH .../status body, shared by MockTestsAdminController and PracticeTestsAdminController.
@@ -38,6 +58,14 @@ namespace ScoramAPI.DTOs
         public int? MaxAttempts { get; set; }
         public string? Instructions { get; set; }
         public string Status { get; set; } = "Draft"; // Draft | Published | Archived
+
+        // SECTION-WISE TIMING -- optional. Empty = one clock for the whole test (as always).
+        public List<MockTestSectionDto> Sections { get; set; } = new();
+
+        // RESULT RELEASE -- "Instant" (default) | "AfterDelay" | "OnDate" | "AfterWindowEnds".
+        public string ResultReleaseMode { get; set; } = "Instant";
+        public int? ResultDelayMinutes { get; set; }
+        public DateTime? ResultReleaseAt { get; set; }
 
         // Legacy-only shape, kept working exactly as before for any existing caller.
         public List<Guid> QuestionIds { get; set; } = new();
@@ -89,6 +117,13 @@ namespace ScoramAPI.DTOs
         public int AttemptCount { get; set; }
         // Whether the current viewer has this mock test bookmarked (false when not logged in).
         public bool IsBookmarked { get; set; }
+
+        // SECTION-WISE TIMING / RESULT RELEASE (see MockTest). Sections is empty for a test without them.
+        public bool IsSectional { get; set; }
+        public List<MockTestSectionSummaryDto> Sections { get; set; } = new();
+        public string ResultReleaseMode { get; set; } = "Instant";
+        public int? ResultDelayMinutes { get; set; }
+        public DateTime? ResultReleaseAt { get; set; }
     }
 
     // Question shape WITHOUT CorrectOption/Explanation -- this is what a student

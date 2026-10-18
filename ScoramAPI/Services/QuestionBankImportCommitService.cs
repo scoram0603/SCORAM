@@ -145,6 +145,15 @@ namespace ScoramAPI.Services
             // SaveChangesAsync joins it.
             await using var tx = await _db.Database.BeginTransactionAsync();
 
+            // A question that was created only for a Mock/Practice test (IsTestOnly) and now turns up in a
+            // PYQ upload becomes a normal, searchable PYQ.
+            foreach (var chunk in questionIdByKey.Values.Distinct().Chunk(500))
+            {
+                await _db.QuestionBankQuestions
+                    .Where(q => chunk.Contains(q.Id) && q.IsTestOnly)
+                    .ExecuteUpdateAsync(set => set.SetProperty(q => q.IsTestOnly, false));
+            }
+
             foreach (var row in toCommit)
             {
                 var key = _importService.BuildDuplicateKey(row.QuestionText, row.OptionA, row.OptionB, row.OptionC, row.OptionD);
