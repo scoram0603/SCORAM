@@ -1,13 +1,14 @@
 import { Link } from "react-router-dom";
 import { Mail, Phone, MapPin } from "lucide-react";
-import logo from "../../assets/scoram-logo-horizontal.png";
+import defaultLogo from "../../assets/scoram-logo-horizontal.png";
+import LandingLink from "./LandingLink";
+import { useSlotImage } from "../../hooks/useSlotImage";
 import { footerLinks } from "../../data/landingContent";
 import { seoConfig } from "../../config/seo";
 
 function FooterLink({ item }) {
   const className = "text-[13px] text-white/65 transition-colors hover:text-white";
-  if (item.to) return <Link to={item.to} className={className}>{item.label}</Link>;
-  return <a href={item.href} className={className}>{item.label}</a>;
+  return <LandingLink item={item} className={className} />;
 }
 
 function FooterColumn({ title, items }) {
@@ -26,6 +27,8 @@ function FooterColumn({ title, items }) {
 }
 
 export default function LandingFooter() {
+  const { src: logoSrc, onError: onLogoError } = useSlotImage("logo");
+  const logo = logoSrc || defaultLogo;
   return (
     <footer className="bg-primary-900 pt-16 text-white">
       <div className="mx-auto grid max-w-7xl grid-cols-2 gap-8 px-4 pb-12 sm:px-6 md:grid-cols-5 lg:px-8">
@@ -33,7 +36,7 @@ export default function LandingFooter() {
           {/* The logo PNG has an opaque white background, so the old brightness-0/invert filter turned it into a
               plain white block. Keep the real colours on a white rounded tile instead. */}
           <span className="inline-flex rounded-xl bg-white px-3 py-2">
-            <img src={logo} alt="SCORAM" className="h-9 w-auto" />
+            <img src={logo} onError={onLogoError} alt="SCORAM" className="h-9 w-auto" />
           </span>
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60">
             SCORAM is an all-in-one learning platform to help you learn, discuss, practice and

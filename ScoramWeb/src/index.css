@@ -5,6 +5,8 @@
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
+    /* Anchor targets (landing sections) stop below the sticky landing header instead of under it. */
+    scroll-padding-top: 5.5rem;
   }
 
   body {

@@ -31,6 +31,7 @@ export default function QuestionBankSection() {
             </div>
             <AssetImage
               src="/assets/landing/question-bank-preview.png"
+              slot="question-bank-preview"
               alt="SCORAM competitive exam question bank interface with subject and topic filters"
               label="question-bank-preview.png"
               aspect="aspect-[4/5]"

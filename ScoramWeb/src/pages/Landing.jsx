@@ -11,6 +11,7 @@ import FeaturesSection from "../components/landing/FeaturesSection";
 import PYPSection from "../components/landing/PYPSection";
 import QuestionBankSection from "../components/landing/QuestionBankSection";
 import SolutionsSection from "../components/landing/SolutionsSection";
+import SmartProgressSection from "../components/landing/SmartProgressSection";
 import CommunitySection from "../components/landing/CommunitySection";
 import HowItWorksSection from "../components/landing/HowItWorksSection";
 import PopularExamsSection from "../components/landing/PopularExamsSection";
@@ -84,6 +85,7 @@ export default function Landing() {
         <PYPSection />
         <QuestionBankSection />
         <SolutionsSection />
+        <SmartProgressSection />
         <CommunitySection />
         <HowItWorksSection />
         <PopularExamsSection />

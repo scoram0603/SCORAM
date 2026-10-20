@@ -7,10 +7,13 @@ import "./index.css";
 import "katex/dist/katex.min.css";
 import App from "./App.jsx";
 import AdminApp from "./admin/AdminApp.jsx";
+import ScrollManager from "./components/routing/ScrollManager";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <BrowserRouter>
+      {/* New routes open at the top; "/#section" anchors scroll to their section. */}
+      <ScrollManager />
       <Routes>
         {/* Deliberately not linked from anywhere in the student UI (nav, footer, etc.) --
             admins reach this by going straight to /admin/*. Each app owns its own nested

@@ -17,6 +17,7 @@ export default function CommunitySection() {
         <ScrollReveal className="mx-auto w-full max-w-sm lg:order-1">
           <AssetImage
             src="/assets/landing/community-preview.png"
+            slot="community-preview"
             alt="SCORAM student discussion and learning community interface"
             label="community-preview.png"
             aspect="aspect-[4/5]"

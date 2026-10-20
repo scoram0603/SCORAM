@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useSlotImage } from "../hooks/useSlotImage";
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import LandingNavbar from "../components/landing/LandingNavbar";
@@ -47,6 +47,7 @@ const FOUNDERS = [
     name: "Sarvoch Priyadarshi",
     role: "Founder",
     photo: "/assets/team/sarvoch.jpg",
+    slot: "founder-sarvoch",
     alt: "Sarvoch, Founder of SCORAM",
     lead: "Every meaningful idea begins with a vision.",
     body: "Sarvoch envisioned SCORAM as a platform that could make exam preparation more focused, structured, and meaningful for aspirants. His vision is to help students move beyond simply practising questions and towards understanding their progress, recognising their strengths, and identifying where they can improve.",
@@ -55,6 +56,7 @@ const FOUNDERS = [
     name: "Durgesh Maurya",
     role: "Co-founder",
     photo: "/assets/team/durgesh.jpg",
+    slot: "founder-durgesh",
     alt: "Durgesh, Co-founder of SCORAM",
     lead: "Great ideas become meaningful when they are brought to life.",
     body: "As Co-founder of SCORAM, Durgesh contributes to turning the platform's vision into a practical digital experience. With a focus on technology, usability, and continuous improvement, he aims to help build a platform that makes exam preparation simpler, more accessible, and more effective for students.",
@@ -182,11 +184,13 @@ function StoryVisual({ steps }) {
 
 // Photo with a fixed 4:5 portrait frame. If the file is missing it falls back to an initial on
 // brand navy instead of a broken-image icon.
+// The photo comes from the founder's OWN slot (admin-replaceable under Admin > Landing Page); the bundled file
+// in /public/assets/team/ is the default and the fallback if an uploaded image fails.
 function FounderPhoto({ founder }) {
-  const [failed, setFailed] = useState(false);
+  const { src, onError, exhausted } = useSlotImage(founder.slot, { fallbackSrc: founder.photo });
   return (
     <div className="relative aspect-[4/5] w-full overflow-hidden rounded-xl2 bg-primary-50 ring-1 ring-primary-100">
-      {failed ? (
+      {exhausted ? (
         <div
           role="img"
           aria-label={founder.alt}
@@ -196,11 +200,12 @@ function FounderPhoto({ founder }) {
         </div>
       ) : (
         <img
-          src={founder.photo}
+          key={src}
+          src={src}
           alt={founder.alt}
           loading="lazy"
           decoding="async"
-          onError={() => setFailed(true)}
+          onError={onError}
           className="h-full w-full object-cover object-[center_18%]"
         />
       )}

@@ -114,6 +114,8 @@ namespace ScoramAPI.Services
             await _db.UserStreaks.Where(s => s.UserId == userId).ExecuteDeleteAsync(cancellationToken);
             await _db.UserBadges.Where(b => b.UserId == userId).ExecuteDeleteAsync(cancellationToken);
             await _db.UserQuestionSolves.Where(s => s.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+            // Question Bank browsing progress (answers go with their session via ON DELETE CASCADE).
+            await _db.QuestionBrowseSessions.Where(s => s.UserId == userId).ExecuteDeleteAsync(cancellationToken);
             await _db.StudentSyllabusProgress.Where(p => p.UserId == userId).ExecuteDeleteAsync(cancellationToken);
             await _db.TypingTestResults.Where(t => t.UserId == userId).ExecuteDeleteAsync(cancellationToken);
 

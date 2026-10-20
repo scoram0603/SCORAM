@@ -14,6 +14,7 @@ export const PERMISSIONS = [
   { key: "ModerateQuestionReports", group: "Moderation", label: "Moderate Question Reports", hint: "Review \"Report Question\" submissions on PYQ and Question Bank questions" },
   { key: "HandleChatReports", group: "Moderation", label: "Handle Chat Reports", hint: "Review and resolve reported chat messages" },
   { key: "ManageBannedWords", group: "Moderation", label: "Manage Banned Words", hint: "Maintain the list of words/phrases blocked from chat messages" },
+  { key: "ModerateReviews", group: "Moderation", label: "Moderate Student Reviews", hint: "Approve, reject, hide or remove the public \"Rate SCORAM\" reviews students submit on the website" },
   { key: "ManageChatRooms", group: "Community", label: "Manage Chat Rooms", hint: "Create/rename/delete standalone group chat rooms (not tied to an exam)" },
   { key: "ToggleChatLock", group: "Community", label: "Lock/Unlock Chat", hint: "Disable or re-enable posting in a room without deleting its history" },
   { key: "RemoveGroupMembers", group: "Community", label: "Remove Group Members", hint: "Remove/ban a student from a chat room" },
@@ -24,6 +25,7 @@ export const PERMISSIONS = [
   { key: "ViewAnalytics", group: "Platform", label: "View Analytics", hint: "Open the Analytics page, user and learning metrics, and System Health" },
   { key: "ExportReports", group: "Platform", label: "Export Reports", hint: "Download CSV / Excel reports (each report also needs the permission for its data)" },
   { key: "ManageAppConfig", group: "Platform", label: "Manage App Configuration", hint: "Feature flags, maintenance mode, app version policy and the config change history. Critical settings stay Super Admin only." },
+  { key: "ManageLandingContent", group: "Platform", label: "Manage Landing Page", hint: "Replace landing-page images (logo, feature images, founder photos) and edit the Smart Progress section" },
   { key: "Audit", group: "Platform", label: "Audit", hint: "View the audit log of admin activity (publishes, rejections, deletions, permission changes)" },
 ];
 

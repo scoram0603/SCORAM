@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LogOut, Mail, User as UserIcon, Users, MessageCircle, Loader2, Smartphone, Camera, X, Flame, Gift,
-  ChevronRight, SlidersHorizontal, Phone, AtSign, Pencil, Check, CheckCircle2, XCircle, GraduationCap,
+  ChevronRight, SlidersHorizontal, Phone, AtSign, Pencil, Check, CheckCircle2, XCircle, GraduationCap, Star,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getGamificationSummary } from "../api/gamification";
@@ -336,6 +336,23 @@ function GamificationSnapshot() {
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-bold text-ink-900">Refer & Earn</span>
           <span className="block text-xs text-ink-400">Invite friends for bonus XP + attempts</span>
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-300" strokeWidth={2.5} />
+      </button>
+
+      <div className="my-3 border-t border-primary-50" />
+
+      <button
+        type="button"
+        onClick={() => navigate("/rate-scoram")}
+        className="flex w-full items-center gap-3 text-left"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-500">
+          <Star className="h-5 w-5" strokeWidth={2.25} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold text-ink-900">Rate SCORAM</span>
+          <span className="block text-xs text-ink-400">Write a review about your experience</span>
         </span>
         <ChevronRight className="h-4 w-4 shrink-0 text-ink-300" strokeWidth={2.5} />
       </button>

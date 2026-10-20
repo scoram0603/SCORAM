@@ -15,6 +15,7 @@ export default function AppPromotionSection() {
         <ScrollReveal className="order-2 mx-auto w-full max-w-xs lg:order-1">
           <AssetImage
             src="/assets/landing/mobile-app-preview.png"
+            slot="app-promo-preview"
             alt="SCORAM mobile application preview on a smartphone"
             label="mobile-app-preview.png"
             aspect="aspect-[9/16]"

@@ -4,7 +4,7 @@ import {
   ShieldCheck, ShieldAlert, Lightbulb, Flag, Library, ChevronsLeft, ChevronsRight, PenLine, Trophy,
   GraduationCap, Zap, Building2, LockKeyhole, BookOpen, MessageSquareText, Layers, PencilRuler,
   BarChart3, UserCog, FileDown, Megaphone, SlidersHorizontal, MonitorSmartphone, LifeBuoy, HeartPulse,
-  ShieldQuestion, Fingerprint, ChevronDown, Search, X, Gavel,
+  ShieldQuestion, Fingerprint, ChevronDown, Search, X, Gavel, Star, LayoutTemplate,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import logoMark from "../../assets/scoram-logo-square.png";
@@ -75,6 +75,7 @@ const NAV_GROUPS = [
       { to: "/admin/question-bank/reports", label: "Question Reports", icon: Flag, permission: "ModerateQuestionReports", badge: "questionReports" },
       { to: "/admin/solutions", label: "Solutions Queue", icon: Lightbulb, permission: "ModerateSolutions", badge: "solutions" },
       { to: "/admin/comment-reports", label: "Reported Comments", icon: Flag, permission: "ModerateDiscussions", badge: "commentReports" },
+      { to: "/admin/reviews", label: "Student Reviews", icon: Star, permission: "ModerateReviews" },
     ],
   },
   {
@@ -91,6 +92,7 @@ const NAV_GROUPS = [
     section: "Communication",
     items: [
       { to: "/admin/notifications", label: "Notifications", icon: Megaphone, permission: "PostNotices" },
+      { to: "/admin/landing-content", label: "Landing Page", icon: LayoutTemplate, permission: "ManageLandingContent" },
     ],
   },
   {

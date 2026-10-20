@@ -84,6 +84,7 @@ export default function HeroSection({ stats }) {
           <div className="relative mx-auto aspect-[9/18.5] w-full max-w-[300px] overflow-hidden rounded-[2.5rem] border-[6px] border-primary-900 bg-white shadow-cardHover">
             <AssetImage
               src="/assets/landing/scoram-app-preview.png"
+              slot="hero-preview"
               alt="SCORAM mobile app home screen showing quick access to PYP practice, question bank, tests and mock tests"
               label="scoram-app-preview.png"
               aspect="aspect-[9/18.5]"

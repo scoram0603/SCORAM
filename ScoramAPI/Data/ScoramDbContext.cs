@@ -45,6 +45,9 @@ namespace ScoramAPI.Data
         // ADMIN PLATFORM -- runtime app config + its append-only revision history. See Models/AppConfigModels.cs.
         public DbSet<AppSetting> AppSettings => Set<AppSetting>();
         public DbSet<AppSettingRevision> AppSettingRevisions => Set<AppSettingRevision>();
+        // STUDENT REVIEWS + LANDING CONTENT -- see Models/StudentReviewModels.cs.
+        public DbSet<StudentReview> StudentReviews => Set<StudentReview>();
+        public DbSet<LandingContentItem> LandingContentItems => Set<LandingContentItem>();
         public DbSet<Question> Questions => Set<Question>();
         public DbSet<QuestionSolution> QuestionSolutions => Set<QuestionSolution>();
         public DbSet<QuestionReport> QuestionReports => Set<QuestionReport>();
@@ -119,6 +122,10 @@ namespace ScoramAPI.Data
         public DbSet<Referral> Referrals => Set<Referral>();
         public DbSet<XpTransaction> XpTransactions => Set<XpTransaction>();
         public DbSet<UserQuestionSolve> UserQuestionSolves => Set<UserQuestionSolve>();
+
+        // Question Bank browsing progress (resume where the student left off) -- not a test attempt.
+        public DbSet<QuestionBrowseSession> QuestionBrowseSessions => Set<QuestionBrowseSession>();
+        public DbSet<QuestionBrowseAnswer> QuestionBrowseAnswers => Set<QuestionBrowseAnswer>();
 
         // Exam Utility (New)
         public DbSet<SyllabusTopic> SyllabusTopics => Set<SyllabusTopic>();
@@ -306,6 +313,25 @@ namespace ScoramAPI.Data
             modelBuilder.Entity<UserQuestionSolve>()
                 .HasIndex(s => new { s.UserId, s.QuestionBankQuestionId })
                 .IsUnique();
+
+            // Question Bank browsing progress: at most ONE active session per (student, scope) -- a filtered
+            // unique index, so archived sessions ("Start fresh") are unlimited -- and one answer row per
+            // (session, question). Deleting a student or a question cleans these up through the cascades.
+            modelBuilder.Entity<QuestionBrowseSession>(e =>
+            {
+                e.HasIndex(s => new { s.UserId, s.Scope })
+                    .IsUnique()
+                    .HasFilter("[IsActive] = 1")
+                    .HasDatabaseName("UX_QuestionBrowseSessions_ActivePerUser");
+                e.HasOne(s => s.User).WithMany().HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.Cascade);
+            });
+            modelBuilder.Entity<QuestionBrowseAnswer>(e =>
+            {
+                e.HasIndex(a => new { a.SessionId, a.QuestionBankQuestionId }).IsUnique();
+                e.HasIndex(a => a.QuestionBankQuestionId);
+                e.HasOne(a => a.Session).WithMany(s => s.Answers).HasForeignKey(a => a.SessionId).OnDelete(DeleteBehavior.Cascade);
+                e.HasOne(a => a.QuestionBankQuestion).WithMany().HasForeignKey(a => a.QuestionBankQuestionId).OnDelete(DeleteBehavior.Cascade);
+            });
 
             // Leaderboard queries filter by CreatedAt range (weekly/monthly) and group by UserId, and
             // exam-wise leaderboards additionally filter by ExamName -- both as composite indexes so
@@ -1650,6 +1676,22 @@ namespace ScoramAPI.Data
             modelBuilder.Entity<AppSetting>().HasKey(a => a.Key);
             modelBuilder.Entity<AppSettingRevision>().HasIndex(r => new { r.Key, r.ChangedAt });
             modelBuilder.Entity<AppSettingRevision>().HasIndex(r => r.BatchId);
+
+            // ==========================================================================
+            // STUDENT REVIEWS (public "Rate SCORAM" reviews, moderated) + LANDING CONTENT (admin-managed media/copy)
+            // ==========================================================================
+            modelBuilder.Entity<StudentReview>().Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+            // Cascade: a review is the student's own submission and goes with the account (same as UserFeedback).
+            modelBuilder.Entity<StudentReview>()
+                .HasOne(r => r.User)
+                .WithMany()
+                .HasForeignKey(r => r.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // One review per student -- the unique index is also the backstop for double-tap races.
+            modelBuilder.Entity<StudentReview>().HasIndex(r => r.UserId).IsUnique();
+            // Public listing (Approved, newest first) and the admin queue (by status).
+            modelBuilder.Entity<StudentReview>().HasIndex(r => new { r.Status, r.UpdatedAt });
+            modelBuilder.Entity<LandingContentItem>().HasKey(i => i.Key);
         }
     }
 

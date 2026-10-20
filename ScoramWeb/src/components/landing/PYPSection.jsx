@@ -42,6 +42,7 @@ export default function PYPSection() {
         <ScrollReveal delay={120} className="mx-auto w-full max-w-sm">
           <AssetImage
             src="/assets/landing/pyp-preview.png"
+            slot="pyp-preview"
             alt="SCORAM previous year paper practice interface showing a timed full paper attempt"
             label="pyp-preview.png"
             aspect="aspect-[4/5]"

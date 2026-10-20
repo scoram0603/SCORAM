@@ -268,6 +268,28 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 
+    // STUDENT REVIEWS -- create / edit / withdraw the caller's single review. A student has one review, so a
+    // handful of writes an hour is generous. Partitioned by user id like "feedback".
+    options.AddPolicy("review-write", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: GetRateLimitPartitionKey(httpContext),
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromHours(1),
+            QueueLimit = 0
+        }));
+
+    // PUBLIC landing-page reads (reviews + landing content). Anonymous and cached server-side, so this only has
+    // to stop scraping/abuse; the partition key falls back to the client IP for anonymous callers.
+    options.AddPolicy("public-read", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: GetRateLimitPartitionKey(httpContext),
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 120,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 

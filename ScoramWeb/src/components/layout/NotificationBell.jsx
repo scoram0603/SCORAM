@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, AtSign, MessageCircle, Loader2, Inbox, Swords } from "lucide-react";
+import { Bell, AtSign, MessageCircle, Loader2, Inbox, Swords, Megaphone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { listNotifications, getUnreadCount, markNotificationRead, markAllNotificationsRead } from "../../api/notifications";
 import { useChatConnection } from "../../context/ChatConnectionContext";
 import { timeAgo } from "../../utils/format";
+import { isNotice } from "../../utils/notice";
+import NoticeDetailModal from "./NoticeDetailModal";
 
-const TYPE_ICON = { Mention: AtSign, DirectMessage: MessageCircle, QuizChallenge: Swords };
+const TYPE_ICON = { Mention: AtSign, DirectMessage: MessageCircle, QuizChallenge: Swords, SystemAnnouncement: Megaphone };
 
 export default function NotificationBell({ variant = "desktop" }) {
   const navigate = useNavigate();
@@ -14,6 +16,8 @@ export default function NotificationBell({ variant = "desktop" }) {
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState("idle");
   const [unreadCount, setUnreadCount] = useState(0);
+  // The admin notice currently shown in the detail dialog (null = none).
+  const [openNotice, setOpenNotice] = useState(null);
   const wrapperRef = useRef(null);
 
   useEffect(() => {
@@ -57,6 +61,13 @@ export default function NotificationBell({ variant = "desktop" }) {
       setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, isRead: true } : x)));
       setUnreadCount((c) => Math.max(0, c - 1));
       markNotificationRead(n.id).catch(() => {});
+    }
+    // An admin notice has nothing to navigate to by itself -- its stored path was often a route that
+    // does not exist on the website (404) -- so it opens its full text instead (the dialog offers the
+    // destination as an explicit button). Every other notification type navigates exactly as before.
+    if (isNotice(n)) {
+      setOpenNotice(n);
+      return;
     }
     navigate(n.linkUrl || "/");
   }
@@ -141,6 +152,17 @@ export default function NotificationBell({ variant = "desktop" }) {
             })}
           </div>
         </div>
+      )}
+
+      {openNotice && (
+        <NoticeDetailModal
+          notification={openNotice}
+          onClose={() => setOpenNotice(null)}
+          onNavigate={(path) => {
+            setOpenNotice(null);
+            navigate(path);
+          }}
+        />
       )}
     </div>
   );

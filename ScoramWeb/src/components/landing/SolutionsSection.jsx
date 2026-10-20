@@ -40,6 +40,7 @@ export default function SolutionsSection() {
         <ScrollReveal delay={120} className="mx-auto w-full max-w-sm">
           <AssetImage
             src="/assets/landing/solutions-preview.png"
+            slot="solutions-preview"
             alt="SCORAM interface comparing multiple solving methods for the same question"
             label="solutions-preview.png"
             aspect="aspect-[4/5]"

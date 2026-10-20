@@ -21,6 +21,10 @@ namespace ScoramAPI.Services
         public string LinkUrl { get; init; } = "/";
         public string? EntityType { get; init; }
         public string? EntityId { get; init; }
+
+        /// <summary>The person this push is about (the direct-message sender). Only used to pick the
+        /// avatar; never sent as an id to the device.</summary>
+        public Guid? SenderUserId { get; init; }
     }
 
     public interface IPushNotificationService
@@ -52,11 +56,15 @@ namespace ScoramAPI.Services
         private readonly ScoramDbContext _db;
         private readonly ILogger<PushNotificationService> _logger;
         private readonly VapidDetails? _vapidDetails;
+        private readonly string _avatarMinAppVersion;
 
         public PushNotificationService(ScoramDbContext db, IConfiguration config, ILogger<PushNotificationService> logger)
         {
             _db = db;
             _logger = logger;
+            _avatarMinAppVersion = string.IsNullOrWhiteSpace(config["Push:AvatarMinAppVersion"])
+                ? PushAvatarRules.DefaultMinAppVersion
+                : config["Push:AvatarMinAppVersion"]!;
 
             var publicKey = config["VapidKeys:PublicKey"];
             var privateKey = config["VapidKeys:PrivateKey"];
@@ -193,50 +201,109 @@ namespace ScoramAPI.Services
                 return;
             }
 
-            var tokens = await _db.DeviceTokens
+            var devices = await _db.DeviceTokens
                 .Where(d => d.UserId == userId && d.IsActive)
-                .Select(d => d.Token)
+                .Select(d => new { d.Token, d.Platform, d.AppVersion })
                 .ToListAsync();
-            if (tokens.Count == 0)
+            if (devices.Count == 0)
             {
                 _logger.LogInformation("FCM: user {UserId} has no ACTIVE device tokens (never registered, logged out, or token deactivated).", userId);
                 return;
             }
 
-            var message = new MulticastMessage
+            // Data both message shapes carry. FCM data values must be non-null strings. recipientId lets the
+            // app drop a push that reaches a device now signed in as a DIFFERENT user (account-switch safety net).
+            var data = new Dictionary<string, string>
             {
-                Tokens = tokens,
-                Notification = new FirebaseAdmin.Messaging.Notification { Title = payload.Title, Body = payload.Body },
-                // FCM data values must be non-null strings. recipientId lets the app drop a push that
-                // reaches a device now signed in as a DIFFERENT user (account-switch safety net).
-                Data = new Dictionary<string, string>
-                {
-                    ["notificationId"] = payload.NotificationId.ToString(),
-                    ["type"] = payload.Type,
-                    ["entityType"] = payload.EntityType ?? string.Empty,
-                    ["entityId"] = payload.EntityId ?? string.Empty,
-                    ["linkUrl"] = payload.LinkUrl ?? string.Empty,
-                    ["recipientId"] = userId.ToString()
-                },
-                Android = new AndroidConfig
-                {
-                    Priority = Priority.High,
-                    Notification = new AndroidNotification
-                    {
-                        ChannelId = AndroidChannelId,
-                        Icon = AndroidSmallIcon,
-                        Color = AndroidAccentColor,
-                        // Explicit event time: the tray shows when the notification was SENT, never a bogus date.
-                        EventTimestamp = DateTime.UtcNow,
-                        // Same Tag => Android REPLACES the earlier tray entry instead of stacking a new one.
-                        // Direct messages use the conversation id, so five messages from one person show
-                        // as one tray entry (the latest message) rather than five.
-                        Tag = payload.Type == "DirectMessage" ? payload.EntityId : null
-                    }
-                },
-                Apns = new ApnsConfig { Aps = new Aps { Sound = "default" } }
+                ["notificationId"] = payload.NotificationId.ToString(),
+                ["type"] = payload.Type,
+                ["entityType"] = payload.EntityType ?? string.Empty,
+                ["entityId"] = payload.EntityId ?? string.Empty,
+                ["linkUrl"] = payload.LinkUrl ?? string.Empty,
+                ["recipientId"] = userId.ToString()
             };
 
+            // SENDER AVATAR (direct messages only). Android draws a "notification" message itself when the app
+            // is in the background / terminated, and that system-drawn notification cannot carry a sender photo
+            // -- so for capable devices the push is DATA-ONLY and the app draws the notification (with the
+            // sender's circular avatar) itself. Every other device/type keeps the unchanged message below.
+            string? avatarName = null;
+            var avatarPhoto = string.Empty;
+            var wantsAvatar = payload.SenderUserId is { } senderId && senderId != userId
+                              && PushAvatarRules.TypeShowsSenderAvatar(payload.Type);
+            if (wantsAvatar)
+            {
+                var sender = await _db.Users.AsNoTracking()
+                    .Where(u => u.Id == payload.SenderUserId!.Value)
+                    .Select(u => new { u.FullName, u.PhotoUrl })
+                    .FirstOrDefaultAsync();
+                if (sender == null) wantsAvatar = false;
+                else
+                {
+                    avatarName = sender.FullName;
+                    avatarPhoto = PushAvatarRules.SanitizePhotoUrl(sender.PhotoUrl);
+                }
+            }
+
+            var avatarTokens = wantsAvatar
+                ? devices.Where(d => PushAvatarRules.DeviceCanDrawAvatar(d.Platform, d.AppVersion, _avatarMinAppVersion)).Select(d => d.Token).ToList()
+                : new List<string>();
+            var systemTokens = devices.Select(d => d.Token).Except(avatarTokens).ToList();
+
+            if (systemTokens.Count > 0)
+            {
+                var message = new MulticastMessage
+                {
+                    Tokens = systemTokens,
+                    Notification = new FirebaseAdmin.Messaging.Notification { Title = payload.Title, Body = payload.Body },
+                    Data = data,
+                    Android = new AndroidConfig
+                    {
+                        Priority = Priority.High,
+                        Notification = new AndroidNotification
+                        {
+                            ChannelId = AndroidChannelId,
+                            Icon = AndroidSmallIcon,
+                            Color = AndroidAccentColor,
+                            // Explicit event time: the tray shows when the notification was SENT, never a bogus date.
+                            EventTimestamp = DateTime.UtcNow,
+                            // Same Tag => Android REPLACES the earlier tray entry instead of stacking a new one.
+                            // Direct messages use the conversation id, so five messages from one person show
+                            // as one tray entry (the latest message) rather than five.
+                            Tag = payload.Type == "DirectMessage" ? payload.EntityId : null
+                        }
+                    },
+                    Apns = new ApnsConfig { Aps = new Aps { Sound = "default" } }
+                };
+                await SendMulticastAsync(userId, message, systemTokens);
+            }
+
+            if (avatarTokens.Count > 0)
+            {
+                var avatarData = new Dictionary<string, string>(data)
+                {
+                    // The app builds the notification, so it needs the text too. A marker + the sender's
+                    // display name / photo reference (already visible to this recipient inside the app).
+                    ["avatar"] = "1",
+                    ["title"] = payload.Title,
+                    ["body"] = payload.Body,
+                    ["senderName"] = avatarName ?? string.Empty,
+                    ["senderPhotoUrl"] = avatarPhoto
+                };
+                var message = new MulticastMessage
+                {
+                    Tokens = avatarTokens,
+                    Data = avatarData,
+                    // High priority so a data-only message wakes the app's background handler promptly.
+                    Android = new AndroidConfig { Priority = Priority.High }
+                };
+                await SendMulticastAsync(userId, message, avatarTokens);
+            }
+        }
+
+        // Sends one multicast message and deactivates tokens FCM reports as permanently dead.
+        private async Task SendMulticastAsync(Guid userId, MulticastMessage message, List<string> tokens)
+        {
             try
             {
                 var response = await FirebaseMessaging.DefaultInstance.SendEachForMulticastAsync(message);

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowRight, GraduationCap, Sparkles } from "lucide-react";
+import LandingLink from "./LandingLink";
 
 export default function FinalCTA() {
   return (
@@ -22,12 +23,10 @@ export default function FinalCTA() {
             Create Free Account
             <ArrowRight className="h-4 w-4" strokeWidth={2.5} />
           </Link>
-          <a
-            href="#top"
+          <LandingLink
+            item={{ href: "#top", label: "Explore SCORAM" }}
             className="flex items-center justify-center gap-2 rounded-xl border border-white/30 px-6 py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-white/10"
-          >
-            Explore SCORAM
-          </a>
+          />
         </div>
       </div>
     </section>

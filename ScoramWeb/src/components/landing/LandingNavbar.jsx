@@ -1,27 +1,23 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Menu, X, ArrowRight } from "lucide-react";
-import logo from "../../assets/scoram-logo-horizontal.png";
+import defaultLogo from "../../assets/scoram-logo-horizontal.png";
 import { navLinks } from "../../data/landingContent";
+import LandingLink from "./LandingLink";
+import { useSlotImage } from "../../hooks/useSlotImage";
 
+// Every item goes through LandingLink: "Home" is a real route link ("/") that returns to the top of the page
+// (or navigates to the landing page from anywhere else), and section anchors become "/#section".
 function NavItem({ item, onClick, className }) {
-  if (item.to) {
-    return (
-      <Link to={item.to} onClick={onClick} className={className}>
-        {item.label}
-      </Link>
-    );
-  }
-  return (
-    <a href={item.href} onClick={onClick} className={className}>
-      {item.label}
-    </a>
-  );
+  return <LandingLink item={item} onClick={onClick} className={className} />;
 }
 
 export default function LandingNavbar() {
   const [scrolled, setScrolled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Admin-managed logo with a centralised fallback to the bundled default (never a broken image).
+  const { src: logoSrc, onError: onLogoError } = useSlotImage("logo");
+  const logo = logoSrc || defaultLogo;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -47,9 +43,9 @@ export default function LandingNavbar() {
         }`}
       >
         <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:h-20 lg:px-8" aria-label="Main">
-          <a href="#top" className="flex shrink-0 items-center">
-            <img src={logo} alt="SCORAM — Learn, Discuss, Score" className="h-9 w-auto lg:h-11" />
-          </a>
+          <LandingLink item={{ href: "#top" }} className="flex shrink-0 items-center" aria-label="SCORAM home">
+            <img src={logo} onError={onLogoError} alt="SCORAM — Learn, Discuss, Score" className="h-9 w-auto lg:h-11" />
+          </LandingLink>
 
           <div className="hidden items-center gap-5 xl:flex 2xl:gap-7">
             {navLinks.map((item) => (
@@ -118,7 +114,7 @@ export default function LandingNavbar() {
           }`}
         >
           <div className="flex items-center justify-between border-b border-primary-100 px-5 py-4">
-            <img src={logo} alt="SCORAM" className="h-8 w-auto" />
+            <img src={logo} onError={onLogoError} alt="SCORAM" className="h-8 w-auto" />
             <button
               type="button"
               onClick={() => setDrawerOpen(false)}

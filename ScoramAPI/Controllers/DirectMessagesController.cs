@@ -227,7 +227,7 @@ namespace ScoramAPI.Controllers
                 Console.WriteLine($"[DirectMessagesController] SignalR push failed for conversation {id}: {ex}");
             }
 
-            NotifyDirectMessage(otherUserId, id, responseDto.SenderFullName, PreviewFor(saved) ?? string.Empty);
+            NotifyDirectMessage(otherUserId, id, responseDto.SenderFullName, PreviewFor(saved) ?? string.Empty, userId);
 
             return Ok(responseDto);
         }
@@ -280,7 +280,7 @@ namespace ScoramAPI.Controllers
                 Console.WriteLine($"[DirectMessagesController] SignalR push failed for conversation {id}: {ex}");
             }
 
-            NotifyDirectMessage(otherUserId, id, responseDto.SenderFullName, PreviewFor(saved) ?? string.Empty);
+            NotifyDirectMessage(otherUserId, id, responseDto.SenderFullName, PreviewFor(saved) ?? string.Empty, userId);
 
             return Ok(responseDto);
         }
@@ -330,7 +330,7 @@ namespace ScoramAPI.Controllers
                 Console.WriteLine($"[DirectMessagesController] SignalR push failed for conversation {id}: {ex}");
             }
 
-            NotifyDirectMessage(otherUserId2, id, responseDto2.SenderFullName, PreviewFor(saved2) ?? string.Empty);
+            NotifyDirectMessage(otherUserId2, id, responseDto2.SenderFullName, PreviewFor(saved2) ?? string.Empty, userId);
 
             return Ok(responseDto2);
         }
@@ -402,7 +402,7 @@ namespace ScoramAPI.Controllers
         // Notification for a new message. Skipped entirely when the recipient has THIS thread open right
         // now (they are reading it live -- a notification/push would only be noise), and otherwise
         // queued in the background so the SENDER's request never waits on it. See DmViewingService.
-        private void NotifyDirectMessage(Guid recipientId, Guid conversationId, string senderName, string preview)
+        private void NotifyDirectMessage(Guid recipientId, Guid conversationId, string senderName, string preview, Guid senderId)
         {
             if (_dmViewing.IsViewing(recipientId, conversationId)) return;
 
@@ -416,7 +416,9 @@ namespace ScoramAPI.Controllers
                     LinkUrl = "/chat?tab=messages",
                     // Structured target for the mobile app (opens this exact conversation).
                     EntityType = "DirectConversation",
-                    EntityId = conversationId.ToString()
+                    EntityId = conversationId.ToString(),
+                    // Lets the push show THIS sender's avatar (never the recipient's).
+                    SenderUserId = senderId
                 });
         }
 

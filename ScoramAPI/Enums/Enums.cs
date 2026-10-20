@@ -251,7 +251,13 @@ namespace ScoramAPI.Enums
         ManageUsers,
         // Runtime app configuration: maintenance mode, feature flags, minimum/recommended app versions.
         // Changing a minimum supported version or maintenance mode additionally requires SuperAdmin.
-        ManageAppConfig
+        ManageAppConfig,
+        // Student Reviews (admin > Student Reviews): approve / reject / hide / remove the public "Rate SCORAM"
+        // reviews students submit on the website. Stored by NAME (nvarchar(30)), no migration needed.
+        ModerateReviews,
+        // Landing page content (admin > Landing Page): replace the landing-page logo / feature / founder images
+        // and edit the Smart Progress section. Stored by NAME, no migration needed.
+        ManageLandingContent
     }
 
     // Deliberately a small fixed set, per product decision -- not the free-text Language field

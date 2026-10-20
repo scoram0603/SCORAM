@@ -39,6 +39,7 @@ import StudyPlan from "./pages/StudyPlan";
 import StudyPartners from "./pages/StudyPartners";
 import Bookmarks from "./pages/Bookmarks";
 import Settings from "./pages/Settings";
+import RateScoram from "./pages/RateScoram";
 // "MY EXAMS" -- see context/MyExamsContext.jsx
 import SelectExams from "./pages/SelectExams";
 import MyExams from "./pages/MyExams";
@@ -87,6 +88,8 @@ function AppRoutes() {
           <Route path="profile" element={<Profile />} />
           <Route path="bookmarks" element={<Bookmarks />} />
           <Route path="settings" element={<Settings />} />
+          {/* STUDENT REVIEWS -- write / edit / withdraw the student's own public review (website only). */}
+          <Route path="rate-scoram" element={<RateScoram />} />
           {/* "MY EXAMS" -- select-exams is the first-run onboarding screen (AppLayout redirects
               here automatically for an authenticated student with zero exams configured);
               my-exams is the ongoing management screen, linked from Profile. */}

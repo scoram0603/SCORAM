@@ -32,11 +32,15 @@ namespace ScoramAPI.Controllers
         // the Flutter NotificationRouter (EntityType "Screen").
         private static readonly Dictionary<string, string> Destinations = new(StringComparer.OrdinalIgnoreCase)
         {
+            // NOTICE FIX: these used to be "/notifications", "/mock-tests" and "/papers" -- none of which
+            // exist as website routes (the web app uses /tests/mock and /pyq, and has no /notifications
+            // page), so clicking a notice in the web bell landed on a 404. They now point at real web
+            // routes. Rows already stored with the old paths are mapped by the website from EntityId.
             ["Home"] = "/",
-            ["Notifications"] = "/notifications",
+            ["Notifications"] = "/",
             ["Quizzes"] = "/quizzes",
-            ["MockTests"] = "/mock-tests",
-            ["Pyp"] = "/papers",
+            ["MockTests"] = "/tests/mock",
+            ["Pyp"] = "/pyq",
             ["Tests"] = "/tests",
             ["Progress"] = "/progress"
         };

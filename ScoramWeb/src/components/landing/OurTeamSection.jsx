@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useSlotImage } from "../../hooks/useSlotImage";
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import ScrollReveal from "./ScrollReveal";
@@ -10,6 +10,7 @@ const MEMBERS = [
     name: "Sarvoch Priyadarshi",
     role: "Founder",
     photo: "/assets/team/sarvoch.jpg",
+    slot: "founder-sarvoch",
     alt: "Sarvoch Priyadarshi, Founder of SCORAM",
     line: "Envisioned SCORAM as a platform that makes exam preparation more focused, structured, and meaningful.",
   },
@@ -17,27 +18,29 @@ const MEMBERS = [
     name: "Durgesh Maurya",
     role: "Co-founder",
     photo: "/assets/team/durgesh.jpg",
+    slot: "founder-durgesh",
     alt: "Durgesh Maurya, Co-founder of SCORAM",
     line: "Turns the vision into a practical digital experience, with a focus on technology, usability, and continuous improvement.",
   },
 ];
 
 function MemberCard({ member }) {
-  const [failed, setFailed] = useState(false);
+  const { src, onError, exhausted } = useSlotImage(member.slot, { fallbackSrc: member.photo });
   return (
     <div className="flex flex-col items-center rounded-2xl border border-primary-100 bg-white p-6 text-center shadow-card">
       <div className="h-28 w-28 overflow-hidden rounded-full bg-primary-50 ring-4 ring-primary-100">
-        {failed ? (
+        {exhausted ? (
           <div role="img" aria-label={member.alt} className="flex h-full w-full items-center justify-center bg-primary-500 text-4xl font-bold text-white">
             {member.name.charAt(0)}
           </div>
         ) : (
           <img
-            src={member.photo}
+            key={src}
+            src={src}
             alt={member.alt}
             loading="lazy"
             decoding="async"
-            onError={() => setFailed(true)}
+            onError={onError}
             className="h-full w-full object-cover object-[center_18%]"
           />
         )}

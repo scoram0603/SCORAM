@@ -44,6 +44,8 @@ import SupportTickets from "./pages/SupportTickets";
 import SystemHealth from "./pages/SystemHealth";
 import ModerationOverview from "./pages/ModerationOverview";
 import RolesPermissions from "./pages/RolesPermissions";
+import StudentReviews from "./pages/StudentReviews";
+import LandingContentManagement from "./pages/LandingContentManagement";
 
 function AdminRoutes() {
   return (
@@ -104,6 +106,16 @@ function AdminRoutes() {
           {/* Subject Management: master-data admin (rename / merge / reassign / delete Subjects) */}
           <Route element={<RequireAdminPermission permission="ManageSubjects" />}>
             <Route path="subjects" element={<SubjectManagement />} />
+          </Route>
+
+          {/* STUDENT REVIEWS: moderation of the public "Rate SCORAM" reviews */}
+          <Route element={<RequireAdminPermission permission="ModerateReviews" />}>
+            <Route path="reviews" element={<StudentReviews />} />
+          </Route>
+
+          {/* LANDING PAGE: replaceable landing images + Smart Progress section copy */}
+          <Route element={<RequireAdminPermission permission="ManageLandingContent" />}>
+            <Route path="landing-content" element={<LandingContentManagement />} />
           </Route>
 
           {/* USER FEEDBACK: submissions from the floating Feedback button on the student app */}

@@ -2,9 +2,8 @@
 // components in src/components/landing/. Edit this file to change wording; edit the components
 // to change layout/behavior.
 //
-// IMPORTANT: testimonials below are placeholder copy, clearly marked as such -- do NOT mark them
-// as "verified reviews" anywhere (no star ratings, no "verified" badge) until real student
-// testimonials are collected. See LANDING_REPORT.md for the full list of things to swap in.
+// Student testimonials are NOT kept here: the "Students Preparing with SCORAM" section renders live,
+// moderator-approved reviews from the API (see TestimonialsSection.jsx) and never falls back to sample quotes.
 
 import {
   FileClock,
@@ -39,12 +38,14 @@ export const footerLinks = {
     { label: "Tests", to: "/tests" },
     { label: "Mock Tests", to: "/tests/mock" },
     { label: "Quizzes", to: "/quizzes" },
+    { label: "Smart Progress", href: "#smart-progress" },
     { label: "Our Team", to: "/our-team" },
   ],
   community: [
     { label: "Group Chat", to: "/chat" },
     { label: "Discussions", to: "/discussions" },
     { label: "Leaderboard", to: "/leaderboard" },
+    { label: "Rate SCORAM", to: "/rate-scoram" },
   ],
   support: [
     { label: "Help Center", href: "#faq" },
@@ -96,27 +97,6 @@ export const howItWorks = [
   { step: "02", icon: Target, title: "Choose Your Exam", description: "Pick the exams you're preparing for from SCORAM's exam list." },
   { step: "03", icon: TrendingUp, title: "Practice & Learn", description: "Solve questions, attempt tests, and discuss with the community." },
   { step: "04", icon: Trophy, title: "Track Progress & Score Higher", description: "Watch your accuracy and streaks improve as you keep practicing." },
-];
-
-// PLACEHOLDER -- clearly editable, clearly not real reviews. Swap these for real student
-// testimonials (with permission) before launch, and never attach star ratings or a "verified"
-// badge to placeholder copy. See LANDING_REPORT.md.
-export const testimonials = [
-  {
-    quote: "SCORAM helped me practice previous year questions in a much more structured way than jumping between PDFs.",
-    name: "Placeholder Student",
-    exam: "SSC CGL Aspirant",
-  },
-  {
-    quote: "Being able to see multiple ways to solve the same question made shortcuts finally click for me.",
-    name: "Placeholder Student",
-    exam: "Railway Exam Aspirant",
-  },
-  {
-    quote: "The discussion threads on tough questions are genuinely useful — better than solving alone.",
-    name: "Placeholder Student",
-    exam: "Banking Exam Aspirant",
-  },
 ];
 
 export const faqs = [

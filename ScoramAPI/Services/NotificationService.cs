@@ -20,6 +20,11 @@ namespace ScoramAPI.Services
         public string? EntityType { get; init; }
         public string? EntityId { get; init; }
         public string? DedupKey { get; init; }
+
+        /// <summary>The person this notification is about (e.g. who sent the direct message). NOT stored; it
+        /// only lets the push show that person's avatar. Null for system / admin notifications, which keep
+        /// the SCORAM icon.</summary>
+        public Guid? SenderUserId { get; init; }
     }
 
     public interface INotificationService
@@ -98,7 +103,7 @@ namespace ScoramAPI.Services
                     // Rows from before this change: collapse the stragglers into the one we keep.
                     if (existing.Count > 1) _db.Notifications.RemoveRange(existing.Skip(1));
                     await _db.SaveChangesAsync();
-                    return await PublishAsync(userId, keep);
+                    return await PublishAsync(userId, keep, request.SenderUserId);
                 }
             }
 
@@ -127,12 +132,12 @@ namespace ScoramAPI.Services
                 return null;
             }
 
-            return await PublishAsync(userId, notification);
+            return await PublishAsync(userId, notification, request.SenderUserId);
         }
 
         // Shared by the create and the "re-use this conversation's row" paths above: builds the DTO, pushes it
         // over the hub, and hands the FCM push to the background queue.
-        private async Task<NotificationResponseDto> PublishAsync(Guid userId, Notification notification)
+        private async Task<NotificationResponseDto> PublishAsync(Guid userId, Notification notification, Guid? senderUserId = null)
         {
             var dto = new NotificationResponseDto
             {
@@ -165,7 +170,8 @@ namespace ScoramAPI.Services
                 Body = notification.Body,
                 LinkUrl = notification.LinkUrl,
                 EntityType = notification.EntityType,
-                EntityId = notification.EntityId
+                EntityId = notification.EntityId,
+                SenderUserId = senderUserId
             };
             _queue.Enqueue((sp, _) => sp.GetRequiredService<IPushNotificationService>().SendAsync(userId, payload));
 

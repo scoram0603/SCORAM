@@ -1247,6 +1247,30 @@ namespace ScoramAPI.Migrations
                     b.ToTable("JobAlerts");
                 });
 
+            modelBuilder.Entity("ScoramAPI.Models.LandingContentItem", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("MediaUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("TextJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("LandingContentItems");
+                });
+
             modelBuilder.Entity("ScoramAPI.Models.MistakeRevisionItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2348,6 +2372,92 @@ namespace ScoramAPI.Migrations
                     b.ToTable("QuestionBankTopics");
                 });
 
+            modelBuilder.Entity("ScoramAPI.Models.QuestionBrowseAnswer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ClientUpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SelectedOption")
+                        .IsRequired()
+                        .HasMaxLength(1)
+                        .HasColumnType("nvarchar(1)");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("QuestionBankQuestionId");
+
+                    b.HasIndex("SessionId", "QuestionBankQuestionId")
+                        .IsUnique();
+
+                    b.ToTable("QuestionBrowseAnswers");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.QuestionBrowseSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ArchivedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FiltersJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("LastPosition")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("LastQuestionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("PositionClientUpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ViewMode")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Scope")
+                        .IsUnique()
+                        .HasDatabaseName("UX_QuestionBrowseSessions_ActivePerUser")
+                        .HasFilter("[IsActive] = 1");
+
+                    b.ToTable("QuestionBrowseSessions");
+                });
+
             modelBuilder.Entity("ScoramAPI.Models.QuestionComment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2987,6 +3097,57 @@ namespace ScoramAPI.Migrations
                     b.HasIndex("StudentTestResultId", "QuestionOrder");
 
                     b.ToTable("StudentAnswers");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.StudentReview", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ModeratedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ModeratedByAdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ModerationNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("ShowNamePublicly")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "UpdatedAt");
+
+                    b.ToTable("StudentReviews");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.StudentSyllabusProgress", b =>
@@ -4745,6 +4906,36 @@ namespace ScoramAPI.Migrations
                     b.Navigation("Subject");
                 });
 
+            modelBuilder.Entity("ScoramAPI.Models.QuestionBrowseAnswer", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany()
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ScoramAPI.Models.QuestionBrowseSession", "Session")
+                        .WithMany("Answers")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("QuestionBankQuestion");
+
+                    b.Navigation("Session");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.QuestionBrowseSession", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("ScoramAPI.Models.QuestionComment", b =>
                 {
                     b.HasOne("ScoramAPI.Models.QuestionComment", "ParentComment")
@@ -4997,6 +5188,17 @@ namespace ScoramAPI.Migrations
                     b.Navigation("QuestionBankQuestion");
 
                     b.Navigation("StudentTestResult");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.StudentReview", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.StudentSyllabusProgress", b =>
@@ -5414,6 +5616,11 @@ namespace ScoramAPI.Migrations
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankTopic", b =>
                 {
                     b.Navigation("Questions");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.QuestionBrowseSession", b =>
+                {
+                    b.Navigation("Answers");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.Quiz", b =>
