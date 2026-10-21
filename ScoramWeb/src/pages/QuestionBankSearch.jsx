@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, Loader2, ServerCrash, Inbox, X, BookOpen, GraduationCap, Layers,
-  CalendarDays, Shuffle, History, LayoutList, Rows3, ChevronLeft, ChevronRight,
+  CalendarDays, Shuffle, History, LayoutList, Rows3, ChevronLeft, ChevronRight, RotateCcw,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { searchQuestionBank, getQuestionBankSubjects, getQuestionBankTopics, getQuestionBankExams, getQuestionBankYears } from "../api/questionBank";
@@ -12,6 +12,10 @@ import SearchableSelect from "../components/ui/SearchableSelect";
 import MyExamsFilter from "../components/exams/MyExamsFilter";
 import ChooseMyExamsPrompt from "../components/exams/ChooseMyExamsPrompt";
 import { useMyExamsScope } from "../hooks/useMyExamsScope";
+import { useQuestionBrowseProgress } from "../hooks/useQuestionBrowseProgress";
+import {
+  filtersFromParams, hasAnyFilters, hasBrowseParams, pagesNeeded, paramsFromFilters, qKey, resolveResumeIndex,
+} from "../utils/browseProgress";
 
 const PAGE_SIZE = 10;
 const RECENT_SEARCHES_KEY = "scoram:qb:recent-searches";
@@ -77,7 +81,36 @@ export default function QuestionBankSearch() {
   // only their exams in the Exam/Year filter data), so the Exam filter below is just an optional
   // NARROWING within My Exams. Wait for the scope before fetching; show the prompt when it's empty.
   const scope = useMyExamsScope();
-  const canFetch = scope.ready && !scope.isEmpty;
+
+  // PYQ PROGRESS -- picked options live HERE (by question id), not inside each card: Slide mode remounts a card
+  // for every question, which is why a pick used to vanish after Previous/Next. The same hook saves them (plus
+  // filters, last question and view mode) to the student's account so the session resumes after leaving/closing.
+  // Signed-in students wait ("waiting") until the saved session is known so the very first fetch already uses the
+  // restored filters instead of loading everything and then reloading.
+  const progress = useQuestionBrowseProgress();
+  const [restoreState, setRestoreState] = useState(() => (progress.enabled ? "waiting" : "idle")); // waiting | restoring | idle | done
+  const restoreTargetRef = useRef(null);
+  const [resumeNote, setResumeNote] = useState(null); // { answered, position } -- shown after a restore
+  const [freshBusy, setFreshBusy] = useState(false);
+  const [freshError, setFreshError] = useState("");
+  const canFetch = scope.ready && !scope.isEmpty && restoreState !== "waiting";
+
+  // Decide whether to restore the saved session (only when the URL doesn't already carry a search/filter --
+  // a shared link or an explicit choice always wins).
+  useEffect(() => {
+    if (restoreState !== "waiting" || !progress.ready) return;
+    const snap = progress.snapshot;
+    const hasContent = snap && (snap.lastQuestionId || snap.lastPosition > 0 || snap.answeredCount > 0 || hasAnyFilters(snap.filters));
+    if (!hasContent || hasBrowseParams(searchParams)) {
+      setRestoreState("idle");
+      return;
+    }
+    restoreTargetRef.current = { questionId: snap.lastQuestionId, position: snap.lastPosition };
+    setResumeNote({ answered: snap.answeredCount, position: snap.lastPosition });
+    setSearchParams(paramsFromFilters(snap.filters, snap.viewMode), { replace: true });
+    setRestoreState("restoring");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoreState, progress.ready, progress.snapshot]);
 
   // Drop any ?examIds= value that isn't one of My Exams (e.g. a stale/shared link).
   useEffect(() => {
@@ -185,6 +218,117 @@ export default function QuestionBankSearch() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadPage, canFetch]);
+
+  // Back to where the student was: load enough pages to contain the saved position (in parallel, capped), then
+  // jump there -- Slide mode shows that question, Scroll mode scrolls it into view.
+  useEffect(() => {
+    if (restoreState !== "restoring" || status !== "success") return undefined;
+    let cancelled = false;
+    (async () => {
+      const target = restoreTargetRef.current;
+      let all = items;
+      const needed = pagesNeeded(target?.position ?? 0, PAGE_SIZE);
+      if (needed > 1 && hasMore) {
+        try {
+          const pages = await Promise.all(
+            Array.from({ length: needed - 1 }, (_, i) =>
+              searchQuestionBank({ search, subjectIds, topicIds, examIds, years, languages, page: i + 2, pageSize: PAGE_SIZE })),
+          );
+          if (cancelled) return;
+          all = [...items, ...pages.flatMap((p) => p.items)];
+          setItems(all);
+          pageRef.current = needed;
+          setHasMore(needed * PAGE_SIZE < pages[pages.length - 1].totalCount);
+        } catch {
+          // couldn't reach further pages -- resume as far as we got
+        }
+      }
+      if (cancelled) return;
+      const idx = resolveResumeIndex(all, target?.questionId, target?.position);
+      setResumeNote((note) => (note ? { ...note, position: idx } : note));
+      if (browseMode === "slide") setSlideIndex(idx);
+      setRestoreState("done");
+      if (browseMode !== "slide" && all[idx]) {
+        setTimeout(() => document.getElementById(`qb-q-${all[idx].id}`)?.scrollIntoView({ block: "start" }), 80);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoreState, status]);
+
+  // Save the browsing position (filters, last question, view mode). Not while restoring -- that would overwrite
+  // the saved position with "question 1" before we have jumped back to it.
+  const filtersObj = useMemo(() => filtersFromParams(searchParams), [searchParams]);
+  const filtersKey = JSON.stringify(filtersObj);
+  const reportingOn = progress.enabled && (restoreState === "idle" || restoreState === "done") && status === "success";
+  const itemsRef = useRef(items);
+  const filtersRef = useRef(filtersObj);
+  useEffect(() => {
+    itemsRef.current = items;
+    filtersRef.current = filtersObj;
+  });
+  const { reportPosition } = progress;
+  const baseKeyRef = useRef(null);
+
+  // Slide mode: the current slide is the position.
+  useEffect(() => {
+    if (!reportingOn || browseMode !== "slide") return;
+    const q = items[slideIndex];
+    if (!q) return;
+    reportPosition({ filters: filtersObj, lastQuestionId: q.id, lastPosition: slideIndex, viewMode: "slide" });
+  }, [reportingOn, browseMode, slideIndex, items, filtersObj, reportPosition]);
+
+  // Filters or view mode changed by the student: the old position no longer applies (Scroll mode starts at the top).
+  useEffect(() => {
+    if (!reportingOn) return;
+    const key = `${filtersKey}|${browseMode}`;
+    if (baseKeyRef.current === null) { baseKeyRef.current = key; return; }
+    if (baseKeyRef.current === key) return;
+    baseKeyRef.current = key;
+    if (browseMode === "scroll") {
+      reportPosition({ filters: filtersRef.current, lastQuestionId: null, lastPosition: 0, viewMode: "scroll" });
+    }
+  }, [reportingOn, filtersKey, browseMode, reportPosition]);
+
+  // Scroll mode: the first card still (partly) below the sticky header is the position.
+  useEffect(() => {
+    if (!reportingOn || browseMode !== "scroll") return undefined;
+    let timer;
+    const onScroll = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const nodes = document.querySelectorAll("[data-qb-index]");
+        if (!nodes.length) return;
+        let idx = Number(nodes[nodes.length - 1].dataset.qbIndex);
+        for (const node of nodes) {
+          if (node.getBoundingClientRect().bottom > 120) { idx = Number(node.dataset.qbIndex); break; }
+        }
+        const q = itemsRef.current[idx];
+        if (q) reportPosition({ filters: filtersRef.current, lastQuestionId: q.id, lastPosition: idx, viewMode: "scroll" });
+      }, 300);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.removeEventListener("scroll", onScroll); clearTimeout(timer); };
+  }, [reportingOn, browseMode, reportPosition]);
+
+  async function handleStartFresh() {
+    if (freshBusy) return;
+    if (!window.confirm("Start a fresh PYQ session? Your picked options and position are cleared from this screen (they stay in your archived history).")) return;
+    setFreshBusy(true);
+    setFreshError("");
+    try {
+      await progress.startFresh();
+      setResumeNote(null);
+      baseKeyRef.current = null;
+      setSearchParams({}, { replace: false });
+      setSlideIndex(0);
+      window.scrollTo(0, 0);
+    } catch (err) {
+      setFreshError(err?.message || "Couldn't start a fresh session. Please try again.");
+    } finally {
+      setFreshBusy(false);
+    }
+  }
 
   // Infinite scroll -- observes a sentinel div just past the last card; fetches the next page once
   // it enters the viewport (rootMargin gives it a head start). Only active in Scroll mode -- Slide
@@ -361,6 +505,33 @@ export default function QuestionBankSearch() {
         Search, practice, and understand questions from multiple competitive exams.
       </p>
 
+      {(resumeNote || freshError || progress.syncState === "retrying") && (
+        <div role="status" className="mt-4 flex flex-col gap-1.5">
+          {resumeNote && (
+            <div className="flex items-center gap-2 rounded-xl2 border border-primary-100 bg-primary-50/60 px-3.5 py-2.5 text-xs text-ink-600">
+              <History className="h-3.5 w-3.5 shrink-0 text-primary-600" strokeWidth={2.25} />
+              <span className="min-w-0 flex-1">
+                Resumed from where you left off
+                {resumeNote.answered > 0 ? ` · ${resumeNote.answered} answered` : ""}
+                {resumeNote.position > 0 ? ` · question ${resumeNote.position + 1}` : ""}
+              </span>
+              <button type="button" onClick={handleStartFresh} disabled={freshBusy} className="shrink-0 font-bold text-secondary-500 hover:text-secondary-600 disabled:opacity-50">
+                Start fresh
+              </button>
+              <button type="button" onClick={() => setResumeNote(null)} aria-label="Dismiss" className="shrink-0 text-ink-400 hover:text-ink-600">
+                <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+              </button>
+            </div>
+          )}
+          {progress.syncState === "retrying" && (
+            <p className="rounded-xl2 border border-amber-100 bg-amber-50 px-3.5 py-2 text-xs text-amber-700">
+              Couldn&apos;t reach the server. Your answers are kept on this device and will sync automatically.
+            </p>
+          )}
+          {freshError && <p className="rounded-xl2 border border-red-100 bg-red-50 px-3.5 py-2 text-xs text-red-600">{freshError}</p>}
+        </div>
+      )}
+
       <label className="relative mt-5 block">
         <span className="sr-only">Search PYQs</span>
         <Search className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-ink-400" strokeWidth={2} />
@@ -405,6 +576,18 @@ export default function QuestionBankSearch() {
       <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-bold text-ink-900">Filters</h2>
         <div className="flex items-center gap-2">
+          {progress.enabled && !resumeNote && (progress.answeredCount > 0 || hasActiveFilters) && (
+            <button
+              type="button"
+              onClick={handleStartFresh}
+              disabled={freshBusy}
+              className="flex items-center gap-1 text-xs font-semibold text-ink-400 hover:text-primary-600 disabled:opacity-50"
+              title="Begin a new browsing session"
+            >
+              <RotateCcw className="h-3 w-3" strokeWidth={2.5} />
+              Start fresh
+            </button>
+          )}
           {hasActiveFilters && (
             <button type="button" onClick={clearFilters} className="text-xs font-semibold text-secondary-500 hover:text-secondary-600">
               Clear Filters
@@ -519,7 +702,13 @@ export default function QuestionBankSearch() {
 
       {shuffled && (
         <div className="mt-3">
-          <QuestionBankFeedCard question={shuffled} onQuestionChange={(id, patch) => setShuffled((prev) => ({ ...prev, ...patch }))} compact={view === "compact"} />
+          <QuestionBankFeedCard
+            question={shuffled}
+            onQuestionChange={(id, patch) => setShuffled((prev) => ({ ...prev, ...patch }))}
+            compact={view === "compact"}
+            selectedOption={progress.answers[qKey(shuffled.id)] ?? null}
+            onSelectOption={progress.selectOption}
+          />
         </div>
       )}
 
@@ -566,8 +755,16 @@ export default function QuestionBankSearch() {
               {totalCount} question{totalCount === 1 ? "" : "s"} found
             </p>
             <div className="mt-2 flex flex-col gap-3">
-              {items.map((q) => (
-                <QuestionBankFeedCard key={q.id} question={q} onQuestionChange={handleQuestionChange} compact={view === "compact"} />
+              {items.map((q, i) => (
+                <div key={q.id} id={`qb-q-${q.id}`} data-qb-index={i}>
+                  <QuestionBankFeedCard
+                    question={q}
+                    onQuestionChange={handleQuestionChange}
+                    compact={view === "compact"}
+                    selectedOption={progress.answers[qKey(q.id)] ?? null}
+                    onSelectOption={progress.selectOption}
+                  />
+                </div>
               ))}
             </div>
 
@@ -584,7 +781,13 @@ export default function QuestionBankSearch() {
               Question {slideIndex + 1} of {totalCount}
             </p>
             <div className="mt-2" onTouchStart={handleCardTouchStart} onTouchEnd={handleCardTouchEnd}>
-              <QuestionBankFeedCard key={currentSlideItem.id} question={currentSlideItem} onQuestionChange={handleQuestionChange} />
+              <QuestionBankFeedCard
+                key={currentSlideItem.id}
+                question={currentSlideItem}
+                onQuestionChange={handleQuestionChange}
+                selectedOption={progress.answers[qKey(currentSlideItem.id)] ?? null}
+                onSelectOption={progress.selectOption}
+              />
             </div>
             <div className="mt-3 flex items-center justify-center gap-1.5">
               <button

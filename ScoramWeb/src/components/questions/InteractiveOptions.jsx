@@ -19,8 +19,15 @@ const OPTION_LETTERS = ["A", "B", "C", "D"];
 //
 // Shared between QuestionBankFeedCard (the search feed) and QuestionBankQuestionDetail (the
 // standalone/shared-link page) so both stay in sync automatically.
-export default function InteractiveOptions({ question, onInteract, size = "md" }) {
-  const [selected, setSelected] = useState(null); // null | "A" | "B" | "C" | "D"
+//
+// CONTROLLED vs UNCONTROLLED: pass `onChange` (+ `value`) and the parent owns the selection -- the PYQs page
+// does this so the pick survives Slide-mode Previous/Next (the card is remounted for every slide) and can be
+// saved and restored. Without `onChange` it keeps its own state exactly as before (standalone detail page).
+export default function InteractiveOptions({ question, onInteract, size = "md", value = null, onChange }) {
+  const controlled = typeof onChange === "function";
+  const [localSelected, setLocalSelected] = useState(null); // null | "A" | "B" | "C" | "D"
+  const selected = controlled ? value : localSelected;
+  const setSelected = controlled ? onChange : setLocalSelected;
 
   const answered = selected !== null;
   const isCompact = size === "sm";

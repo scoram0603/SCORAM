@@ -33,7 +33,7 @@ function Tag({ children, className = "" }) {
 //
 // Practicing IS clicking an option in the grid now -- see InteractiveOptions (green if correct,
 // red if wrong, no separate "View Answer" button needed anymore).
-export default function QuestionBankFeedCard({ question, onQuestionChange, compact = false }) {
+export default function QuestionBankFeedCard({ question, onQuestionChange, compact = false, selectedOption, onSelectOption }) {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const [activePanel, setActivePanel] = useState(null); // null | "discuss" | "methods"
@@ -81,7 +81,14 @@ export default function QuestionBankFeedCard({ question, onQuestionChange, compa
 
       {showBody && (
         <div className="mt-4">
-          <InteractiveOptions question={question} size={compact ? "sm" : "md"} onInteract={() => compact && setExpanded(true)} />
+          <InteractiveOptions
+            question={question}
+            size={compact ? "sm" : "md"}
+            onInteract={() => compact && setExpanded(true)}
+            // When the page owns the answers (PYQs page) the pick is kept per question ID and restored;
+            // otherwise the card behaves as before.
+            {...(onSelectOption ? { value: selectedOption ?? null, onChange: (letter) => onSelectOption(question.id, letter) } : {})}
+          />
         </div>
       )}
 
