@@ -29,13 +29,19 @@ namespace ScoramAPI.Controllers
             foreach (var c in open) { c.Status = StudyChallengeStatus.Cancelled; c.CompletedAt = DateTime.UtcNow; }
         }
 
-        private static string Describe(StudyPartnerChallenge c) => c.Type switch
+        private static int MinutesOf(StudyPartnerChallenge c) => StudyPartnerRules.EffectiveMinutes(c.DurationMinutes, c.DurationDays);
+
+        private static string Describe(StudyPartnerChallenge c)
         {
-            StudyChallengeType.Practice => $"answer {c.QuestionCount} questions in {c.DurationDays} days",
-            StudyChallengeType.Accuracy => $"best accuracy over {c.QuestionCount}+ questions in {c.DurationDays} days",
-            StudyChallengeType.Speed => $"fastest attempt of {c.QuestionCount}+ questions within {c.DurationDays} days",
-            _ => $"study {c.TargetDays} days within {c.DurationDays} days"
-        };
+            var span = StudyPartnerRules.FormatDuration(MinutesOf(c));
+            return c.Type switch
+            {
+                StudyChallengeType.Practice => $"answer {c.QuestionCount} questions in {span}",
+                StudyChallengeType.Accuracy => $"best accuracy over {c.QuestionCount}+ questions in {span}",
+                StudyChallengeType.Speed => $"fastest attempt of {c.QuestionCount}+ questions within {span}",
+                _ => $"study {c.TargetDays} days within {span}"
+            };
+        }
 
         /// <summary>Create a challenge for one of your Study Partners. The exam (optional) must be in BOTH
         /// students' My Exams. At most 3 open challenges per pair.</summary>
@@ -54,7 +60,9 @@ namespace ScoramAPI.Controllers
             if (await GetPartnershipAsync(me, dto.PartnerUserId) == null)
                 return StatusCode(403, new { message = "You can only challenge your Study Partners." });
 
-            var error = StudyPartnerRules.ValidateChallenge(type, dto.QuestionCount, dto.TargetDays, dto.DurationDays);
+            // New clients send exact minutes; older ones send whole days.
+            var durationMinutes = dto.DurationMinutes ?? dto.DurationDays * 1440;
+            var error = StudyPartnerRules.ValidateChallenge(type, dto.QuestionCount, dto.TargetDays, durationMinutes);
             if (error != null) return BadRequest(new { message = error });
 
             if (dto.ExamId.HasValue && !(await CommonExamsAsync(me, dto.PartnerUserId)).Any(e => e.Id == dto.ExamId.Value))
@@ -74,7 +82,8 @@ namespace ScoramAPI.Controllers
                 QuestionCount = type == StudyChallengeType.Streak ? null : dto.QuestionCount,
                 TargetDays = type == StudyChallengeType.Streak ? dto.TargetDays : null,
                 TimeLimitMinutes = dto.TimeLimitMinutes is > 0 and <= 600 ? dto.TimeLimitMinutes : null,
-                DurationDays = dto.DurationDays
+                DurationDays = StudyPartnerRules.DaysInWindow(durationMinutes),
+                DurationMinutes = durationMinutes
             };
             _db.StudyPartnerChallenges.Add(challenge);
             await _db.SaveChangesAsync();
@@ -130,7 +139,7 @@ namespace ScoramAPI.Controllers
             var now = DateTime.UtcNow;
             c.Status = StudyChallengeStatus.InProgress;
             c.StartDate = now;
-            c.EndDate = now.AddDays(c.DurationDays);
+            c.EndDate = now.AddMinutes(MinutesOf(c));
             c.RespondedAt = now;
             await _db.SaveChangesAsync();
 
@@ -153,6 +162,18 @@ namespace ScoramAPI.Controllers
             c.RespondedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
             return NoContent();
+        }
+
+        /// <summary>One challenge you are part of, with live progress for both sides (settles it first if it is due).</summary>
+        [HttpGet("challenges/{id:guid}")]
+        [ProducesResponseType(typeof(SpChallengeDto), StatusCodes.Status200OK)]
+        public async Task<ActionResult<SpChallengeDto>> GetChallenge(Guid id)
+        {
+            var me = User.GetUserId();
+            var c = await _db.StudyPartnerChallenges.FirstOrDefaultAsync(x => x.Id == id && (x.CreatorUserId == me || x.PartnerUserId == me));
+            if (c == null) return NotFound(new { message = "That challenge isn't available." });
+            if (await SettleIfDueAsync(c)) await _db.SaveChangesAsync();
+            return Ok((await ToChallengeDtosAsync(new[] { c }, me))[0]);
         }
 
         /// <summary>Withdraw a challenge you created, while it's still waiting for an answer.</summary>
@@ -254,6 +275,42 @@ namespace ScoramAPI.Controllers
             return new StudyPartnerRules.Side(answered, correct, fastest, days);
         }
 
+        /// <summary>Both sides' numbers for one challenge, from the attempts inside its window (up to now while
+        /// it is running). Null before it has started. One query per challenge.</summary>
+        private async Task<(SpChallengeProgressDto Creator, SpChallengeProgressDto Partner)?> BuildProgressAsync(StudyPartnerChallenge c)
+        {
+            if (c.StartDate is null || (c.Status != StudyChallengeStatus.InProgress && c.Status != StudyChallengeStatus.Completed && c.Status != StudyChallengeStatus.Accepted))
+                return null;
+            var now = DateTime.UtcNow;
+            var to = c.EndDate.HasValue && c.EndDate < now ? c.EndDate : now;
+            var examScope = c.ExamId.HasValue ? new[] { c.ExamId.Value } : null;
+            var attempts = await _progress.GetAttemptsAsync(new[] { c.CreatorUserId, c.PartnerUserId }, examScope, c.StartDate, to);
+            return (SideProgress(c, attempts, c.CreatorUserId), SideProgress(c, attempts, c.PartnerUserId));
+        }
+
+        private static SpChallengeProgressDto SideProgress(StudyPartnerChallenge c, List<AttemptRow> all, Guid userId)
+        {
+            var side = BuildSide(all, userId, c.QuestionCount);
+            var best = all.Where(a => a.UserId == userId).Select(a => a.Answered).DefaultIfEmpty(0).Max();
+            var reached = c.Type switch
+            {
+                StudyChallengeType.Streak => side.ActiveDays >= (c.TargetDays ?? int.MaxValue),
+                StudyChallengeType.Speed => side.FastestSeconds.HasValue,
+                _ => side.Answered >= (c.QuestionCount ?? int.MaxValue)
+            };
+            return new SpChallengeProgressDto
+            {
+                Answered = side.Answered,
+                Correct = side.Correct,
+                Accuracy = side.Accuracy,
+                ActiveDays = side.ActiveDays,
+                FastestSeconds = side.FastestSeconds,
+                BestAttemptAnswered = best,
+                ReachedTarget = reached,
+                Percent = reached ? 100 : StudyPartnerRules.ProgressPercent(c.Type, c.QuestionCount, c.TargetDays, side.Answered, best, side.ActiveDays)
+            };
+        }
+
         private async Task<List<SpChallengeDto>> ToChallengeDtosAsync(IReadOnlyCollection<StudyPartnerChallenge> challenges, Guid me)
         {
             if (challenges.Count == 0) return new List<SpChallengeDto>();
@@ -263,6 +320,13 @@ namespace ScoramAPI.Controllers
             var exams = await _db.Exams.AsNoTracking().Where(e => examIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id, e => e.Name);
 
             SpPersonDto P(Guid id) => persons.TryGetValue(id, out var p) ? p : new SpPersonDto { UserId = id, FullName = "Student" };
+
+            var progressById = new Dictionary<Guid, (SpChallengeProgressDto Creator, SpChallengeProgressDto Partner)>();
+            foreach (var c in challenges)
+            {
+                var pr = await BuildProgressAsync(c);
+                if (pr.HasValue) progressById[c.Id] = pr.Value;
+            }
 
             return challenges.Select(c => new SpChallengeDto
             {
@@ -277,13 +341,16 @@ namespace ScoramAPI.Controllers
                 TargetDays = c.TargetDays,
                 TimeLimitMinutes = c.TimeLimitMinutes,
                 DurationDays = c.DurationDays,
+                DurationMinutes = MinutesOf(c),
                 StartDate = c.StartDate,
                 EndDate = c.EndDate,
                 CreatorResult = c.CreatorResult,
                 PartnerResult = c.PartnerResult,
                 WinnerUserId = c.WinnerUserId,
                 ResultSummary = c.ResultSummary,
-                CreatedAt = c.CreatedAt
+                CreatedAt = c.CreatedAt,
+                CreatorProgress = progressById.TryGetValue(c.Id, out var cp) ? cp.Creator : null,
+                PartnerProgress = progressById.TryGetValue(c.Id, out var pp) ? pp.Partner : null
             }).ToList();
         }
     }

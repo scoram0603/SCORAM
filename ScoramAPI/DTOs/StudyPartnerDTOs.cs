@@ -140,6 +140,8 @@ namespace ScoramAPI.DTOs
         public int? TimeLimitMinutes { get; set; }
         /// <summary>How long the challenge runs once accepted (1-30).</summary>
         [Range(1, 30)] public int DurationDays { get; set; } = 7;
+        /// <summary>Exact duration in minutes (1 .. 43200 = 30 days). Wins over DurationDays when sent.</summary>
+        [Range(1, 43200)] public int? DurationMinutes { get; set; }
     }
 
     public class SpChallengeDto
@@ -155,6 +157,8 @@ namespace ScoramAPI.DTOs
         public int? TargetDays { get; set; }
         public int? TimeLimitMinutes { get; set; }
         public int DurationDays { get; set; }
+        /// <summary>Exact run length in minutes (always set; old challenges = days * 1440).</summary>
+        public int DurationMinutes { get; set; }
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
         public decimal? CreatorResult { get; set; }
@@ -162,6 +166,25 @@ namespace ScoramAPI.DTOs
         public Guid? WinnerUserId { get; set; }
         public string? ResultSummary { get; set; }
         public DateTime CreatedAt { get; set; }
+        /// <summary>Live (or final) numbers for each side, built from the attempts inside the challenge window.
+        /// Null until the challenge has started.</summary>
+        public SpChallengeProgressDto? CreatorProgress { get; set; }
+        public SpChallengeProgressDto? PartnerProgress { get; set; }
+    }
+
+    public class SpChallengeProgressDto
+    {
+        public int Answered { get; set; }
+        public int Correct { get; set; }
+        public decimal Accuracy { get; set; }
+        public int ActiveDays { get; set; }
+        /// <summary>Speed: fastest single attempt (seconds) that answered at least the target. Null until then.</summary>
+        public int? FastestSeconds { get; set; }
+        /// <summary>Speed: most questions answered in one single attempt so far.</summary>
+        public int BestAttemptAnswered { get; set; }
+        /// <summary>0-100 progress towards the target (questions, or streak days). Same maths for both sides.</summary>
+        public int Percent { get; set; }
+        public bool ReachedTarget { get; set; }
     }
 
     public class SpPrivacyDto

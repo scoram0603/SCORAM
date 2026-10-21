@@ -114,7 +114,12 @@ namespace ScoramAPI.Models
         /// <summary>How long the challenge runs once the partner accepts (1-30).</summary>
         public int DurationDays { get; set; } = 7;
 
-        /// <summary>Both set when the partner accepts (Start = now, End = Start + DurationDays). Only
+        /// <summary>Exact run length in minutes (1 .. 43200 = 30 days), chosen by the student. Null on
+        /// challenges created before this existed -- those run DurationDays * 1440 minutes. DurationDays is
+        /// kept (rounded up) so older clients keep working.</summary>
+        public int? DurationMinutes { get; set; }
+
+        /// <summary>Both set when the partner accepts (Start = now, End = Start + the duration). Only
         /// attempts submitted within [StartDate, EndDate] count.</summary>
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }

@@ -4,6 +4,9 @@ import { Loader2, Search, UserPlus, Users, Flag, Trophy, Lock, MessageCircle, Gi
 import * as api from "../api/studyPartners";
 import { API_BASE_URL } from "../api/client";
 import { timeAgo } from "../utils/format";
+import {
+  continuePath, durationOf, formatMinutes, isRunning, parseDuration, parseQuestions, progressCaption, sides, splitMinutes, timeLeft,
+} from "../utils/challenge";
 
 // STUDY PARTNER hub: My Study Partners / Requests / Challenges / Leaderboard / Privacy, plus Search.
 // One page with tabs (not one long scroll). Every number and visibility rule comes from the server --
@@ -69,6 +72,10 @@ function ErrorBox({ message, onRetry }) {
 const btn = "rounded-lg px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-50";
 const btnPrimary = `${btn} bg-primary-500 text-white hover:bg-primary-600`;
 const btnGhost = `${btn} border border-primary-100 text-ink-700 hover:bg-primary-50`;
+// Compact variants for the challenge UI -- small on purpose so the content stays visible.
+const btnSm = "rounded-md px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-50";
+const btnSmPrimary = `${btnSm} bg-primary-500 text-white hover:bg-primary-600`;
+const btnSmGhost = `${btnSm} border border-primary-100 text-ink-700 hover:bg-primary-50`;
 
 /** Loads data with a refetch handle -- the small amount of state every tab needs. */
 function useLoad(fn, deps) {
@@ -239,37 +246,65 @@ function ComparePanel({ partner, onClose }) {
   );
 }
 
-function ChallengeForm({ partner, onClose, onCreated }) {
-  const [type, setType] = useState("Practice");
-  const [questions, setQuestions] = useState(50);
-  const [targetDays, setTargetDays] = useState(5);
-  const [duration, setDuration] = useState(7);
+function ChallengeForm({ partner, onClose, onCreated, rematchOf = null }) {
+  const [type, setType] = useState(rematchOf?.type ?? "Practice");
+  const [questions, setQuestions] = useState(String(rematchOf?.questionCount ?? 50));
+  const [targetDays, setTargetDays] = useState(String(rematchOf?.targetDays ?? 5));
+  const initial = splitMinutes(rematchOf ? durationOf(rematchOf) : 7 * 1440);
+  const [durValue, setDurValue] = useState(initial.value);
+  const [durUnit, setDurUnit] = useState(initial.unit);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    setBusy(true); setError("");
+    setError("");
+    const dur = parseDuration(durValue, durUnit);
+    if (dur.error) return setError(dur.error);
+    let questionCount = null;
+    let target = null;
+    if (type === "Streak") {
+      const t = Number(targetDays);
+      const daysAvailable = Math.max(1, Math.ceil(dur.minutes / 1440));
+      if (!Number.isInteger(t) || t < 2) return setError("Study streak needs at least 2 days.");
+      if (t > daysAvailable) return setError(`Your time allows at most ${daysAvailable} study day${daysAvailable === 1 ? "" : "s"}.`);
+      target = t;
+    } else {
+      const q = parseQuestions(questions);
+      if (q.error) return setError(q.error);
+      questionCount = q.count;
+    }
+    setBusy(true);
     try {
       await api.createChallenge({
-        partnerUserId: partner.userId, type, durationDays: duration,
-        questionCount: type === "Streak" ? null : questions, targetDays: type === "Streak" ? targetDays : null,
+        partnerUserId: partner.userId, type,
+        durationMinutes: dur.minutes, durationDays: Math.max(1, Math.ceil(dur.minutes / 1440)),
+        questionCount, targetDays: target, examId: rematchOf?.exam?.id ?? null,
       });
       onCreated(); onClose();
     } catch (e) { setError(errText(e)); setBusy(false); }
   }
   const chip = (on, label, set) => (
     <button type="button" key={label} onClick={set} aria-pressed={on}
-      className={`rounded-full px-3 py-1 text-sm font-semibold ${on ? "bg-primary-500 text-white" : "bg-primary-50 text-ink-700"}`}>{label}</button>
+      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${on ? "bg-primary-500 text-white" : "bg-primary-50 text-ink-700"}`}>{label}</button>
   );
+  const input = "w-24 rounded-md border border-primary-100 px-2 py-1 text-sm text-ink-900 focus:border-primary-500 focus:outline-none";
   return (
-    <Modal title={`Challenge ${partner.fullName}`} onClose={onClose}>
-      <div className="space-y-4">
-        <div className="flex flex-wrap gap-2">{["Practice", "Accuracy", "Speed", "Streak"].map((t) => chip(type === t, t === "Streak" ? "Study streak" : t, () => setType(t)))}</div>
+    <Modal title={`${rematchOf ? "Rematch" : "Challenge"} ${partner.fullName}`} onClose={onClose}>
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-1.5">{["Practice", "Accuracy", "Speed", "Streak"].map((t) => chip(type === t, t === "Streak" ? "Study streak" : t, () => setType(t)))}</div>
         {type === "Streak"
-          ? <div><p className="mb-1 text-xs text-ink-400">Study days to reach</p><div className="flex gap-2">{[3, 5, 7].map((d) => chip(targetDays === d, `${d} days`, () => { setTargetDays(d); if (duration < d) setDuration(d <= 7 ? 7 : 14); }))}</div></div>
-          : <div><p className="mb-1 text-xs text-ink-400">Number of questions</p><div className="flex gap-2">{[20, 50, 100].map((n) => chip(questions === n, `${n}`, () => setQuestions(n)))}</div></div>}
-        <div><p className="mb-1 text-xs text-ink-400">Runs for</p><div className="flex gap-2">{[3, 7, 14].filter((d) => type !== "Streak" || d >= targetDays).map((d) => chip(duration === d, `${d} days`, () => setDuration(d)))}</div></div>
-        <p className="text-xs text-ink-400">Scored from the practice, mock and PYP attempts you both make during the challenge — nothing separate to play.</p>
+          ? (<label className="block"><span className="mb-1 block text-xs text-ink-400">Study days to reach (at least 2)</span>
+              <input className={input} inputMode="numeric" value={targetDays} onChange={(e) => setTargetDays(e.target.value.replace(/\D/g, ""))} aria-label="Study days to reach" /></label>)
+          : (<label className="block"><span className="mb-1 block text-xs text-ink-400">Number of questions (1–1000)</span>
+              <input className={input} inputMode="numeric" value={questions} onChange={(e) => setQuestions(e.target.value.replace(/\D/g, ""))} aria-label="Number of questions" /></label>)}
+        <div>
+          <span className="mb-1 block text-xs text-ink-400">Time to finish (1 minute – 30 days)</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input className={input} inputMode="numeric" value={durValue} onChange={(e) => setDurValue(e.target.value.replace(/\D/g, ""))} aria-label="Challenge time" />
+            {[["minutes", "Minutes"], ["hours", "Hours"], ["days", "Days"]].map(([u, label]) => chip(durUnit === u, label, () => setDurUnit(u)))}
+          </div>
+        </div>
+        <p className="text-xs text-ink-400">Scored from the practice, mock and PYP attempts you both make during the challenge — nothing separate to play. The clock starts when your partner accepts.</p>
         {error && <ErrorBox message={error} />}
         <button type="button" className={`${btnPrimary} w-full`} disabled={busy} onClick={submit}>{busy ? "Sending…" : "Send challenge"}</button>
       </div>
@@ -338,11 +373,46 @@ function PartnerProfile({ partner, onClose, onChanged, onCompare }) {
   );
 }
 
+/** "Challenge · You 32/50 · Raja 18/50" under a partner card -- tap to open it. Shows up to two, then "+N more". */
+function PartnerChallengeChips({ partner, challenges, onOpen }) {
+  const mine = challenges.filter((c) => (c.iAmCreator ? c.partner.userId : c.creator.userId) === partner.userId);
+  if (mine.length === 0) return null;
+  const shortOf = (c, p) => {
+    if (!p) return "–";
+    if (c.type === "Streak") return `${p.activeDays}/${c.targetDays}d`;
+    if (c.type === "Speed") return `${p.bestAttemptAnswered}/${c.questionCount}`;
+    return `${p.answered}/${c.questionCount}`;
+  };
+  return (
+    <div className="mt-2 flex flex-col gap-1">
+      {mine.slice(0, 2).map((c) => {
+        const { mine: me, theirs } = sides(c);
+        const text = c.status === "Pending"
+          ? `${TYPE_TITLE[c.type].replace(" challenge", "")} · waiting for ${c.iAmCreator ? "reply" : "you"}`
+          : `${TYPE_TITLE[c.type].replace(" challenge", "")} · You ${shortOf(c, me)} · ${partner.fullName.split(" ")[0]} ${shortOf(c, theirs)}`;
+        return (
+          <button key={c.id} type="button" onClick={() => onOpen(c)}
+            className="truncate rounded-md bg-primary-50 px-2 py-1 text-left text-xs font-semibold text-primary-600 hover:bg-primary-100"
+            title="Open challenge">{text}</button>
+        );
+      })}
+      {mine.length > 2 && <span className="text-xs text-ink-400">+{mine.length - 2} more challenges</span>}
+    </div>
+  );
+}
+
 function PartnersTab({ onSearchFocus }) {
   const { status, data, error, reload } = useLoad(() => api.getPartners(), []);
   const [profile, setProfile] = useState(null);
   const [compare, setCompare] = useState(null);
   const [challenge, setChallenge] = useState(null);
+  const [openChallenge, setOpenChallenge] = useState(null);
+  const [rematch, setRematch] = useState(null);
+  const [active, setActive] = useState([]);
+
+  // Running challenges, so each partner card can show how it is going. A failure just hides the chips.
+  const loadActive = useCallback(() => { api.getChallenges(false).then(setActive).catch(() => {}); }, []);
+  useEffect(() => { loadActive(); }, [loadActive]);
 
   if (status === "loading") return <Spinner />;
   if (status === "error") return <ErrorBox message={error} onRetry={reload} />;
@@ -369,6 +439,7 @@ function PartnersTab({ onSearchFocus }) {
                   {p.questionsLast7Days != null && `${p.questionsLast7Days} questions this week`}
                 </p>
               )}
+              <PartnerChallengeChips partner={p} challenges={active} onOpen={setOpenChallenge} />
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" className={btnGhost} onClick={() => setCompare(p)}>Compare</button>
                 <button type="button" className={btnGhost} onClick={() => setChallenge(p)}>Challenge</button>
@@ -379,7 +450,10 @@ function PartnersTab({ onSearchFocus }) {
       </ul>
       {profile && <PartnerProfile partner={profile} onClose={() => setProfile(null)} onChanged={reload} onCompare={() => setCompare(profile)} />}
       {compare && <ComparePanel partner={compare} onClose={() => setCompare(null)} />}
-      {challenge && <ChallengeForm partner={challenge} onClose={() => setChallenge(null)} onCreated={() => {}} />}
+      {challenge && <ChallengeForm partner={challenge} onClose={() => setChallenge(null)} onCreated={loadActive} />}
+      {openChallenge && <ChallengeDetail challenge={openChallenge} onClose={() => setOpenChallenge(null)} onChanged={loadActive}
+        onRematch={(c) => { setOpenChallenge(null); setRematch(c); }} />}
+      {rematch && <ChallengeForm partner={sides(rematch).other} rematchOf={rematch} onClose={() => setRematch(null)} onCreated={loadActive} />}
     </>
   );
 }
@@ -445,10 +519,117 @@ function fmtResult(c, v) {
   return c.type === "Streak" ? `${Math.round(v)} days` : `${Math.round(v)} questions`;
 }
 
+function ProgressRow({ c, label, p, mine }) {
+  const pct = p ? Math.min(100, Math.max(0, p.percent)) : 0;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className={`truncate ${mine ? "font-semibold text-ink-900" : "text-ink-600"}`}>{label}</span>
+        <span className="shrink-0 text-ink-400">{progressCaption(c, p)}{p?.reachedTarget ? " ✓" : ""}</span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-primary-50" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${label} progress`}>
+        <div className={`h-full rounded-full ${mine ? "bg-primary-500" : "bg-teal-500"}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function ChallengeProgress({ c }) {
+  const { mine, theirs, other } = sides(c);
+  if (!mine && !theirs) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      <ProgressRow c={c} label="You" p={mine} mine />
+      <ProgressRow c={c} label={other.fullName.split(" ")[0]} p={theirs} />
+    </div>
+  );
+}
+
+/** Small action buttons for one challenge. `onChanged` reloads whatever list is showing it. */
+function ChallengeActions({ c, onAct, onContinue, onRematch }) {
+  const ended = c.endDate && new Date(c.endDate) < new Date();
+  return (
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      {c.status === "Pending" && !c.iAmCreator && (<>
+        <button type="button" className={btnSmPrimary} onClick={() => onAct(() => api.acceptChallenge(c.id), "Challenge accepted.")}>Accept</button>
+        <button type="button" className={btnSmGhost} onClick={() => onAct(() => api.rejectChallenge(c.id))}>Decline</button></>)}
+      {c.status === "Pending" && c.iAmCreator && <button type="button" className={btnSmGhost} onClick={() => onAct(() => api.cancelChallenge(c.id), "Challenge withdrawn.")}>Withdraw</button>}
+      {isRunning(c) && !ended && <button type="button" className={btnSmPrimary} onClick={onContinue}>Continue</button>}
+      {isRunning(c) && ended && <button type="button" className={btnSmPrimary} onClick={() => onAct(() => api.completeChallenge(c.id))}>See result</button>}
+      {c.status === "Completed" && <button type="button" className={btnSmGhost} onClick={onRematch}>Rematch</button>}
+    </div>
+  );
+}
+
+function ResultCells({ c }) {
+  const { other } = sides(c);
+  const mine = c.iAmCreator ? c.creatorResult : c.partnerResult;
+  const theirs = c.iAmCreator ? c.partnerResult : c.creatorResult;
+  const myId = c.iAmCreator ? c.creator.userId : c.partner.userId;
+  return (
+    <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+      <div className={`rounded-lg p-2.5 ${c.winnerUserId && c.winnerUserId === myId ? "bg-teal-50" : "bg-primary-50/60"}`}><p className="text-xs text-ink-400">You</p><p className="font-bold">{fmtResult(c, mine)}</p></div>
+      <div className={`rounded-lg p-2.5 ${c.winnerUserId && c.winnerUserId !== myId ? "bg-teal-50" : "bg-primary-50/60"}`}><p className="truncate text-xs text-ink-400">{other.fullName.split(" ")[0]}</p><p className="font-bold">{fmtResult(c, theirs)}</p></div>
+      {c.resultSummary && <p className="col-span-2 text-xs text-ink-400">{c.resultSummary}</p>}
+    </div>
+  );
+}
+
+const challengeMeta = (c) => [
+  targetText(c), c.exam?.name, `${formatMinutes(durationOf(c))}${c.status === "Pending" ? " once accepted" : ""}`,
+  isRunning(c) && c.endDate ? timeLeft(c.endDate) : null,
+].filter(Boolean).join(" · ");
+
+/** Opens from a challenge card or a partner chip. Always re-fetches so the numbers are current. */
+function ChallengeDetail({ challenge, onClose, onChanged, onRematch }) {
+  const navigate = useNavigate();
+  const [c, setC] = useState(challenge);
+  const [msg, setMsg] = useState("");
+
+  const refresh = useCallback(() => api.getChallenge(challenge.id).then(setC).catch(() => {}), [challenge.id]);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  async function act(fn, ok) {
+    setMsg("");
+    try { await fn(); if (ok) setMsg(ok); } catch (e) { setMsg(errText(e)); }
+    await refresh();
+    onChanged?.();
+  }
+  const { other } = sides(c);
+
+  return (
+    <Modal title={TYPE_TITLE[c.type]} onClose={onClose}>
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <Avatar person={other} size={36} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-ink-900">{c.iAmCreator ? `You → ${other.fullName}` : `${other.fullName} → You`}</p>
+            <p className="text-xs text-ink-400">{challengeMeta(c)}</p>
+          </div>
+          <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-500">{STATUS_LABEL[c.status]}</span>
+        </div>
+        <ChallengeProgress c={c} />
+        {c.status === "Completed" && <ResultCells c={c} />}
+        {c.status === "Pending" && <p className="text-xs text-ink-400">The clock starts when {c.iAmCreator ? "your partner accepts" : "you accept"}.</p>}
+        {isRunning(c) && <p className="text-xs text-ink-400">Every practice, mock and PYP attempt you submit before the end counts automatically.</p>}
+        {msg && <p className="text-xs text-ink-600" role="status">{msg}</p>}
+        <ChallengeActions c={c} onAct={act}
+          onContinue={() => navigate(continuePath(c))}
+          onRematch={() => onRematch?.(c)} />
+      </div>
+    </Modal>
+  );
+}
+
 function ChallengesTab() {
   const [history, setHistory] = useState(false);
   const { status, data, error, reload } = useLoad(() => api.getChallenges(history), [history]);
   const [msg, setMsg] = useState("");
+  const [open, setOpen] = useState(null);
+  const [rematch, setRematch] = useState(null);
+  const navigate = useNavigate();
+  const [, setTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 30000); return () => clearInterval(t); }, []);
 
   async function act(fn, ok) {
     setMsg("");
@@ -461,7 +642,7 @@ function ChallengesTab() {
       <div className="mb-3 inline-flex rounded-lg border border-primary-100 p-0.5" role="tablist">
         {[[false, "Active"], [true, "Finished"]].map(([h, label]) => (
           <button key={label} type="button" role="tab" aria-selected={history === h} onClick={() => setHistory(h)}
-            className={`rounded-md px-4 py-1.5 text-sm font-semibold ${history === h ? "bg-primary-500 text-white" : "text-ink-600"}`}>{label}</button>
+            className={`rounded-md px-3 py-1 text-xs font-semibold ${history === h ? "bg-primary-500 text-white" : "text-ink-600"}`}>{label}</button>
         ))}
       </div>
       {msg && <p className="mb-3 text-sm text-ink-600" role="status">{msg}</p>}
@@ -471,38 +652,31 @@ function ChallengesTab() {
       {status === "ok" && (
         <ul className="grid gap-3 lg:grid-cols-2">
           {data.map((c) => {
-            const other = c.iAmCreator ? c.partner : c.creator;
-            const mine = c.iAmCreator ? c.creatorResult : c.partnerResult;
-            const theirs = c.iAmCreator ? c.partnerResult : c.creatorResult;
-            const ended = c.endDate && new Date(c.endDate) < new Date();
+            const { other } = sides(c);
             return (
               <li key={c.id} className="rounded-xl2 border border-primary-100 bg-white p-4">
-                <div className="flex items-center gap-3">
-                  <Avatar person={other} size={36} />
-                  <div className="min-w-0 flex-1"><p className="font-bold text-ink-900">{TYPE_TITLE[c.type]}</p>
-                    <p className="truncate text-sm text-ink-400">{c.iAmCreator ? `You → ${other.fullName}` : `${other.fullName} → You`}</p></div>
-                  <span className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-500">{STATUS_LABEL[c.status]}</span>
-                </div>
-                <p className="mt-2 text-sm text-ink-700">{[targetText(c), c.exam?.name, c.status === "Pending" ? `${c.durationDays} days once accepted` : c.endDate && c.status === "InProgress" ? `Ends ${new Date(c.endDate).toLocaleDateString()}` : null].filter(Boolean).join(" · ")}</p>
-                {c.status === "Completed" && (
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                    <div className={`rounded-lg p-3 ${c.winnerUserId && c.winnerUserId === (c.iAmCreator ? c.creator.userId : c.partner.userId) ? "bg-teal-50" : "bg-primary-50/60"}`}><p className="text-xs text-ink-400">You</p><p className="font-bold">{fmtResult(c, mine)}</p></div>
-                    <div className="rounded-lg bg-primary-50/60 p-3"><p className="truncate text-xs text-ink-400">{other.fullName.split(" ")[0]}</p><p className="font-bold">{fmtResult(c, theirs)}</p></div>
-                    {c.resultSummary && <p className="col-span-2 text-xs text-ink-400">{c.resultSummary}</p>}
+                <div role="button" tabIndex={0} className="cursor-pointer" onClick={() => setOpen(c)}
+                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setOpen(c))}
+                  aria-label={`Open ${TYPE_TITLE[c.type]} with ${other.fullName}`}>
+                  <div className="flex items-center gap-3">
+                    <Avatar person={other} size={36} />
+                    <div className="min-w-0 flex-1"><p className="font-bold text-ink-900">{TYPE_TITLE[c.type]}</p>
+                      <p className="truncate text-sm text-ink-400">{c.iAmCreator ? `You → ${other.fullName}` : `${other.fullName} → You`}</p></div>
+                    <span className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-500">{STATUS_LABEL[c.status]}</span>
                   </div>
-                )}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {c.status === "Pending" && !c.iAmCreator && (<>
-                    <button type="button" className={btnPrimary} onClick={() => act(() => api.acceptChallenge(c.id), "Challenge accepted.")}>Accept</button>
-                    <button type="button" className={btnGhost} onClick={() => act(() => api.rejectChallenge(c.id))}>Decline</button></>)}
-                  {c.status === "Pending" && c.iAmCreator && <button type="button" className={btnGhost} onClick={() => act(() => api.cancelChallenge(c.id), "Challenge withdrawn.")}>Withdraw</button>}
-                  {c.status === "InProgress" && ended && <button type="button" className={btnPrimary} onClick={() => act(() => api.completeChallenge(c.id))}>See result</button>}
+                  <p className="mt-2 text-sm text-ink-700">{challengeMeta(c)}</p>
+                  {c.status !== "Completed" && <ChallengeProgress c={c} />}
+                  {c.status === "Completed" && <ResultCells c={c} />}
                 </div>
+                <ChallengeActions c={c} onAct={act} onContinue={() => navigate(continuePath(c))} onRematch={() => setRematch(c)} />
               </li>
             );
           })}
         </ul>
       )}
+      {open && <ChallengeDetail challenge={open} onClose={() => setOpen(null)} onChanged={reload}
+        onRematch={(c) => { setOpen(null); setRematch(c); }} />}
+      {rematch && <ChallengeForm partner={sides(rematch).other} rematchOf={rematch} onClose={() => setRematch(null)} onCreated={() => { setMsg("Rematch sent."); reload(); }} />}
     </div>
   );
 }

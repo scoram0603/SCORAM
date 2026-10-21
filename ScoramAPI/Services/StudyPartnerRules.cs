@@ -14,8 +14,10 @@ namespace ScoramAPI.Services
         public static readonly TimeSpan PendingChallengeLifetime = TimeSpan.FromDays(3);
 
         public const int MaxChallengeDays = 30;
-        public const int MinChallengeQuestions = 5;
-        public const int MaxChallengeQuestions = 500;
+        public const int MinChallengeMinutes = 1;
+        public const int MaxChallengeMinutes = MaxChallengeDays * 24 * 60; // 43200
+        public const int MinChallengeQuestions = 1;
+        public const int MaxChallengeQuestions = 1000;
 
         /// <summary>An accuracy ranking only means something over enough answers.</summary>
         public const int MinAnsweredForAccuracyRank = 10;
@@ -36,21 +38,57 @@ namespace ScoramAPI.Services
                 _ => false
             };
 
-        public static string? ValidateChallenge(StudyChallengeType type, int? questionCount, int? targetDays, int durationDays)
+        /// <summary>The student picks both numbers freely: any question count (1..1000) and any duration from
+        /// 1 minute up to 30 days. A Streak counts study DAYS, so its target must fit the days available.</summary>
+        public static string? ValidateChallenge(StudyChallengeType type, int? questionCount, int? targetDays, int durationMinutes)
         {
-            if (durationDays < 1 || durationDays > MaxChallengeDays)
-                return $"A challenge can last 1 to {MaxChallengeDays} days.";
+            if (durationMinutes < MinChallengeMinutes || durationMinutes > MaxChallengeMinutes)
+                return $"A challenge can last from 1 minute up to {MaxChallengeDays} days.";
 
             if (type == StudyChallengeType.Streak)
             {
-                if (targetDays is null || targetDays < 2 || targetDays > durationDays)
+                var daysAvailable = DaysInWindow(durationMinutes);
+                if (targetDays is null || targetDays < 2 || targetDays > daysAvailable)
                     return "Pick a streak target of at least 2 days that fits inside the challenge period.";
                 return null;
             }
 
             if (questionCount is null || questionCount < MinChallengeQuestions || questionCount > MaxChallengeQuestions)
-                return $"Pick between {MinChallengeQuestions} and {MaxChallengeQuestions} questions.";
+                return $"Enter between {MinChallengeQuestions} and {MaxChallengeQuestions} questions.";
             return null;
+        }
+
+        /// <summary>Whole days a window of this many minutes can offer (rounded up, at least 1).</summary>
+        public static int DaysInWindow(int durationMinutes) => Math.Max(1, (int)Math.Ceiling(durationMinutes / 1440.0));
+
+        /// <summary>Minutes a stored challenge runs: the exact value, or days * 1440 for older rows.</summary>
+        public static int EffectiveMinutes(int? durationMinutes, int durationDays) => durationMinutes ?? durationDays * 1440;
+
+        /// <summary>Plain-English length: "15 minutes", "2 hours", "1 hour 30 minutes", "3 days".</summary>
+        public static string FormatDuration(int minutes)
+        {
+            static string Unit(int n, string word) => $"{n} {word}{(n == 1 ? "" : "s")}";
+            if (minutes % 1440 == 0) return Unit(minutes / 1440, "day");
+            if (minutes < 60) return Unit(minutes, "minute");
+            var h = minutes / 60; var m = minutes % 60;
+            if (minutes < 1440) return m == 0 ? Unit(h, "hour") : $"{Unit(h, "hour")} {Unit(m, "minute")}";
+            var d = minutes / 1440; var rest = minutes % 1440;
+            var rh = rest / 60;
+            return rh == 0 ? Unit(d, "day") : $"{Unit(d, "day")} {Unit(rh, "hour")}";
+        }
+
+        /// <summary>0-100 progress of one side towards the challenge target (identical for both sides).</summary>
+        public static int ProgressPercent(StudyChallengeType type, int? questionCount, int? targetDays, int answered, int bestAttemptAnswered, int activeDays)
+        {
+            double done, goal;
+            switch (type)
+            {
+                case StudyChallengeType.Streak: done = activeDays; goal = targetDays ?? 0; break;
+                case StudyChallengeType.Speed: done = bestAttemptAnswered; goal = questionCount ?? 0; break;
+                default: done = answered; goal = questionCount ?? 0; break;
+            }
+            if (goal <= 0) return 0;
+            return (int)Math.Clamp(Math.Floor(done / goal * 100), 0, 100);
         }
 
         /// <summary>One side's activity inside the challenge window (built from StudentTestResults).</summary>

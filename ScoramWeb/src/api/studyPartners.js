@@ -24,6 +24,7 @@ export const getLeaderboard = (period, metric) =>
   j("GET", `/leaderboard?period=${period}&metric=${metric}`);
 
 export const getChallenges = (history = false) => j("GET", `/challenges?scope=${history ? "history" : "active"}`);
+export const getChallenge = (id) => j("GET", `/challenges/${id}`);
 export const createChallenge = (body) => j("POST", "/challenges", body);
 export const acceptChallenge = (id) => j("POST", `/challenges/${id}/accept`);
 export const rejectChallenge = (id) => j("POST", `/challenges/${id}/reject`);
