@@ -121,6 +121,7 @@ export default function QuestionBankSearch() {
   }, [scope.isScoped, scope.ready, scope.isEmpty, scope.examIds, examIds.join(",")]);
 
   const [subjects, setSubjects] = useState([]);
+  const [subjectsExamId, setSubjectsExamId] = useState(null); // which exam `subjects` was loaded for
   const [topics, setTopics] = useState([]);
   const [exams, setExams] = useState([]);
   const [allYears, setAllYears] = useState([]);
@@ -144,12 +145,43 @@ export default function QuestionBankSearch() {
 
   useEffect(() => {
     if (!canFetch) return;
-    getQuestionBankSubjects().then(setSubjects).catch(() => {});
     getQuestionBankExams().then(setExams).catch(() => {});
     getQuestionBankYears().then(setAllYears).catch(() => {});
     // Real total, unfiltered -- powers the "X Questions" stat card regardless of active filters.
     searchQuestionBank({ page: 1, pageSize: 1 }).then((d) => setTotalQuestionCount(d.totalCount)).catch(() => {});
   }, [canFetch]);
+
+  // EXAM-WISE FILTERS -- when the results are for exactly one exam (picked in the Exam filter, or the student's
+  // single My Exam) the Subject/Topic lists are that exam's own, so a subject/topic renamed for one exam shows
+  // under its new name only there. Everything else (several exams, no exam, an exam without its own list) is the
+  // global list, unchanged. The selected ids stay in the same ?subjectIds=/?topicIds= URL params either way; they
+  // are just sent to the API as examSubjectIds/examTopicIds when the list is exam-wise.
+  const activeExamId = examIds.length === 1 ? examIds[0] : (scope.isScoped && scope.examIds?.length === 1 ? scope.examIds[0] : null);
+  useEffect(() => {
+    if (!canFetch) return undefined;
+    let cancelled = false;
+    getQuestionBankSubjects(activeExamId)
+      .then((list) => { if (!cancelled) { setSubjects(list); setSubjectsExamId(activeExamId); } })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [canFetch, activeExamId]);
+
+  const examWise = subjects.length > 0 && subjects.every((s) => s.isExamSpecific === true);
+  const subjectFilter = examWise ? { examSubjectIds: subjectIds } : { subjectIds };
+  const topicFilter = examWise ? { examTopicIds: topicIds } : { topicIds };
+
+  // Switching between the global list and an exam's own list (or between two exams) makes the previously picked
+  // subject/topic ids meaningless, so clear them -- but never on the first load, so shared links keep working.
+  const subjectModeRef = useRef(null);
+  useEffect(() => {
+    if (subjects.length === 0) return;
+    const mode = examWise ? `exam:${subjectsExamId}` : "global";
+    const prev = subjectModeRef.current;
+    subjectModeRef.current = mode;
+    if (prev === null || prev === mode) return;
+    if (subjectIds.length > 0 || topicIds.length > 0) updateListParam("subjectIds", [], ["topicIds"]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjects]);
 
   // Topic dropdown depends on the chosen Subject(s) (spec section 18) -- with several subjects
   // selected, the Topic list is the union of each subject's topics.
@@ -158,14 +190,14 @@ export default function QuestionBankSearch() {
       setTopics([]);
       return;
     }
-    Promise.all(subjectIds.map((id) => getQuestionBankTopics(id).catch(() => [])))
+    Promise.all(subjectIds.map((id) => getQuestionBankTopics(id, examWise ? subjectsExamId : undefined).catch(() => [])))
       .then((lists) => {
         const merged = new Map();
         lists.flat().forEach((t) => merged.set(t.id, t));
         setTopics(Array.from(merged.values()));
       })
       .catch(() => setTopics([]));
-  }, [subjectIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [subjectIds.join(","), examWise, subjectsExamId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadPage = useCallback(
     (pageNum, { append }) => {
@@ -173,7 +205,7 @@ export default function QuestionBankSearch() {
       setStatus(append ? "loading-more" : "loading");
 
       searchQuestionBank(
-        { search, subjectIds, topicIds, examIds, years, languages, page: pageNum, pageSize: PAGE_SIZE },
+        { search, ...subjectFilter, ...topicFilter, examIds, years, languages, page: pageNum, pageSize: PAGE_SIZE },
         { signal: controller.signal }
       )
         .then((data) => {
@@ -195,7 +227,7 @@ export default function QuestionBankSearch() {
       return controller;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [search, subjectIds.join(","), topicIds.join(","), examIds.join(","), years.join(","), languages.join(",")]
+    [search, subjectIds.join(","), topicIds.join(","), examWise, examIds.join(","), years.join(","), languages.join(",")]
   );
 
   // Filters/search changed -- start over from page 1.
@@ -232,7 +264,7 @@ export default function QuestionBankSearch() {
         try {
           const pages = await Promise.all(
             Array.from({ length: needed - 1 }, (_, i) =>
-              searchQuestionBank({ search, subjectIds, topicIds, examIds, years, languages, page: i + 2, pageSize: PAGE_SIZE })),
+              searchQuestionBank({ search, ...subjectFilter, ...topicFilter, examIds, years, languages, page: i + 2, pageSize: PAGE_SIZE })),
           );
           if (cancelled) return;
           all = [...items, ...pages.flatMap((p) => p.items)];

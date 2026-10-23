@@ -24,11 +24,11 @@ function toQueryString(params = {}) {
 // Each filter accepts either a single value or an array of values (multi-select) -- e.g.
 // examIds: examId (one exam) or examIds: [examId1, examId2] (either exam).
 export function searchQuestionBank(
-  { search, subjectIds, topicIds, examIds, years, languages, page = 1, pageSize = 20 } = {},
+  { search, subjectIds, topicIds, examSubjectIds, examTopicIds, examIds, years, languages, page = 1, pageSize = 20 } = {},
   opts = {}
 ) {
   return apiFetch(
-    `/api/question-bank/search${toQueryString({ search, subjectIds, topicIds, examIds, years, languages, page, pageSize })}`,
+    `/api/question-bank/search${toQueryString({ search, subjectIds, topicIds, examSubjectIds, examTopicIds, examIds, years, languages, page, pageSize })}`,
     { ...opts, optionalAuth: true } // sends the student token so the API can apply My Exams
   );
 }
@@ -38,14 +38,18 @@ export function getQuestionBankQuestion(id) {
   return apiFetch(`/api/question-bank/${id}`);
 }
 
-// GET /api/question-bank/subjects -- active subjects only, for the filter dropdown
-export function getQuestionBankSubjects() {
-  return apiFetch("/api/question-bank/subjects", { optionalAuth: true });
+// GET /api/question-bank/subjects[?examId=] -- active subjects only, for the filter dropdown.
+// With examId, an exam that has its own (exam-wise) subject list returns THAT list: each item then has
+// isExamSpecific=true and its id is an EXAM subject id (send it as examSubjectIds to searchQuestionBank).
+// Without examId -- or for an exam with no exam-wise list -- it is the global list, exactly as before.
+export function getQuestionBankSubjects(examId) {
+  return apiFetch(`/api/question-bank/subjects${toQueryString({ examId })}`, { optionalAuth: true });
 }
 
-// GET /api/question-bank/topics?subjectId=... -- Topic dropdown depends on the chosen Subject
-export function getQuestionBankTopics(subjectId) {
-  return apiFetch(`/api/question-bank/topics${toQueryString({ subjectId })}`, { optionalAuth: true });
+// GET /api/question-bank/topics?subjectId=...[&examId=] -- Topic dropdown depends on the chosen Subject.
+// When examId is sent for an exam-wise exam, subjectId is the EXAM subject id and the topic ids are EXAM topic ids.
+export function getQuestionBankTopics(subjectId, examId) {
+  return apiFetch(`/api/question-bank/topics${toQueryString({ subjectId, examId })}`, { optionalAuth: true });
 }
 
 // GET /api/question-bank/exams -- only exams actually used in the Question Bank

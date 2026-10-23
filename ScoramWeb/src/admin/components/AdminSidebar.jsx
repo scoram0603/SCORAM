@@ -4,7 +4,7 @@ import {
   ShieldCheck, ShieldAlert, Lightbulb, Flag, Library, ChevronsLeft, ChevronsRight, PenLine, Trophy,
   GraduationCap, Zap, Building2, LockKeyhole, BookOpen, MessageSquareText, Layers, PencilRuler,
   BarChart3, UserCog, FileDown, Megaphone, SlidersHorizontal, MonitorSmartphone, LifeBuoy, HeartPulse,
-  ShieldQuestion, Fingerprint, ChevronDown, Search, X, Gavel, Star, LayoutTemplate,
+  ShieldQuestion, Fingerprint, ChevronDown, Search, X, Gavel, Star, LayoutTemplate, ListTree,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import logoMark from "../../assets/scoram-logo-square.png";
@@ -45,6 +45,7 @@ const NAV_GROUPS = [
       { to: "/admin/bulk-editor", label: "Bulk Question Editor", icon: PencilRuler, indent: true, permission: "EditPaper" },
       { to: "/admin/exams", label: "Manage Exams", icon: GraduationCap },
       { to: "/admin/subjects", label: "Subjects", icon: BookOpen, permission: "ManageSubjects" },
+      { to: "/admin/exam-taxonomy", label: "Exam Subjects & Topics", icon: ListTree, permission: "ManageSubjects" },
     ],
   },
   {

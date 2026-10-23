@@ -110,6 +110,11 @@ namespace ScoramAPI.Data
         public DbSet<QuestionBankExamMapping> QuestionBankExamMappings => Set<QuestionBankExamMapping>();
         public DbSet<QuestionBankImportJob> QuestionBankImportJobs => Set<QuestionBankImportJob>();
 
+        // Exam-wise Subject & Topic taxonomy -- see Models/ExamTaxonomyModels.cs.
+        public DbSet<ExamSubject> ExamSubjects => Set<ExamSubject>();
+        public DbSet<ExamTopic> ExamTopics => Set<ExamTopic>();
+        public DbSet<QuestionBankExamClassification> QuestionBankExamClassifications => Set<QuestionBankExamClassification>();
+
         // Tests -- Practice Tests + Mock Tests (SCORAM_TESTS)
         public DbSet<PracticeTestTemplate> PracticeTestTemplates => Set<PracticeTestTemplate>();
         public DbSet<PracticeTestTemplateQuestion> PracticeTestTemplateQuestions => Set<PracticeTestTemplateQuestion>();
@@ -1323,6 +1328,50 @@ namespace ScoramAPI.Data
                 .HasIndex(m => m.ExamId);
             modelBuilder.Entity<QuestionBankExamMapping>()
                 .HasIndex(m => m.Year);
+
+            // ---- Exam-wise Subject & Topic taxonomy (Models/ExamTaxonomyModels.cs) ----
+            // Every FK is Restrict: nothing here may cascade-delete content, and Restrict everywhere also
+            // sidesteps SQL Server's "multiple cascade paths" rejection. The one Cascade is a question's own
+            // classification rows going away with the question (same as its exam mappings).
+            modelBuilder.Entity<ExamSubject>(e =>
+            {
+                e.HasOne(x => x.Exam).WithMany().HasForeignKey(x => x.ExamId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(x => x.BaseSubject).WithMany().HasForeignKey(x => x.BaseSubjectId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(x => x.CreatedByAdmin).WithMany().HasForeignKey(x => x.CreatedByAdminId).OnDelete(DeleteBehavior.Restrict);
+                // A name is unique among ACTIVE subjects of one exam (an archived one doesn't block reuse).
+                e.HasIndex(x => new { x.ExamId, x.Name }).IsUnique().HasFilter("[IsActive] = 1")
+                    .HasDatabaseName("UX_ExamSubjects_Exam_Name_Active");
+                // One exam subject per (exam, global subject) lineage link.
+                e.HasIndex(x => new { x.ExamId, x.BaseSubjectId }).IsUnique().HasFilter("[BaseSubjectId] IS NOT NULL")
+                    .HasDatabaseName("UX_ExamSubjects_Exam_Base");
+                e.HasIndex(x => x.BaseSubjectId);
+                e.HasIndex(x => x.CreatedByAdminId);
+            });
+
+            modelBuilder.Entity<ExamTopic>(e =>
+            {
+                e.HasOne(x => x.ExamSubject).WithMany(s => s.Topics).HasForeignKey(x => x.ExamSubjectId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(x => x.BaseTopic).WithMany().HasForeignKey(x => x.BaseTopicId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(x => x.CreatedByAdmin).WithMany().HasForeignKey(x => x.CreatedByAdminId).OnDelete(DeleteBehavior.Restrict);
+                e.HasIndex(x => new { x.ExamSubjectId, x.Name }).IsUnique().HasFilter("[IsActive] = 1")
+                    .HasDatabaseName("UX_ExamTopics_Subject_Name_Active");
+                e.HasIndex(x => x.BaseTopicId);
+                e.HasIndex(x => x.CreatedByAdminId);
+            });
+
+            modelBuilder.Entity<QuestionBankExamClassification>(e =>
+            {
+                e.HasOne(x => x.QuestionBankQuestion).WithMany().HasForeignKey(x => x.QuestionBankQuestionId).OnDelete(DeleteBehavior.Cascade);
+                e.HasOne(x => x.Exam).WithMany().HasForeignKey(x => x.ExamId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(x => x.ExamSubject).WithMany().HasForeignKey(x => x.ExamSubjectId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(x => x.ExamTopic).WithMany().HasForeignKey(x => x.ExamTopicId).OnDelete(DeleteBehavior.Restrict);
+                // The same question has at most ONE classification per exam.
+                e.HasIndex(x => new { x.QuestionBankQuestionId, x.ExamId }).IsUnique()
+                    .HasDatabaseName("UX_QBExamClassifications_Question_Exam");
+                e.HasIndex(x => new { x.ExamId, x.ExamSubjectId });
+                e.HasIndex(x => x.ExamSubjectId);
+                e.HasIndex(x => x.ExamTopicId);
+            });
 
             modelBuilder.Entity<QuestionBankImportJob>()
                 .HasOne(j => j.CreatedByAdmin)

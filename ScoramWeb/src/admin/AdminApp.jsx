@@ -25,6 +25,7 @@ import QuestionBankUploadWizard from "./pages/QuestionBankUploadWizard";
 import TestBulkUpload from "./pages/TestBulkUpload";
 import QuestionBankSubjectsTopics from "./pages/QuestionBankSubjectsTopics";
 import SubjectManagement from "./pages/SubjectManagement";
+import ExamTaxonomyManagement from "./pages/ExamTaxonomyManagement";
 import QuestionBankReportsQueue from "./pages/QuestionBankReportsQueue";
 import MockTestManagement from "./pages/MockTestManagement";
 import PracticeTestManagement from "./pages/PracticeTestManagement";
@@ -106,6 +107,8 @@ function AdminRoutes() {
           {/* Subject Management: master-data admin (rename / merge / reassign / delete Subjects) */}
           <Route element={<RequireAdminPermission permission="ManageSubjects" />}>
             <Route path="subjects" element={<SubjectManagement />} />
+            {/* Exam-wise Subject & Topic Management: per-exam rename / add / delete + question mapping */}
+            <Route path="exam-taxonomy" element={<ExamTaxonomyManagement />} />
           </Route>
 
           {/* STUDENT REVIEWS: moderation of the public "Rate SCORAM" reviews */}

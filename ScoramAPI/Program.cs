@@ -87,6 +87,7 @@ builder.Services.AddScoped<IQuestionBankImportCommitService, QuestionBankImportC
 builder.Services.AddScoped<ITestBulkImportService, TestBulkImportService>(); // Mock Test / Practice Template bulk upload
 builder.Services.AddScoped<ITestAttemptService, TestAttemptService>(); // SCORAM_TESTS
 builder.Services.AddScoped<ISubjectManagementService, SubjectManagementService>(); // Subject Management (admin)
+builder.Services.AddScoped<IExamTaxonomyService, ExamTaxonomyService>(); // Exam-wise Subject & Topic Management (admin)
 builder.Services.AddScoped<IBusinessIdService, BusinessIdService>(); // Business IDs (EXMSSC001, SUB001, ...) -- SuperAdmin change + one-time backfill
 builder.Services.AddScoped<IGamificationService, GamificationService>(); // GAMIFICATION
 builder.Services.AddScoped<IMyExamScopeService, MyExamScopeService>(); // MY EXAMS -- strict per-student exam content scope, see MyExamScopeService

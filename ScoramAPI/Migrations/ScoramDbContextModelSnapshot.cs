@@ -2082,6 +2082,139 @@ namespace ScoramAPI.Migrations
                     b.ToTable("Questions");
                 });
 
+            modelBuilder.Entity("ScoramAPI.Models.ExamSubject", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("BaseSubjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ExamId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BaseSubjectId");
+
+                    b.HasIndex("CreatedByAdminId");
+
+                    b.HasIndex(new[] { "ExamId", "BaseSubjectId" })
+                        .IsUnique()
+                        .HasDatabaseName("UX_ExamSubjects_Exam_Base")
+                        .HasFilter("[BaseSubjectId] IS NOT NULL");
+
+                    b.HasIndex(new[] { "ExamId", "Name" })
+                        .IsUnique()
+                        .HasDatabaseName("UX_ExamSubjects_Exam_Name_Active")
+                        .HasFilter("[IsActive] = 1");
+
+                    b.ToTable("ExamSubjects");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.ExamTopic", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("BaseTopicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ExamSubjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BaseTopicId");
+
+                    b.HasIndex("CreatedByAdminId");
+
+                    b.HasIndex(new[] { "ExamSubjectId", "Name" })
+                        .IsUnique()
+                        .HasDatabaseName("UX_ExamTopics_Subject_Name_Active")
+                        .HasFilter("[IsActive] = 1");
+
+                    b.ToTable("ExamTopics");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.QuestionBankExamClassification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ExamId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ExamSubjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ExamTopicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("QuestionBankQuestionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExamSubjectId");
+
+                    b.HasIndex("ExamTopicId");
+
+                    b.HasIndex(new[] { "ExamId", "ExamSubjectId" });
+
+                    b.HasIndex(new[] { "QuestionBankQuestionId", "ExamId" })
+                        .IsUnique()
+                        .HasDatabaseName("UX_QBExamClassifications_Question_Exam");
+
+                    b.ToTable("QuestionBankExamClassifications");
+                });
+
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankExamMapping", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4806,6 +4939,93 @@ namespace ScoramAPI.Migrations
                     b.Navigation("ImportJob");
 
                     b.Navigation("Paper");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.ExamSubject", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionBankSubject", "BaseSubject")
+                        .WithMany()
+                        .HasForeignKey("BaseSubjectId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoramAPI.Models.Exam", "Exam")
+                        .WithMany()
+                        .HasForeignKey("ExamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("BaseSubject");
+
+                    b.Navigation("CreatedByAdmin");
+
+                    b.Navigation("Exam");
+
+                    b.Navigation("Topics");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.ExamTopic", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.QuestionBankTopic", "BaseTopic")
+                        .WithMany()
+                        .HasForeignKey("BaseTopicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoramAPI.Models.Admin", "CreatedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoramAPI.Models.ExamSubject", "ExamSubject")
+                        .WithMany("Topics")
+                        .HasForeignKey("ExamSubjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("BaseTopic");
+
+                    b.Navigation("CreatedByAdmin");
+
+                    b.Navigation("ExamSubject");
+                });
+
+            modelBuilder.Entity("ScoramAPI.Models.QuestionBankExamClassification", b =>
+                {
+                    b.HasOne("ScoramAPI.Models.Exam", "Exam")
+                        .WithMany()
+                        .HasForeignKey("ExamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ScoramAPI.Models.ExamSubject", "ExamSubject")
+                        .WithMany()
+                        .HasForeignKey("ExamSubjectId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoramAPI.Models.ExamTopic", "ExamTopic")
+                        .WithMany()
+                        .HasForeignKey("ExamTopicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ScoramAPI.Models.QuestionBankQuestion", "QuestionBankQuestion")
+                        .WithMany()
+                        .HasForeignKey("QuestionBankQuestionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Exam");
+
+                    b.Navigation("ExamSubject");
+
+                    b.Navigation("ExamTopic");
+
+                    b.Navigation("QuestionBankQuestion");
                 });
 
             modelBuilder.Entity("ScoramAPI.Models.QuestionBankExamMapping", b =>

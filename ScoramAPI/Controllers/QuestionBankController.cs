@@ -22,13 +22,15 @@ namespace ScoramAPI.Controllers
         private readonly IGamificationService _gamification;
         private readonly ILogger<QuestionBankController> _logger;
         private readonly IMyExamScopeService _myExams;
+        private readonly IExamTaxonomyService _examTaxonomy;
 
-        public QuestionBankController(ScoramDbContext db, IGamificationService gamification, ILogger<QuestionBankController> logger, IMyExamScopeService myExams)
+        public QuestionBankController(ScoramDbContext db, IGamificationService gamification, ILogger<QuestionBankController> logger, IMyExamScopeService myExams, IExamTaxonomyService examTaxonomy)
         {
             _db = db;
             _gamification = gamification;
             _logger = logger;
             _myExams = myExams;
+            _examTaxonomy = examTaxonomy;
         }
 
         // VISIBILITY FIX -- IQuestionBankMirrorService mirrors a PYP question into the Question Bank
@@ -116,6 +118,12 @@ namespace ScoramAPI.Controllers
                     filtered = filtered.Where(x => subjectIds.Contains(x.SubjectId));
                 if (query.TopicIds is { Count: > 0 } topicIds)
                     filtered = filtered.Where(x => topicIds.Contains(x.TopicId));
+                // EXAM-WISE subject/topic filters (additive): resolved per exam by ExamTaxonomyService, so the
+                // same question can sit under different subjects/topics in different exams.
+                if (query.ExamSubjectIds is { Count: > 0 } examSubjectIds)
+                    filtered = _examTaxonomy.FilterByExamSubjects(filtered, examSubjectIds);
+                if (query.ExamTopicIds is { Count: > 0 } examTopicIds)
+                    filtered = _examTaxonomy.FilterByExamTopics(filtered, examTopicIds);
                 if (scopedExamIds != null)
                     filtered = filtered.Where(x => x.ExamMappings.Any(m => scopedExamIds.Contains(m.ExamId)));
                 else if (query.ExamIds is { Count: > 0 } examIds)
@@ -206,6 +214,15 @@ namespace ScoramAPI.Controllers
             }
 
             var mapped = items.Select(MapToResponseDto).ToList();
+
+            // EXAM-WISE NAMES: when the result is for exactly ONE exam (the filter, or a student's single My
+            // Exam), show each question's subject/topic as classified IN THAT EXAM. An exam with no exam-wise
+            // taxonomy (or a question left unassigned there) keeps the question's own global names, so
+            // existing clients/behaviour are unchanged.
+            var examForNames = (scopedExamIds ?? query.ExamIds) is { Count: 1 } single ? single[0] : (Guid?)null;
+            if (examForNames.HasValue)
+                await ApplyExamNamesAsync(examForNames.Value, items, mapped);
+
             foreach (var dto in mapped)
             {
                 dto.LikeCount = likeCounts.GetValueOrDefault(dto.Id);
@@ -225,7 +242,7 @@ namespace ScoramAPI.Controllers
 
         // GET /api/question-bank/{id}
         [HttpGet("{id:guid}")]
-        public async Task<ActionResult<QuestionBankQuestionResponseDto>> GetById(Guid id)
+        public async Task<ActionResult<QuestionBankQuestionResponseDto>> GetById(Guid id, [FromQuery] Guid? examId = null)
         {
             var question = await VisibleQuestions()
                 .Include(x => x.Subject)
@@ -237,6 +254,7 @@ namespace ScoramAPI.Controllers
             if (question == null) return NotFound(new { message = "Question not found." });
 
             var dto = MapToResponseDto(question);
+            if (examId.HasValue) await ApplyExamNamesAsync(examId.Value, new[] { question }, new[] { dto });
             dto.LikeCount = await _db.QuestionVotes.CountAsync(v => v.QuestionBankQuestionId == id && v.IsLike);
             dto.DislikeCount = await _db.QuestionVotes.CountAsync(v => v.QuestionBankQuestionId == id && !v.IsLike);
             dto.CommentCount = await _db.QuestionComments.CountAsync(c => c.QuestionBankQuestionId == id);
@@ -280,13 +298,27 @@ namespace ScoramAPI.Controllers
         // ---------- Filter dropdown data (section 18) — active values only ----------
 
         [HttpGet("subjects")]
-        public async Task<ActionResult<List<QuestionBankSubjectDto>>> GetSubjects()
+        public async Task<ActionResult<List<QuestionBankSubjectDto>>> GetSubjects([FromQuery] Guid? examId = null)
         {
             // MY EXAMS -- a signed-in student's per-subject counts only count questions of their own
             // exams, and a subject with nothing in scope is dropped rather than shown as a dead end.
             var scope = await _myExams.GetScopeAsync(User);
             var scoped = scope.IsScoped;
             var allowedExamIds = scope.ExamIds.ToList();
+
+            // EXAM-WISE LIST (additive): ?examId= for an exam that has its own subject list returns THAT exam's
+            // subjects (Id = exam subject id). Without examId, or for an exam that hasn't got one, this is the
+            // global list exactly as before.
+            if (examId.HasValue && (!scoped || allowedExamIds.Contains(examId.Value)) && await _examTaxonomy.IsInitializedAsync(examId.Value))
+            {
+                var examSubjects = await _examTaxonomy.GetStudentSubjectsAsync(examId.Value, VisibleQuestions());
+                return Ok(examSubjects
+                    .Where(s => !scoped || s.QuestionCount > 0)
+                    .Select(s => new QuestionBankSubjectDto { Id = s.Id, Name = s.Name, IsActive = true, QuestionCount = s.QuestionCount, IsExamSpecific = true })
+                    .ToList());
+            }
+            if (examId.HasValue && scoped && !allowedExamIds.Contains(examId.Value))
+                return Ok(new List<QuestionBankSubjectDto>());
 
             var subjects = await _db.QuestionBankSubjects
                 .Where(s => s.IsActive)
@@ -312,12 +344,24 @@ namespace ScoramAPI.Controllers
 
         // GET /api/question-bank/topics?subjectId=... -- Topic dropdown depends on the selected Subject.
         [HttpGet("topics")]
-        public async Task<ActionResult<List<QuestionBankTopicDto>>> GetTopics([FromQuery] Guid? subjectId)
+        public async Task<ActionResult<List<QuestionBankTopicDto>>> GetTopics([FromQuery] Guid? subjectId, [FromQuery] Guid? examId = null)
         {
             // MY EXAMS -- see GetSubjects.
             var scope = await _myExams.GetScopeAsync(User);
             var scoped = scope.IsScoped;
             var allowedExamIds = scope.ExamIds.ToList();
+
+            // EXAM-WISE LIST (additive) -- see GetSubjects. subjectId is then an EXAM subject id.
+            if (examId.HasValue && (!scoped || allowedExamIds.Contains(examId.Value)) && await _examTaxonomy.IsInitializedAsync(examId.Value))
+            {
+                var examTopics = await _examTaxonomy.GetStudentTopicsAsync(examId.Value, subjectId, VisibleQuestions());
+                return Ok(examTopics
+                    .Where(t => !scoped || t.QuestionCount > 0)
+                    .Select(t => new QuestionBankTopicDto { Id = t.Id, SubjectId = t.SubjectId, SubjectName = t.SubjectName, Name = t.Name, IsActive = true, QuestionCount = t.QuestionCount, IsExamSpecific = true })
+                    .ToList());
+            }
+            if (examId.HasValue && scoped && !allowedExamIds.Contains(examId.Value))
+                return Ok(new List<QuestionBankTopicDto>());
 
             var q = _db.QuestionBankTopics.Where(t => t.IsActive).AsQueryable();
             if (subjectId.HasValue) q = q.Where(t => t.SubjectId == subjectId.Value);
@@ -391,6 +435,18 @@ namespace ScoramAPI.Controllers
                 .OrderByDescending(y => y)
                 .ToListAsync();
             return Ok(years);
+        }
+
+        private async Task ApplyExamNamesAsync(Guid examId, IEnumerable<QuestionBankQuestion> questions, IEnumerable<QuestionBankQuestionResponseDto> dtos)
+        {
+            var names = await _examTaxonomy.ResolveNamesAsync(examId, questions.Select(x => (x.Id, x.SubjectId, x.TopicId)).ToList());
+            if (names.Count == 0) return;
+            foreach (var dto in dtos)
+            {
+                if (!names.TryGetValue(dto.Id, out var n)) continue;
+                dto.Subject = n.Subject ?? dto.Subject;
+                dto.Topic = n.Topic ?? dto.Topic;
+            }
         }
 
         public static QuestionBankQuestionResponseDto MapToResponseDto(Models.QuestionBankQuestion x) => new QuestionBankQuestionResponseDto

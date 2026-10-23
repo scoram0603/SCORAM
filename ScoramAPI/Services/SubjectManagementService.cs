@@ -735,7 +735,18 @@ namespace ScoramAPI.Services
             var subject = await _db.QuestionBankSubjects.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct) ?? throw NotFound();
             var usage = (await ComputeUsageAsync(new[] { subject }, includeDistinct: true, includeAttempts: true, ct))[id];
             var blockers = DeleteBlockers(usage);
+            blockers.AddRange(await ExamWiseBlockersAsync(id, ct));
             return new SubjectDeletePreviewDto { Subject = ToItem(subject, usage), CanDelete = blockers.Count == 0, Blockers = blockers };
+        }
+
+        // Exam-wise Subject & Topic Management: exam subjects/topics created from this global subject keep a
+        // lineage link to it (FK, Restrict), so it can't be hard-deleted while any exam still references it.
+        private async Task<List<string>> ExamWiseBlockersAsync(Guid subjectId, CancellationToken ct)
+        {
+            var b = new List<string>();
+            var links = await _db.ExamSubjects.CountAsync(e => e.BaseSubjectId == subjectId, ct);
+            if (links > 0) b.Add($"{links:N0} exam-wise subject list entr{(links == 1 ? "y" : "ies")} (Exam-wise Subject & Topic Management) linked to it");
+            return b;
         }
 
         private static List<string> DeleteBlockers(SubjectUsageDto u)
@@ -767,6 +778,7 @@ namespace ScoramAPI.Services
                 // Re-checked live inside the transaction -- never trust an earlier preview for a delete.
                 var usage = (await ComputeUsageAsync(new[] { subject }, includeDistinct: false, includeAttempts: true, ct))[id];
                 var blockers = DeleteBlockers(usage);
+                blockers.AddRange(await ExamWiseBlockersAsync(id, ct));
                 if (blockers.Count > 0)
                     throw new SubjectOpException(409, "SUBJECT_IN_USE",
                         "Cannot delete this subject because it is currently used by existing content.",

@@ -7,7 +7,7 @@ export const PERMISSIONS = [
   { key: "DeletePaper", group: "Content", label: "Delete Paper", hint: "Delete papers and individual questions" },
   { key: "PublishPaper", group: "Content", label: "Publish Paper", hint: "Approve/reject/publish/unpublish -- also skips review when this admin submits their own uploads" },
   { key: "ManageQuestionBank", group: "Content", label: "Manage Question Bank", hint: "Add/edit/delete Question Bank questions, bulk Excel/JSON import, manage Subjects and Topics" },
-  { key: "ManageSubjects", group: "Content", label: "Manage Subjects", hint: "Rename, activate/deactivate, merge, reassign and delete Subjects (master data that every PYQ/PYP/test filter uses)" },
+  { key: "ManageSubjects", group: "Content", label: "Manage Subjects", hint: "Rename, activate/deactivate, merge, reassign and delete Subjects (master data that every PYQ/PYP/test filter uses), and manage each exam's own subject/topic list and question mapping" },
   { key: "ManageTests", group: "Content", label: "Manage Tests", hint: "Create/edit/publish/schedule Mock Tests and Practice Test templates, view student attempts and results" },
   { key: "ModerateSolutions", group: "Moderation", label: "Moderate Solutions", hint: "Approve/reject student-submitted solutions, and post Official/Teacher solutions" },
   { key: "ModerateDiscussions", group: "Moderation", label: "Moderate Discussions", hint: "Pin comments, mark reported comments resolved/removed, and post official replies" },

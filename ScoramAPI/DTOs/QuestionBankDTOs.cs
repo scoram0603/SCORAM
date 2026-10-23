@@ -10,6 +10,10 @@ namespace ScoramAPI.DTOs
         public string Name { get; set; } = string.Empty;
         public bool IsActive { get; set; }
         public int QuestionCount { get; set; }
+        // true only when the list came from GET subjects?examId= for an exam that has its own subject
+        // list: Id is then an EXAM subject id (pass it as examSubjectIds to /search). Absent/false for
+        // every pre-existing caller, so their behavior is unchanged.
+        public bool IsExamSpecific { get; set; }
     }
 
     public class QuestionBankSubjectCreateDto
@@ -25,6 +29,8 @@ namespace ScoramAPI.DTOs
         public string Name { get; set; } = string.Empty;
         public bool IsActive { get; set; }
         public int QuestionCount { get; set; }
+        // see QuestionBankSubjectDto.IsExamSpecific (SubjectId/Id are then exam subject/topic ids)
+        public bool IsExamSpecific { get; set; }
     }
 
     public class QuestionBankTopicCreateDto
@@ -185,6 +191,10 @@ namespace ScoramAPI.DTOs
         // multiple picks, see QuestionBankController.Search for the exact query-building.
         public List<Guid>? SubjectIds { get; set; }
         public List<Guid>? TopicIds { get; set; }
+        // EXAM-specific subject/topic filters (ids from GET subjects/topics?examId=). Optional and additive:
+        // a client that never sends them behaves exactly as before.
+        public List<Guid>? ExamSubjectIds { get; set; }
+        public List<Guid>? ExamTopicIds { get; set; }
         public List<Guid>? ExamIds { get; set; }
         public List<int>? Years { get; set; }
         // "Hindi" | "English", one or several -- matches Language exactly (case-insensitive, see

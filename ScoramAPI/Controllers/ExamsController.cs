@@ -285,6 +285,12 @@ namespace ScoramAPI.Controllers
             var target = await _db.Exams.FirstOrDefaultAsync(e => e.Id == targetId);
             if (source == null || target == null) return NotFound();
 
+            // Exam-wise Subject & Topic Management: the source exam's own subject/topic list can't be folded into
+            // the target automatically (names/classifications are exam-specific), and silently dropping it would
+            // lose that work -- so make the admin resolve it first rather than guess.
+            if (await _db.ExamSubjects.AnyAsync(s => s.ExamId == sourceId))
+                return Conflict(new { message = $"\"{source.Name}\" has its own exam-wise subject/topic list. Remove it in Exam-wise Subject & Topic Management (unassign/delete its subjects) before merging this exam.", code = "EXAM_HAS_TAXONOMY" });
+
             await using var transaction = await _db.Database.BeginTransactionAsync();
 
             var papers = await _db.Papers.Where(p => p.ExamId == sourceId).ToListAsync();
@@ -424,6 +430,7 @@ namespace ScoramAPI.Controllers
 
             var room = await _db.ChatRooms.FirstOrDefaultAsync(r => r.ExamId == id);
             if (room != null) _db.ChatRooms.Remove(room);
+            await RemoveExamTaxonomyAsync(_db, id);
             _db.Exams.Remove(exam);
             await _db.SaveChangesAsync();
 
@@ -704,6 +711,7 @@ namespace ScoramAPI.Controllers
             {
                 var room = await _db.ChatRooms.FirstOrDefaultAsync(r => r.ExamId == id);
                 if (room != null) _db.ChatRooms.Remove(room);
+                await RemoveExamTaxonomyAsync(_db, id);
                 _db.Exams.Remove(exam);
                 await _db.SaveChangesAsync();
                 result.ExamDeleted = true;
@@ -747,6 +755,7 @@ namespace ScoramAPI.Controllers
 
             var room = await _db.ChatRooms.FirstOrDefaultAsync(r => r.ExamId == id);
             if (room != null) _db.ChatRooms.Remove(room);
+            await RemoveExamTaxonomyAsync(_db, id);
             _db.Exams.Remove(exam);
             await _db.SaveChangesAsync();
             await _audit.LogAsync(User.GetAdminId(), "Exam.CleanupEmpty", "Exam", id, $"\"{exam.Name}\" removed as part of a bulk-import undo");
@@ -839,6 +848,22 @@ namespace ScoramAPI.Controllers
                 .Where(p => !mirroredSet.Contains(p.QuestionId))
                 .GroupBy(p => p.ExamId)
                 .ToDictionary(g => g.Key, g => g.Count());
+        }
+
+        // Exam-wise Subject & Topic Management rows (classifications -> topics -> subjects) belong to the exam
+        // being removed and all FKs to Exam/ExamSubject are Restrict, so they must go first. Only ever called on
+        // the paths that are deleting the (empty / fully-cleared) exam itself. Questions are never touched here.
+        //
+        // This only MARKS the rows for deletion; the caller's single SaveChangesAsync (which also removes the
+        // exam) commits everything atomically, and EF orders the tracked deletes by FK dependency.
+        private static async Task RemoveExamTaxonomyAsync(ScoramDbContext db, Guid examId)
+        {
+            var classifications = await db.QuestionBankExamClassifications.Where(c => c.ExamId == examId).ToListAsync();
+            var topics = await db.ExamTopics.Where(t => db.ExamSubjects.Any(s => s.Id == t.ExamSubjectId && s.ExamId == examId)).ToListAsync();
+            var subjects = await db.ExamSubjects.Where(s => s.ExamId == examId).ToListAsync();
+            db.QuestionBankExamClassifications.RemoveRange(classifications);
+            db.ExamTopics.RemoveRange(topics);
+            db.ExamSubjects.RemoveRange(subjects);
         }
 
         // Shared by Delete, CleanupIfEmpty above, and PapersController.Create (which stamps
