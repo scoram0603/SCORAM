@@ -8,7 +8,7 @@ import {
 import { PageHeader, Card, Button, TextInput, Select, Alert, friendlyError } from "../components/AdminUI";
 import Pager from "../components/Pager";
 import {
-  NameDialog, UsageDialog, DeleteDialog, InitDialog, MapDialog, ClassificationsDialog, useTaxonomyActions,
+  NameDialog, UsageDialog, DeleteDialog, MergeDialog, InitDialog, MapDialog, ClassificationsDialog, useTaxonomyActions,
 } from "../components/ExamTaxonomyDialogs";
 
 const num = (v) => (v ?? 0).toLocaleString();
@@ -337,6 +337,7 @@ export default function ExamTaxonomyManagement() {
       )}
       {dialog?.type === "subject-rename" && (
         <NameDialog kind="subject" mode="rename" examName={examName} initial={dialog.item.name} onClose={() => setDialog(null)}
+          onMerge={(clash) => setDialog({ type: "merge", kind: "subject", item: dialog.item, targetId: clash.existingId })}
           onSubmit={async (name) => { const res = await actions.renameSubject(examId, dialog.item, name); await refreshAll(res.message); }} />
       )}
       {dialog?.type === "subject-usage" && <UsageDialog kind="subject" examId={examId} examName={examName} item={dialog.item} onClose={() => setDialog(null)} />}
@@ -349,11 +350,17 @@ export default function ExamTaxonomyManagement() {
       )}
       {dialog?.type === "topic-rename" && (
         <NameDialog kind="topic" mode="rename" examName={examName} parentName={selectedSubject?.name} initial={dialog.item.name} onClose={() => setDialog(null)}
+          onMerge={(clash) => setDialog({ type: "merge", kind: "topic", item: dialog.item, targetId: clash.existingId })}
           onSubmit={async (name) => { const res = await actions.renameTopic(examId, dialog.item, name); await refreshAll(res.message); }} />
       )}
       {dialog?.type === "topic-usage" && <UsageDialog kind="topic" examId={examId} examName={examName} item={dialog.item} onClose={() => setDialog(null)} />}
       {dialog?.type === "topic-delete" && (
         <DeleteDialog kind="topic" examId={examId} examName={examName} item={dialog.item} onClose={() => setDialog(null)} onDone={(m) => refreshAll(m)} />
+      )}
+      {dialog?.type === "merge" && (
+        <MergeDialog kind={dialog.kind} examId={examId} examName={examName} source={dialog.item} targetId={dialog.targetId}
+          onClose={() => setDialog(null)}
+          onDone={async (m) => { if (dialog.kind === "subject" && subjectId === dialog.item.id) setSubjectId(dialog.targetId); await refreshAll(m); }} />
       )}
       {dialog?.type === "map" && (
         <MapDialog examId={examId} examName={examName} subjects={subjects} defaultSubjectId={subjectId} defaultTopicId={scope === "topic" ? topicFilterId : ""}

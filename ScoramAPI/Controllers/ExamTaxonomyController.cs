@@ -82,6 +82,21 @@ namespace ScoramAPI.Controllers
             [FromQuery] string? confirmName, [FromQuery] int? expectedQuestions, CancellationToken ct) =>
             Run(() => _taxonomy.DeleteSubjectAsync(User.GetAdminId(), examId, id, mode, confirm, confirmName, expectedQuestions, ct));
 
+        // Merge (offered when a rename collides with an existing active name in the SAME exam).
+        // GET preview first, then POST { targetId, confirm: true, expectedQuestions } -- one transaction.
+        [HttpGet("{examId:guid}/subjects/{id:guid}/merge-preview")]
+        public Task<IActionResult> PreviewMergeSubject(Guid examId, Guid id, [FromQuery] Guid targetId, CancellationToken ct) =>
+            Run(() => _taxonomy.PreviewMergeSubjectAsync(examId, id, targetId, ct));
+
+        [HttpPost("{examId:guid}/subjects/{id:guid}/merge")]
+        public Task<IActionResult> MergeSubject(Guid examId, Guid id, ExamTaxonomyMergeRequestDto dto, CancellationToken ct) =>
+            Run(() => _taxonomy.MergeSubjectAsync(User.GetAdminId(), examId, id, dto, ct));
+
+        // GET -- every exam-specific subject across all exams (read-only; shown inside Admin > Subjects).
+        [HttpGet("all-subjects")]
+        public Task<IActionResult> AllExamSubjects([FromQuery] string? search, CancellationToken ct) =>
+            Run(() => _taxonomy.ListAllExamSubjectsAsync(search, ct));
+
         // ---------------- topics ----------------
         [HttpGet("{examId:guid}/subjects/{subjectId:guid}/topics")]
         public Task<IActionResult> ListTopics(Guid examId, Guid subjectId, [FromQuery] string? search, [FromQuery] string? status, CancellationToken ct) =>
@@ -111,6 +126,14 @@ namespace ScoramAPI.Controllers
         public Task<IActionResult> DeleteTopic(Guid examId, Guid id, [FromQuery] string? mode, [FromQuery] bool confirm,
             [FromQuery] string? confirmName, [FromQuery] int? expectedQuestions, CancellationToken ct) =>
             Run(() => _taxonomy.DeleteTopicAsync(User.GetAdminId(), examId, id, mode, confirm, confirmName, expectedQuestions, ct));
+
+        [HttpGet("{examId:guid}/topics/{id:guid}/merge-preview")]
+        public Task<IActionResult> PreviewMergeTopic(Guid examId, Guid id, [FromQuery] Guid targetId, CancellationToken ct) =>
+            Run(() => _taxonomy.PreviewMergeTopicAsync(examId, id, targetId, ct));
+
+        [HttpPost("{examId:guid}/topics/{id:guid}/merge")]
+        public Task<IActionResult> MergeTopic(Guid examId, Guid id, ExamTaxonomyMergeRequestDto dto, CancellationToken ct) =>
+            Run(() => _taxonomy.MergeTopicAsync(User.GetAdminId(), examId, id, dto, ct));
 
         // ---------------- question mapping ----------------
         // GET ?examSubjectId=&examTopicId=&unassigned=true&search=&page=&pageSize=

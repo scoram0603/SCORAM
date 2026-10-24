@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Archive, Info, Layers, Loader2, Pencil, Plus, Trash2, Wand2 } from "lucide-react";
+import { AlertTriangle, Archive, GitMerge, Info, Layers, Loader2, Pencil, Plus, Trash2, Wand2 } from "lucide-react";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import {
   createExamSubject, renameExamSubject, createExamTopic, renameExamTopic,
   previewExamSubjectDelete, deleteExamSubject, previewExamTopicDelete, deleteExamTopic,
   setExamSubjectActive, setExamTopicActive, getExamSubjectUsage, getExamTopicUsage,
   previewInitialize, initializeExam, listExamTopics, mapExamQuestions, getQuestionClassifications,
+  previewMergeExamSubject, mergeExamSubject, previewMergeExamTopic, mergeExamTopic,
 } from "../api/examTaxonomy";
 import { Button, FormField, TextInput, Select, Alert, friendlyError } from "./AdminUI";
 import { Modal } from "./SubjectManagementDialogs";
@@ -46,10 +47,11 @@ export function UsageList({ usage, kind }) {
 // ------------------------------------------------------------------------------------------------
 // Create / rename (subject or topic)
 // ------------------------------------------------------------------------------------------------
-export function NameDialog({ kind, mode, examName, parentName, initial = "", onSubmit, onClose }) {
+export function NameDialog({ kind, mode, examName, parentName, initial = "", onSubmit, onClose, onMerge }) {
   const [name, setName] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [clash, setClash] = useState(null); // { existingId, existingName } when the new name already exists in this exam
   const isRename = mode === "rename";
   const title = `${isRename ? "Rename" : "Add"} ${kind}`;
 
@@ -58,10 +60,15 @@ export function NameDialog({ kind, mode, examName, parentName, initial = "", onS
     if (busy) return;
     setBusy(true);
     setError(null);
+    setClash(null);
     try {
       await onSubmit(name);
     } catch (err) {
       setError(friendlyError(err));
+      // Rename collided with an existing active name in this exam: offer to merge into it instead of a dead end.
+      const code = err?.data?.code;
+      const payload = err?.data?.data;
+      if (isRename && onMerge && (code === "DUPLICATE_SUBJECT" || code === "DUPLICATE_TOPIC") && payload?.existingId) setClash(payload);
       setBusy(false);
     }
   };
@@ -70,6 +77,7 @@ export function NameDialog({ kind, mode, examName, parentName, initial = "", onS
     <Modal title={title} icon={isRename ? Pencil : Plus} onClose={onClose} busy={busy}
       footer={<>
         <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+        {clash && <Button variant="secondary" onClick={() => onMerge(clash)} disabled={busy}><GitMerge className="h-4 w-4" /> Merge into “{clash.existingName}”</Button>}
         <Button onClick={submit} isLoading={busy} disabled={!name.trim() || (isRename && name.trim() === initial)}>{isRename ? "Rename" : "Add"}</Button>
       </>}>
       <form onSubmit={submit} className="space-y-3">
@@ -85,7 +93,76 @@ export function NameDialog({ kind, mode, examName, parentName, initial = "", onS
           <TextInput autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={kind === "subject" ? 100 : 150} placeholder={kind === "subject" ? "e.g. General Awareness" : "e.g. Indian History"} />
         </FormField>
         {error && <Alert>{error}</Alert>}
+        {clash && (
+          <p className="rounded-xl2 bg-primary-50 p-3 text-xs text-primary-600">
+            “{clash.existingName}” already exists in <b>{examName}</b>. You can <b>merge</b> “{initial}” into it: its questions{kind === "subject" ? " and topics" : ""} move to “{clash.existingName}” and “{initial}” is removed from this exam. You'll see exactly what changes before confirming.
+          </p>
+        )}
       </form>
+    </Modal>
+  );
+}
+
+// ------------------------------------------------------------------------------------------------
+// Merge (source -> existing target, same exam): preview, then explicit confirmation
+// ------------------------------------------------------------------------------------------------
+export function MergeDialog({ kind, examId, examName, source, targetId, onClose, onDone }) {
+  const { token } = useAdminAuth();
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const loadPreview = async () => {
+    const fn = kind === "subject" ? previewMergeExamSubject : previewMergeExamTopic;
+    setPreview(await fn(token, examId, source.id, targetId));
+  };
+  useEffect(() => {
+    let alive = true;
+    (kind === "subject" ? previewMergeExamSubject : previewMergeExamTopic)(token, examId, source.id, targetId)
+      .then((p) => alive && setPreview(p)).catch((e) => alive && setError(friendlyError(e)));
+    return () => { alive = false; };
+  }, [token, kind, examId, source.id, targetId]);
+
+  const run = async () => {
+    if (busy || !preview) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const fn = kind === "subject" ? mergeExamSubject : mergeExamTopic;
+      const res = await fn(token, examId, source.id, { targetId, confirm: true, expectedQuestions: preview.questions });
+      onDone(res.message);
+    } catch (err) {
+      setError(friendlyError(err));
+      if (err?.data?.code === "IMPACT_CHANGED") { try { await loadPreview(); } catch { /* keep old */ } }
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title={`Merge ${kind} in ${examName}`} icon={GitMerge} onClose={onClose} busy={busy} wide
+      footer={<>
+        <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button onClick={run} isLoading={busy} disabled={!preview}><GitMerge className="h-4 w-4" /> Merge</Button>
+      </>}>
+      {!preview && !error && <p className="flex items-center gap-2 text-sm text-ink-400"><Loader2 className="h-4 w-4 animate-spin" /> Checking what will move…</p>}
+      {preview && (
+        <>
+          <p className="text-sm text-ink-600">{preview.message}</p>
+          <div className="rounded-xl2 border border-primary-100 px-4 py-2">
+            <Row label={`“${preview.sourceName}” (removed after merge)`} value="→" />
+            <Row label={`Into “${preview.targetName}” (kept)`} value="" />
+            <Row label="Questions that move" value={n(preview.questions)} strong />
+            {kind === "subject" && <Row label="Topics folded into same-named topics" value={n(preview.topicsMerged.length)} />}
+            {kind === "subject" && <Row label="Topics moved as they are" value={n(preview.topicsMoved.length)} />}
+          </div>
+          {preview.topicsMerged.length > 0 && <p className="text-xs text-ink-400">Folded: {preview.topicsMerged.join(", ")}</p>}
+          {preview.topicsMoved.length > 0 && <p className="text-xs text-ink-400">Moved: {preview.topicsMoved.join(", ")}</p>}
+          <p className="rounded-xl2 bg-primary-50 p-3 text-xs text-primary-600">
+            Only <b>{examName}</b> changes. Questions themselves, papers, tests, attempts, results, the global subject list and other exams are not affected. The whole merge is one all-or-nothing step.
+          </p>
+        </>
+      )}
+      {error && <Alert>{error}</Alert>}
     </Modal>
   );
 }

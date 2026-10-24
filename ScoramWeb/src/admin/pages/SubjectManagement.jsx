@@ -6,6 +6,7 @@ import { PageHeader, Card, Button, TextInput, Alert, friendlyError } from "../co
 import { SubjectFormDialog, DeactivateDialog, MoveDialog, DeleteDialog, UsageDialog } from "../components/SubjectManagementDialogs";
 import { formatDate } from "../components/subjectFormat";
 import { BusinessIdBadge, BusinessIdChangeDialog } from "../components/BusinessId";
+import ExamWiseSubjectsCard from "../components/ExamWiseSubjectsCard";
 
 const PAGE_SIZE = 20;
 
@@ -253,6 +254,8 @@ export default function SubjectManagement() {
             </div>
           )}
         </Card>
+
+        <ExamWiseSubjectsCard refreshKey={data} />
 
         <p className="text-xs text-ink-400">
           “PYQ” counts are Question Bank questions; “PYP” counts are questions inside uploaded papers. Mock Test and Quiz counts are questions placed in those tests —

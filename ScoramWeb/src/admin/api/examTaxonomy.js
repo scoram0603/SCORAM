@@ -52,3 +52,12 @@ export const listExamQuestions = (token, examId, params = {}) => apiFetch(`${bas
 export const mapExamQuestions = (token, examId, payload) => apiFetch(`${base}/${examId}/questions/map`, { method: "POST", token, body: payload });
 export const unmapExamQuestions = (token, examId, payload) => apiFetch(`${base}/${examId}/questions/unmap`, { method: "POST", token, body: payload });
 export const getQuestionClassifications = (token, questionId) => apiFetch(`${base}/question/${questionId}/classifications`, { token });
+
+// Merge -- offered when a rename collides with an existing active name in the same exam.
+export const previewMergeExamSubject = (token, examId, id, targetId) => apiFetch(`${base}/${examId}/subjects/${id}/merge-preview${qs({ targetId })}`, { token });
+export const mergeExamSubject = (token, examId, id, payload) => apiFetch(`${base}/${examId}/subjects/${id}/merge`, { method: "POST", token, body: payload });
+export const previewMergeExamTopic = (token, examId, id, targetId) => apiFetch(`${base}/${examId}/topics/${id}/merge-preview${qs({ targetId })}`, { token });
+export const mergeExamTopic = (token, examId, id, payload) => apiFetch(`${base}/${examId}/topics/${id}/merge`, { method: "POST", token, body: payload });
+
+// Every exam-specific subject across all exams (read-only) -- shown inside Admin > Subjects.
+export const listAllExamSubjects = (token, search) => apiFetch(`${base}/all-subjects${qs({ search })}`, { token });

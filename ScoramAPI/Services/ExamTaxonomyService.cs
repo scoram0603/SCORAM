@@ -18,6 +18,9 @@ namespace ScoramAPI.Services
         Task<ExamTaxonomyUsageDto> GetSubjectUsageAsync(Guid examId, Guid id, CancellationToken ct);
         Task<ExamTaxonomyDeletePreviewDto> PreviewDeleteSubjectAsync(Guid examId, Guid id, CancellationToken ct);
         Task<ExamTaxonomyResultDto> DeleteSubjectAsync(Guid adminId, Guid examId, Guid id, string? mode, bool confirm, string? confirmName, int? expectedQuestions, CancellationToken ct);
+        Task<ExamTaxonomyMergePreviewDto> PreviewMergeSubjectAsync(Guid examId, Guid sourceId, Guid targetId, CancellationToken ct);
+        Task<ExamTaxonomyResultDto> MergeSubjectAsync(Guid adminId, Guid examId, Guid sourceId, ExamTaxonomyMergeRequestDto dto, CancellationToken ct);
+        Task<List<ExamSubjectOverviewRowDto>> ListAllExamSubjectsAsync(string? search, CancellationToken ct);
 
         Task<ExamTopicListDto> ListTopicsAsync(Guid examId, Guid subjectId, string? search, string? status, CancellationToken ct);
         Task<ExamTaxonomyResultDto> CreateTopicAsync(Guid adminId, Guid examId, Guid subjectId, ExamTopicCreateDto dto, CancellationToken ct);
@@ -26,6 +29,8 @@ namespace ScoramAPI.Services
         Task<ExamTaxonomyUsageDto> GetTopicUsageAsync(Guid examId, Guid id, CancellationToken ct);
         Task<ExamTaxonomyDeletePreviewDto> PreviewDeleteTopicAsync(Guid examId, Guid id, CancellationToken ct);
         Task<ExamTaxonomyResultDto> DeleteTopicAsync(Guid adminId, Guid examId, Guid id, string? mode, bool confirm, string? confirmName, int? expectedQuestions, CancellationToken ct);
+        Task<ExamTaxonomyMergePreviewDto> PreviewMergeTopicAsync(Guid examId, Guid sourceId, Guid targetId, CancellationToken ct);
+        Task<ExamTaxonomyResultDto> MergeTopicAsync(Guid adminId, Guid examId, Guid sourceId, ExamTaxonomyMergeRequestDto dto, CancellationToken ct);
 
         Task<ExamTaxonomyQuestionListDto> ListQuestionsAsync(Guid examId, ExamTaxonomyQuestionQueryDto query, CancellationToken ct);
         Task<ExamTaxonomyResultDto> MapQuestionsAsync(Guid adminId, Guid examId, ExamTaxonomyMapRequestDto dto, CancellationToken ct);
@@ -391,8 +396,14 @@ namespace ScoramAPI.Services
                 oldName = subject.Name;
                 if (oldName == name) return true; // nothing to do
 
-                if (subject.IsActive && await _db.ExamSubjects.AnyAsync(s => s.ExamId == examId && s.Id != id && s.IsActive && s.Name.ToLower() == name.ToLower(), ct))
-                    throw Err(409, "DUPLICATE_SUBJECT", $"'{name}' already exists in {exam.Name}.");
+                if (subject.IsActive)
+                {
+                    var clash = await _db.ExamSubjects.AsNoTracking()
+                        .FirstOrDefaultAsync(s => s.ExamId == examId && s.Id != id && s.IsActive && s.Name.ToLower() == name.ToLower(), ct);
+                    // The payload lets the UI offer "merge into the existing one" instead of a dead end.
+                    if (clash != null)
+                        throw Err(409, "DUPLICATE_SUBJECT", $"'{name}' already exists in {exam.Name}.", new { existingId = clash.Id, existingName = clash.Name, canMerge = true });
+                }
 
                 // Only this exam subject's own Name changes. Same row/Id, so every classification, paper, test,
                 // attempt and result that refers to it is untouched, and no other exam is read or written.
@@ -691,8 +702,13 @@ namespace ScoramAPI.Services
                 oldName = t.Name;
                 if (oldName == name) return true;
                 // Duplicate rule matches the existing topic rule: unique within its subject (here: its exam subject).
-                if (t.IsActive && await _db.ExamTopics.AnyAsync(x => x.ExamSubjectId == t.ExamSubjectId && x.Id != id && x.IsActive && x.Name.ToLower() == name.ToLower(), ct))
-                    throw Err(409, "DUPLICATE_TOPIC", $"'{name}' already exists under {s.Name}.");
+                if (t.IsActive)
+                {
+                    var clash = await _db.ExamTopics.AsNoTracking()
+                        .FirstOrDefaultAsync(x => x.ExamSubjectId == t.ExamSubjectId && x.Id != id && x.IsActive && x.Name.ToLower() == name.ToLower(), ct);
+                    if (clash != null)
+                        throw Err(409, "DUPLICATE_TOPIC", $"'{name}' already exists under {s.Name}.", new { existingId = clash.Id, existingName = clash.Name, canMerge = true });
+                }
                 t.Name = name;
                 t.UpdatedAt = DateTime.UtcNow;
                 Audit(adminId, "ExamTopic.Rename", t.Id, $"[{exam.Name} > {s.Name}] Renamed topic '{oldName}' -> '{name}'.");
@@ -813,6 +829,257 @@ namespace ScoramAPI.Services
 
         private Task<int> UnassignTopicAsync(Guid adminId, Guid examId, ExamSubject subject, IQueryable<Guid> ids, CancellationToken ct) =>
             UnassignAsync(adminId, examId, ids, subject.Id, ct);
+
+        // ------------------------------------------------------------------------------
+        // Merge: a rename collided with an existing ACTIVE name in the same exam, so the admin may fold the
+        // renamed (source) record into the existing (target) one. Scope is ONE exam: only its ExamSubject /
+        // ExamTopic / classification rows change. Questions, papers, tests, attempts, results, the global
+        // lists and every other exam are never touched.
+        // ------------------------------------------------------------------------------
+
+        private sealed class SubjectMergePlan
+        {
+            public ExamSubject Source { get; init; } = null!;
+            public ExamSubject Target { get; init; } = null!;
+            public List<ExamTopic> SourceTopics { get; init; } = new();
+            public Dictionary<Guid, ExamTopic> Matched { get; init; } = new(); // source topic id -> existing target topic
+            public List<ExamTopic> Moved { get; init; } = new();               // source topics re-homed under the target
+        }
+
+        private async Task<SubjectMergePlan> PlanSubjectMergeAsync(Guid examId, Guid sourceId, Guid targetId, CancellationToken ct)
+        {
+            if (sourceId == targetId) throw Err(400, "MERGE_SAME", "Pick a different subject to merge into.");
+            var source = await LoadSubjectAsync(examId, sourceId, ct);
+            var target = await LoadSubjectAsync(examId, targetId, ct);
+            if (!target.IsActive) throw Err(400, "TARGET_ARCHIVED", $"'{target.Name}' is archived. Restore it before merging into it.");
+
+            var srcTopics = await _db.ExamTopics.Where(t => t.ExamSubjectId == sourceId).ToListAsync(ct);
+            var tgtTopics = await _db.ExamTopics.Where(t => t.ExamSubjectId == targetId).ToListAsync(ct);
+            var plan = new SubjectMergePlan { Source = source, Target = target, SourceTopics = srcTopics };
+            foreach (var t in srcTopics.OrderByDescending(t => t.IsActive).ThenBy(t => t.CreatedAt))
+            {
+                // An active topic folds into an ACTIVE same-named topic; an archived one into any same-named topic.
+                var hit = tgtTopics.Where(x => Key(x.Name) == Key(t.Name) && (x.IsActive || !t.IsActive))
+                    .OrderByDescending(x => x.IsActive).FirstOrDefault();
+                if (hit != null) plan.Matched[t.Id] = hit; else plan.Moved.Add(t);
+            }
+            return plan;
+        }
+
+        public async Task<ExamTaxonomyMergePreviewDto> PreviewMergeSubjectAsync(Guid examId, Guid sourceId, Guid targetId, CancellationToken ct)
+        {
+            var exam = await LoadExamAsync(examId, ct);
+            var plan = await PlanSubjectMergeAsync(examId, sourceId, targetId, ct);
+            var questions = await SubjectQuestionIds(plan.Source).CountAsync(ct);
+            return new ExamTaxonomyMergePreviewDto
+            {
+                Kind = "subject", SourceId = plan.Source.Id, SourceName = plan.Source.Name,
+                TargetId = plan.Target.Id, TargetName = plan.Target.Name, Questions = questions,
+                TopicsMerged = plan.Matched.Keys.Select(k => plan.SourceTopics.First(t => t.Id == k).Name).OrderBy(n => n).ToList(),
+                TopicsMoved = plan.Moved.Select(t => t.Name).OrderBy(n => n).ToList(),
+                Message = $"'{plan.Source.Name}' will be merged into '{plan.Target.Name}' in {exam.Name} only. {questions:N0} question(s) and all topics move to '{plan.Target.Name}'; '{plan.Source.Name}' is then removed from this exam. Nothing else is changed."
+            };
+        }
+
+        public async Task<ExamTaxonomyResultDto> MergeSubjectAsync(Guid adminId, Guid examId, Guid sourceId, ExamTaxonomyMergeRequestDto dto, CancellationToken ct)
+        {
+            var exam = await LoadExamAsync(examId, ct);
+            if (!dto.Confirm) throw Err(400, "CONFIRMATION_REQUIRED", "Please confirm this action before continuing.");
+
+            int moved = 0;
+            string sourceName = string.Empty, targetName = string.Empty;
+            await RunGuardedAsync(() => InTransactionAsync(async () =>
+            {
+                // Re-planned against the LIVE data inside the transaction -- the preview may be old.
+                var plan = await PlanSubjectMergeAsync(examId, sourceId, dto.TargetId, ct);
+                var source = plan.Source; var target = plan.Target;
+                sourceName = source.Name; targetName = target.Name;
+
+                var live = await SubjectQuestionIds(source).CountAsync(ct);
+                if (dto.ExpectedQuestions.HasValue && dto.ExpectedQuestions.Value != live)
+                    throw Err(409, "IMPACT_CHANGED",
+                        $"The affected questions changed since you opened the preview (it was {dto.ExpectedQuestions.Value:N0}, it is now {live:N0}). Nothing was changed -- review the updated preview and confirm again.",
+                        new { expected = dto.ExpectedQuestions.Value, actual = live });
+
+                var now = DateTime.UtcNow;
+                var srcTopicIds = plan.SourceTopics.Select(t => t.Id).ToHashSet();
+                Guid? MapTopic(Guid? topicId) =>
+                    topicId == null || !srcTopicIds.Contains(topicId.Value) ? null
+                    : plan.Matched.TryGetValue(topicId.Value, out var hit) ? hit.Id : topicId;
+
+                // 1) every explicit classification row under the source subject (even one for a question no longer
+                //    tagged to the exam -- it would otherwise block removing the source) moves to the target.
+                var rows = await _db.QuestionBankExamClassifications.Where(c => c.ExamId == examId && c.ExamSubjectId == source.Id).ToListAsync(ct);
+                foreach (var r in rows)
+                {
+                    r.ExamSubjectId = target.Id;
+                    r.ExamTopicId = MapTopic(r.ExamTopicId);
+                    r.UpdatedAt = now; r.UpdatedByAdminId = adminId;
+                }
+                moved = rows.Count;
+
+                // 2) legacy-fallback questions (no row yet, resolved through the global lineage) get an explicit row
+                //    so they follow the merge instead of silently falling out of the exam.
+                if (source.BaseSubjectId != null)
+                {
+                    var baseSubject = source.BaseSubjectId.Value;
+                    var srcByBase = plan.SourceTopics.Where(t => t.BaseTopicId != null).GroupBy(t => t.BaseTopicId!.Value).ToDictionary(g => g.Key, g => g.First().Id);
+                    var fallback = await ExamQuestions(examId)
+                        .Where(q => q.SubjectId == baseSubject && !_db.QuestionBankExamClassifications.Any(c => c.QuestionBankQuestionId == q.Id && c.ExamId == examId))
+                        .Select(q => new { q.Id, q.TopicId }).ToListAsync(ct);
+                    foreach (var q in fallback)
+                    {
+                        Guid? topic = srcByBase.TryGetValue(q.TopicId, out var tid) ? MapTopic(tid) : null;
+                        _db.QuestionBankExamClassifications.Add(new QuestionBankExamClassification
+                        {
+                            QuestionBankQuestionId = q.Id, ExamId = examId, ExamSubjectId = target.Id, ExamTopicId = topic,
+                            CreatedAt = now, UpdatedAt = now, UpdatedByAdminId = adminId
+                        });
+                    }
+                    moved += fallback.Count;
+                }
+
+                // Defensive: a row pointing at a topic that is about to be folded away must be redirected first.
+                var matchedIds = plan.Matched.Keys.ToList();
+                if (matchedIds.Count > 0)
+                {
+                    var strays = await _db.QuestionBankExamClassifications.Where(c => c.ExamTopicId != null && matchedIds.Contains(c.ExamTopicId.Value)).ToListAsync(ct);
+                    foreach (var c in strays) { c.ExamTopicId = null; c.UpdatedAt = now; c.UpdatedByAdminId = adminId; }
+                }
+                await _db.SaveChangesAsync(ct);
+
+                // 3) topics: unmatched ones move under the target, matched ones are folded into the existing topic.
+                foreach (var t in plan.Moved) { t.ExamSubjectId = target.Id; t.UpdatedAt = now; }
+                _db.ExamTopics.RemoveRange(plan.Matched.Keys.Select(k => plan.SourceTopics.First(t => t.Id == k)));
+                await _db.SaveChangesAsync(ct);
+
+                // 4) the source record itself goes; if the target had no lineage link it adopts the source's so the
+                //    legacy global classification keeps resolving to it (unique per exam, hence after the removal).
+                var adoptBase = target.BaseSubjectId == null ? source.BaseSubjectId : null;
+                _db.ExamSubjects.Remove(source);
+                await _db.SaveChangesAsync(ct);
+                if (adoptBase != null) { target.BaseSubjectId = adoptBase; }
+                target.UpdatedAt = now;
+
+                Audit(adminId, "ExamSubject.Merge", target.Id,
+                    $"[{exam.Name}] Merged subject '{sourceName}' into '{targetName}': {moved:N0} classification(s), {plan.Moved.Count:N0} topic(s) moved, {plan.Matched.Count:N0} topic(s) folded into same-named ones.");
+                await _db.SaveChangesAsync(ct);
+                return true;
+            }, ct));
+
+            return new ExamTaxonomyResultDto
+            {
+                Message = $"Merged '{sourceName}' into '{targetName}' in {exam.Name} only. {moved:N0} question(s) now sit under '{targetName}'.",
+                Affected = moved
+            };
+        }
+
+        public async Task<ExamTaxonomyMergePreviewDto> PreviewMergeTopicAsync(Guid examId, Guid sourceId, Guid targetId, CancellationToken ct)
+        {
+            var exam = await LoadExamAsync(examId, ct);
+            var (source, target, subject) = await LoadTopicPairAsync(examId, sourceId, targetId, ct);
+            var questions = await TopicQuestionIds(source, subject).CountAsync(ct);
+            return new ExamTaxonomyMergePreviewDto
+            {
+                Kind = "topic", SourceId = source.Id, SourceName = source.Name, TargetId = target.Id, TargetName = target.Name, Questions = questions,
+                Message = $"Topic '{source.Name}' will be merged into '{target.Name}' under {subject.Name} in {exam.Name} only. {questions:N0} question(s) move to '{target.Name}'; '{source.Name}' is then removed from this exam."
+            };
+        }
+
+        private async Task<(ExamTopic Source, ExamTopic Target, ExamSubject Subject)> LoadTopicPairAsync(Guid examId, Guid sourceId, Guid targetId, CancellationToken ct)
+        {
+            if (sourceId == targetId) throw Err(400, "MERGE_SAME", "Pick a different topic to merge into.");
+            var (source, subject) = await LoadTopicAsync(examId, sourceId, ct);
+            var (target, targetSubject) = await LoadTopicAsync(examId, targetId, ct);
+            if (targetSubject.Id != subject.Id) throw Err(400, "MERGE_DIFFERENT_SUBJECT", "Topics can only be merged within the same subject.");
+            if (!target.IsActive) throw Err(400, "TARGET_ARCHIVED", $"'{target.Name}' is archived. Restore it before merging into it.");
+            return (source, target, subject);
+        }
+
+        public async Task<ExamTaxonomyResultDto> MergeTopicAsync(Guid adminId, Guid examId, Guid sourceId, ExamTaxonomyMergeRequestDto dto, CancellationToken ct)
+        {
+            var exam = await LoadExamAsync(examId, ct);
+            if (!dto.Confirm) throw Err(400, "CONFIRMATION_REQUIRED", "Please confirm this action before continuing.");
+
+            int moved = 0;
+            string sourceName = string.Empty, targetName = string.Empty;
+            await RunGuardedAsync(() => InTransactionAsync(async () =>
+            {
+                var (source, target, subject) = await LoadTopicPairAsync(examId, sourceId, dto.TargetId, ct);
+                sourceName = source.Name; targetName = target.Name;
+
+                var live = await TopicQuestionIds(source, subject).CountAsync(ct);
+                if (dto.ExpectedQuestions.HasValue && dto.ExpectedQuestions.Value != live)
+                    throw Err(409, "IMPACT_CHANGED",
+                        $"The affected questions changed since you opened the preview (it was {dto.ExpectedQuestions.Value:N0}, it is now {live:N0}). Nothing was changed -- review the updated preview and confirm again.",
+                        new { expected = dto.ExpectedQuestions.Value, actual = live });
+
+                var now = DateTime.UtcNow;
+                var rows = await _db.QuestionBankExamClassifications.Where(c => c.ExamTopicId == source.Id).ToListAsync(ct);
+                foreach (var r in rows) { r.ExamTopicId = target.Id; r.UpdatedAt = now; r.UpdatedByAdminId = adminId; }
+                moved = rows.Count;
+
+                if (subject.BaseSubjectId != null && source.BaseTopicId != null)
+                {
+                    var bs = subject.BaseSubjectId.Value; var bt = source.BaseTopicId.Value;
+                    var fallback = await ExamQuestions(examId)
+                        .Where(q => q.SubjectId == bs && q.TopicId == bt && !_db.QuestionBankExamClassifications.Any(c => c.QuestionBankQuestionId == q.Id && c.ExamId == examId))
+                        .Select(q => q.Id).ToListAsync(ct);
+                    foreach (var qid in fallback)
+                        _db.QuestionBankExamClassifications.Add(new QuestionBankExamClassification
+                        {
+                            QuestionBankQuestionId = qid, ExamId = examId, ExamSubjectId = subject.Id, ExamTopicId = target.Id,
+                            CreatedAt = now, UpdatedAt = now, UpdatedByAdminId = adminId
+                        });
+                    moved += fallback.Count;
+                }
+                await _db.SaveChangesAsync(ct);
+
+                var adoptBase = target.BaseTopicId == null ? source.BaseTopicId : null;
+                _db.ExamTopics.Remove(source);
+                await _db.SaveChangesAsync(ct);
+                if (adoptBase != null) target.BaseTopicId = adoptBase;
+                target.UpdatedAt = now;
+
+                Audit(adminId, "ExamTopic.Merge", target.Id, $"[{exam.Name} > {subject.Name}] Merged topic '{sourceName}' into '{targetName}' ({moved:N0} classification(s)).");
+                await _db.SaveChangesAsync(ct);
+                return true;
+            }, ct));
+
+            return new ExamTaxonomyResultDto
+            {
+                Message = $"Merged topic '{sourceName}' into '{targetName}' in {exam.Name} only. {moved:N0} question(s) now sit under '{targetName}'.",
+                Affected = moved
+            };
+        }
+
+        // Every exam-specific subject across all exams (shown inside the existing Subjects page so renamed /
+        // exam-only subjects are visible there too). Read-only.
+        public async Task<List<ExamSubjectOverviewRowDto>> ListAllExamSubjectsAsync(string? search, CancellationToken ct)
+        {
+            var q = from s in _db.ExamSubjects.AsNoTracking()
+                    join e in _db.Exams.AsNoTracking() on s.ExamId equals e.Id
+                    select new { s, e };
+            var term = NormalizeName(search);
+            if (term.Length > 0)
+            {
+                var t = term.ToLower();
+                q = q.Where(x => x.s.Name.ToLower().Contains(t) || x.e.Name.ToLower().Contains(t));
+            }
+            var rows = await q.OrderBy(x => x.e.Name).ThenBy(x => x.s.Name).Take(1000).ToListAsync(ct);
+            var baseNames = await GlobalSubjectNamesAsync(rows.Select(r => r.s.BaseSubjectId), ct);
+            var ids = rows.Select(r => r.s.Id).ToList();
+            var topicCounts = ids.Count == 0 ? new Dictionary<Guid, int>()
+                : await _db.ExamTopics.AsNoTracking().Where(t => ids.Contains(t.ExamSubjectId))
+                    .GroupBy(t => t.ExamSubjectId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.N, ct);
+            return rows.Select(r => new ExamSubjectOverviewRowDto
+            {
+                ExamId = r.e.Id, ExamName = r.e.Name, ExamBusinessId = r.e.BusinessId,
+                ExamSubjectId = r.s.Id, Name = r.s.Name, BaseSubjectId = r.s.BaseSubjectId,
+                BaseSubjectName = r.s.BaseSubjectId != null ? baseNames.GetValueOrDefault(r.s.BaseSubjectId.Value) : null,
+                IsActive = r.s.IsActive, TopicCount = topicCounts.GetValueOrDefault(r.s.Id), UpdatedAt = r.s.UpdatedAt
+            }).ToList();
+        }
 
         // ------------------------------------------------------------------------------
         // Questions: list / map / unmap

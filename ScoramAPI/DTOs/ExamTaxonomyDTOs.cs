@@ -209,6 +209,43 @@ namespace ScoramAPI.DTOs
         public ExamTopicItemDto? Topic { get; set; }
     }
 
+    // ---- Merge (rename collided with an existing name in the SAME exam) ----
+    public class ExamTaxonomyMergeRequestDto
+    {
+        [Required] public Guid TargetId { get; set; }
+        public bool Confirm { get; set; }
+        // From the preview; if the live number differs nothing runs (409 IMPACT_CHANGED).
+        public int? ExpectedQuestions { get; set; }
+    }
+
+    public class ExamTaxonomyMergePreviewDto
+    {
+        public string Kind { get; set; } = "subject"; // subject | topic
+        public Guid SourceId { get; set; }
+        public string SourceName { get; set; } = string.Empty;
+        public Guid TargetId { get; set; }
+        public string TargetName { get; set; } = string.Empty;
+        public int Questions { get; set; }                       // questions that move into the target
+        public List<string> TopicsMerged { get; set; } = new();  // subject merge: same-named topics folded together
+        public List<string> TopicsMoved { get; set; } = new();   // subject merge: topics re-homed under the target
+        public string Message { get; set; } = string.Empty;
+    }
+
+    // One row per exam-specific subject, across every exam (shown inside the existing Subjects page).
+    public class ExamSubjectOverviewRowDto
+    {
+        public Guid ExamId { get; set; }
+        public string ExamName { get; set; } = string.Empty;
+        public string? ExamBusinessId { get; set; }
+        public Guid ExamSubjectId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public Guid? BaseSubjectId { get; set; }
+        public string? BaseSubjectName { get; set; }
+        public bool IsActive { get; set; }
+        public int TopicCount { get; set; }
+        public DateTime? UpdatedAt { get; set; }
+    }
+
     // ---- Student-facing additions (QuestionBankController, optional examId) ----
     public class ExamSubjectFilterDto
     {
