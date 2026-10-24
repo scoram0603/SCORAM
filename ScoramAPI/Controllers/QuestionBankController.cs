@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using ScoramAPI.Data;
 using ScoramAPI.DTOs;
 using ScoramAPI.Enums;
@@ -23,9 +24,11 @@ namespace ScoramAPI.Controllers
         private readonly ILogger<QuestionBankController> _logger;
         private readonly IMyExamScopeService _myExams;
         private readonly IExamTaxonomyService _examTaxonomy;
+        private readonly IMemoryCache _cache;
 
-        public QuestionBankController(ScoramDbContext db, IGamificationService gamification, ILogger<QuestionBankController> logger, IMyExamScopeService myExams, IExamTaxonomyService examTaxonomy)
+        public QuestionBankController(ScoramDbContext db, IGamificationService gamification, ILogger<QuestionBankController> logger, IMyExamScopeService myExams, IExamTaxonomyService examTaxonomy, IMemoryCache cache)
         {
+            _cache = cache;
             _db = db;
             _gamification = gamification;
             _logger = logger;
@@ -238,6 +241,86 @@ namespace ScoramAPI.Controllers
                 Page = page,
                 PageSize = pageSize
             });
+        }
+
+        // GET /api/question-bank/today -- "Today's Challenge" on the Flutter home screen. ONE question per
+        // India (IST) calendar day, the same for every student with the same My Exams, rotating through
+        // the whole bank before it repeats -- replacing the app's old client-side "most liked of the
+        // latest 10", which never changed until someone liked something else.
+        //
+        // How the pick works: the in-scope visible questions are put in a stable order (by Id), and the
+        // IST day number selects the index (dayNumber % count), so consecutive days walk through
+        // different questions and every server instance agrees without shared state. The chosen ID is
+        // cached until the next IST midnight (keyed by IST date + a fingerprint of the My Exams scope,
+        // so one student's pick is never served to a student with different exams, and a question added
+        // mid-day can't change today's pick). The DTO itself is loaded fresh every time so like counts
+        // and the caller's own vote stay current.
+        [HttpGet("today")]
+        public async Task<ActionResult<QuestionBankQuestionResponseDto>> GetTodaysChallenge()
+        {
+            var scope = await _myExams.GetScopeAsync(User);
+            if (scope.IsEmpty)
+                return NotFound(new { message = "Choose your exams to get a daily challenge." });
+
+            var istNow = DateTime.UtcNow.AddHours(5).AddMinutes(30);
+            var istToday = DateOnly.FromDateTime(istNow);
+
+            var scopeKey = scope.IsScoped
+                ? "-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(string.Join(",", scope.ExamIds.OrderBy(id => id)))))[..16]
+                : string.Empty;
+            var cacheKey = $"qb-todays-challenge-{istToday:yyyy-MM-dd}{scopeKey}";
+
+            if (!_cache.TryGetValue(cacheKey, out Guid pickedId))
+            {
+                var candidates = VisibleQuestions();
+                if (scope.IsScoped)
+                {
+                    var scopedExamIds = scope.ExamIds.ToList();
+                    candidates = candidates.Where(x => x.ExamMappings.Any(m => scopedExamIds.Contains(m.ExamId)));
+                }
+
+                var count = await candidates.CountAsync();
+                if (count == 0)
+                    return NotFound(new { message = "No questions yet." });
+
+                // IST day number since the Unix epoch -- +1 each IST midnight, so tomorrow's index is
+                // always different from today's (unless the bank only holds one question).
+                var index = istToday.DayNumber % count;
+                pickedId = await candidates.OrderBy(x => x.Id).Skip(index).Select(x => x.Id).FirstAsync();
+
+                // Keep it until the next IST midnight (+ a minute of slack), never longer than a day.
+                var untilMidnight = istToday.AddDays(1).ToDateTime(TimeOnly.MinValue) - istNow;
+                _cache.Set(cacheKey, pickedId, untilMidnight + TimeSpan.FromMinutes(1));
+            }
+
+            var question = await VisibleQuestions()
+                .Include(x => x.Subject)
+                .Include(x => x.Topic)
+                .Include(x => x.ExamMappings).ThenInclude(m => m.Exam)
+                .Include(x => x.Solutions)
+                .FirstOrDefaultAsync(x => x.Id == pickedId);
+
+            // The cached pick was deactivated/unpublished since it was chosen -- drop it so the next
+            // request re-picks instead of failing for the rest of the day.
+            if (question == null)
+            {
+                _cache.Remove(cacheKey);
+                return NotFound(new { message = "Today's challenge is being refreshed. Please try again." });
+            }
+
+            var dto = MapToResponseDto(question);
+            dto.LikeCount = await _db.QuestionVotes.CountAsync(v => v.QuestionBankQuestionId == pickedId && v.IsLike);
+            dto.DislikeCount = await _db.QuestionVotes.CountAsync(v => v.QuestionBankQuestionId == pickedId && !v.IsLike);
+            dto.CommentCount = await _db.QuestionComments.CountAsync(c => c.QuestionBankQuestionId == pickedId);
+            if (User.Identity?.IsAuthenticated == true)
+            {
+                var userId = User.GetUserId();
+                var myVote = await _db.QuestionVotes.FirstOrDefaultAsync(v => v.QuestionBankQuestionId == pickedId && v.UserId == userId);
+                dto.MyVote = myVote?.IsLike;
+            }
+
+            return Ok(dto);
         }
 
         // GET /api/question-bank/{id}

@@ -91,12 +91,29 @@ export function updateProfile({ fullName, username }) {
 
 // ---------- Settings: Account & Security ----------
 
-// PATCH /api/auth/change-password
-export function changePassword({ currentPassword, newPassword }) {
+// PATCH /api/auth/change-password -- prove it's you with EITHER currentPassword OR (for "I forgot my
+// current password") otpAccessToken: a fresh MSG91 token for the account's OWN registered phone
+// number. See ChangePasswordDto's comment on the backend.
+export function changePassword({ currentPassword, otpAccessToken, newPassword }) {
   return apiFetch("/api/auth/change-password", {
     method: "PATCH",
     auth: true,
-    body: { currentPassword, newPassword },
+    body: {
+      currentPassword: currentPassword || null,
+      otpAccessToken: otpAccessToken || null,
+      newPassword,
+    },
+  });
+}
+
+// POST /api/auth/reset-password -- FORGOT PASSWORD for someone who is logged out. otpAccessToken is
+// the MSG91 widget token from having just OTP-verified the phone number registered to the account
+// (see msg91.js); the backend re-verifies it and resets the password of the account that owns that
+// number. Doesn't log the person in -- they sign in with the new password afterwards.
+export function resetPassword({ otpAccessToken, newPassword }) {
+  return apiFetch("/api/auth/reset-password", {
+    method: "POST",
+    body: { otpAccessToken, newPassword },
   });
 }
 

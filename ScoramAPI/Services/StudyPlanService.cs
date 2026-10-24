@@ -240,7 +240,13 @@ namespace ScoramAPI.Services
         public async Task<StudyPlanDto> GetTodayAsync(Guid userId, IReadOnlyCollection<Guid>? examIds, CancellationToken ct)
         {
             var day = AnalyticsCalculator.IstDay(DateTime.UtcNow);
-            await EnsureGeneratedAsync(userId, day, examIds, ct);
+            // Generation is deliberately NOT tied to the request's cancellation token. The first read of the
+            // day does the heavy work (mistake states, topic insights, history counts); if the client gave
+            // up waiting (mobile timeout on a cold/busy server) and that work were cancelled with it, the
+            // plan would never get saved and every retry would start from zero. Letting it finish means the
+            // client's retry is answered from the saved tasks almost instantly. It is idempotent (unique
+            // key per user/day/task), so a duplicate or abandoned run is harmless.
+            await EnsureGeneratedAsync(userId, day, examIds, CancellationToken.None);
 
             var tasks = await _db.StudyPlanTasks.Where(t => t.UserId == userId && t.PlanDate == day).ToListAsync(ct);
             await RefreshProgressAsync(userId, day, tasks, ct);

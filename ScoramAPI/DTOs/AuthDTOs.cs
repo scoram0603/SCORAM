@@ -13,12 +13,15 @@ namespace ScoramAPI.DTOs
 
     public class RegisterDto
     {
-        // Instagram-style handle: lowercase letters, numbers, underscore, dot. Enforced here as a
-        // defense-in-depth backstop -- the frontend also live-checks availability via
-        // GET /api/auth/check-username as the person types, so this validation firing at submit time
-        // should be rare in practice.
+        // Handle rule for NEW usernames: lowercase letters, numbers and underscore only -- no spaces,
+        // no uppercase, no other special characters (dots included). Enforced here as a
+        // defense-in-depth backstop -- the frontend also restricts typing and live-checks availability
+        // via GET /api/auth/check-username, so this validation firing at submit time should be rare.
+        // Usernames created before this rule (which may contain a dot) keep working everywhere:
+        // login looks them up as-is, and UpdateProfile only enforces the rule when the username is
+        // actually being changed (see UsernameRules).
         [Required, MinLength(3), MaxLength(30)]
-        [RegularExpression(@"^[a-z0-9._]+$", ErrorMessage = "Username can only contain lowercase letters, numbers, dots, and underscores.")]
+        [RegularExpression(UsernameRules.Pattern, ErrorMessage = UsernameRules.ErrorMessage)]
         public string Username { get; set; } = string.Empty;
 
         [Required, MaxLength(100)]
@@ -136,11 +139,36 @@ namespace ScoramAPI.DTOs
 
     public class ChangePasswordDto
     {
-        [Required]
-        public string CurrentPassword { get; set; } = string.Empty;
+        // Prove it's you with EITHER the current password OR -- for "I forgot my current password" --
+        // a fresh MSG91 OTP access token for THIS ACCOUNT'S registered phone number (same two
+        // re-authentication forms DeleteAccountDto already offers). Exactly one is needed; the
+        // controller returns a clear 400 when neither is supplied.
+        public string? CurrentPassword { get; set; }
+
+        public string? OtpAccessToken { get; set; }
 
         [Required, MinLength(6)]
         public string NewPassword { get; set; } = string.Empty;
+    }
+
+    // POST /api/auth/reset-password -- "Forgot password" for someone who is NOT logged in. There is
+    // no email provider wired up, so ownership is proven the same way login-otp does it: an MSG91
+    // widget OTP on the phone number registered to the account. The number MSG91 confirms (never
+    // anything the client typed) is what looks the account up, so no identifier is accepted here.
+    public class ResetPasswordDto
+    {
+        [Required]
+        public string OtpAccessToken { get; set; } = string.Empty;
+
+        [Required, MinLength(6)]
+        public string NewPassword { get; set; } = string.Empty;
+    }
+
+    // Single source of truth for the NEW-username rule (see RegisterDto.Username's comment).
+    public static class UsernameRules
+    {
+        public const string Pattern = "^[a-z0-9_]+$";
+        public const string ErrorMessage = "Username can only contain lowercase letters, numbers and underscore (_). No spaces or other special characters.";
     }
 
     public class ChangeEmailDto
@@ -187,10 +215,11 @@ namespace ScoramAPI.DTOs
         [Required, MaxLength(100)]
         public string FullName { get; set; } = string.Empty;
 
-        // Same rule as RegisterDto.Username -- kept in sync deliberately (see CheckUsername, which
-        // both registration AND this endpoint's frontend form call).
+        // Same rule as RegisterDto.Username (UsernameRules) -- but checked in
+        // AuthController.UpdateProfile rather than by an attribute here, so a student whose existing
+        // username predates the rule (e.g. contains a dot) can still edit just their Full Name
+        // without being forced to rename. The rule applies whenever the username actually changes.
         [Required, MinLength(3), MaxLength(30)]
-        [RegularExpression(@"^[a-z0-9._]+$", ErrorMessage = "Username can only contain lowercase letters, numbers, dots, and underscores.")]
         public string Username { get; set; } = string.Empty;
     }
 
@@ -222,8 +251,7 @@ namespace ScoramAPI.DTOs
 
     // ---------- POST /api/auth/delete-account ----------
     // Self-service account deletion (see AccountDeletionService for exactly what is erased vs.
-    // anonymized). Re-authentication is REQUIRED and takes one of two forms, because the app has no
-    // forgot-password flow and a person who signs in with a phone OTP may not remember a password:
+    // anonymized). Re-authentication is REQUIRED and takes one of two forms, because a person who signs in with a phone OTP may not remember a password:
     //   * CurrentPassword -- same proof ChangePassword/ChangeEmail/ChangePhone already use, or
     //   * OtpAccessToken  -- a fresh MSG91 widget token proving they own THIS ACCOUNT'S phone number
     //                        (re-verified server-side and cross-checked against the stored number).

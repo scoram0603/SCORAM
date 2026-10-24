@@ -12,7 +12,9 @@ import { API_BASE_URL } from "../api/client";
 import ImageCropModal from "../components/profile/ImageCropModal";
 import MyExamsSection from "../components/home/MyExamsSection";
 
-const USERNAME_PATTERN = /^[a-z0-9._]+$/;
+// New/changed usernames: lowercase letters, numbers and underscore only (mirrors UsernameRules on the
+// backend). An existing username that predates this rule (e.g. has a dot) is left alone until changed.
+const USERNAME_PATTERN = /^[a-z0-9_]+$/;
 
 function photoSrc(url) {
   if (!url) return null;
@@ -122,7 +124,7 @@ function ProfileInfoCard() {
     }
     if (normalized.length < 3 || !USERNAME_PATTERN.test(normalized)) {
       setUsernameStatus("invalid");
-      setUsernameReason(normalized.length < 3 ? "At least 3 characters" : "Only lowercase letters, numbers, dots, and underscores");
+      setUsernameReason(normalized.length < 3 ? "At least 3 characters" : "Only lowercase letters, numbers and underscore (_) are allowed");
       return;
     }
 
@@ -206,7 +208,7 @@ function ProfileInfoCard() {
               <AtSign className="h-4 w-4 shrink-0 text-ink-400" strokeWidth={2} />
               <input
                 value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                onChange={(e) => setUsername(e.target.value.replace(/[^a-z0-9_]/g, ""))}
                 maxLength={30}
                 className="w-full bg-transparent text-sm text-ink-900 focus:outline-none"
               />

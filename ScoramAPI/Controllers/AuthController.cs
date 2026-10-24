@@ -390,8 +390,10 @@ namespace ScoramAPI.Controllers
             if (normalized.Length < 3)
                 return Ok(new UsernameAvailabilityDto { Available = false, Reason = "Username must be at least 3 characters." });
 
-            if (!System.Text.RegularExpressions.Regex.IsMatch(normalized, "^[a-z0-9._]+$"))
-                return Ok(new UsernameAvailabilityDto { Available = false, Reason = "Only lowercase letters, numbers, dots, and underscores are allowed." });
+            // Uppercase is judged on the RAW text (before ToLowerInvariant above) -- the rule is "no
+            // uppercase", not "silently lowercase it", so "Durgesh" is reported as invalid.
+            if (!System.Text.RegularExpressions.Regex.IsMatch(username.Trim(), UsernameRules.Pattern))
+                return Ok(new UsernameAvailabilityDto { Available = false, Reason = "Only lowercase letters, numbers and underscore (_) are allowed. No spaces or special characters." });
 
             var taken = await _db.Users.AnyAsync(u => u.Username == normalized);
             return Ok(new UsernameAvailabilityDto { Available = !taken, Reason = taken ? "That username is already taken." : null });
@@ -478,7 +480,16 @@ namespace ScoramAPI.Controllers
             var user = await _db.Users.FindAsync(User.GetUserId());
             if (user == null) return NotFound();
 
-            var username = dto.Username.Trim().ToLowerInvariant();
+            var rawUsername = dto.Username.Trim();
+            var username = rawUsername.ToLowerInvariant();
+
+            // The "lowercase letters, numbers, underscore" rule is enforced only when the username is
+            // actually changing: accounts created before the rule (e.g. with a dot) can still save
+            // other profile edits without being forced to rename.
+            if (!string.Equals(username, user.Username, StringComparison.Ordinal)
+                && !System.Text.RegularExpressions.Regex.IsMatch(rawUsername, UsernameRules.Pattern))
+                return BadRequest(new { message = UsernameRules.ErrorMessage });
+
             if (await _db.Users.AnyAsync(u => u.Id != user.Id && u.Username == username))
                 return Conflict(new { message = "That username is already taken." });
 
@@ -504,8 +515,24 @@ namespace ScoramAPI.Controllers
             var user = await _db.Users.FindAsync(User.GetUserId());
             if (user == null) return NotFound();
 
-            if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
-                return BadRequest(new { message = "Current password is incorrect." });
+            if (!string.IsNullOrEmpty(dto.CurrentPassword))
+            {
+                if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+                    return BadRequest(new { message = "Current password is incorrect." });
+            }
+            else if (!string.IsNullOrEmpty(dto.OtpAccessToken))
+            {
+                // "Forgot current password" -- OTP on this account's OWN registered number instead.
+                var verify = await _msg91.VerifyAccessTokenAsync(dto.OtpAccessToken);
+                if (!verify.Success) return BadRequest(new { message = verify.ErrorMessage ?? "Phone verification failed." });
+
+                if (verify.PhoneNumber != user.PhoneNumber)
+                    return BadRequest(new { message = "That phone number doesn't match this account. Verify the number registered to your account." });
+            }
+            else
+            {
+                return BadRequest(new { message = "Enter your current password, or verify your registered phone number with an OTP, to confirm it's you." });
+            }
 
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
             user.SecurityStamp = Guid.NewGuid();
@@ -514,6 +541,35 @@ namespace ScoramAPI.Controllers
             await _refreshTokens.RevokeAllAsync(user.Id, isAdmin: false);
 
             return Ok(new { message = "Password updated successfully. Please log in again." });
+        }
+
+        // POST /api/auth/reset-password -- FORGOT PASSWORD for a logged-out student (see
+        // ResetPasswordDto's comment). The phone number MSG91 confirms identifies the account; an
+        // unrecognised number gets the same kind of clear message login-otp gives. Like
+        // ChangePassword, it regenerates the SecurityStamp and revokes every refresh token, so any
+        // session an attacker (or the student's old device) might hold is ended. The student is NOT
+        // logged in by this call -- they sign in with the new password afterwards.
+        [HttpPost("reset-password")]
+        [EnableRateLimiting("login")]
+        public async Task<ActionResult> ResetPassword(ResetPasswordDto dto)
+        {
+            var verify = await _msg91.VerifyAccessTokenAsync(dto.OtpAccessToken);
+            if (!verify.Success) return BadRequest(new { message = verify.ErrorMessage ?? "Phone verification failed." });
+
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.PhoneNumber == verify.PhoneNumber);
+            if (user == null)
+                return NotFound(new { message = "No account found with this phone number. Please create an account first." });
+
+            if (!user.IsActive)
+                return BadRequest(new { message = "This account has been deactivated." });
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+            user.SecurityStamp = Guid.NewGuid();
+            await _db.SaveChangesAsync();
+            await _securityStamps.InvalidateAsync(user.Id, isAdmin: false);
+            await _refreshTokens.RevokeAllAsync(user.Id, isAdmin: false);
+
+            return Ok(new { message = "Password reset successfully. Please log in with your new password." });
         }
 
         // PATCH /api/auth/change-email -- no OTP step yet (see the DTO's comment in AuthDTOs.cs),

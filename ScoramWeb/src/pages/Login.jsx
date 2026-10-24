@@ -9,7 +9,18 @@ import { useAuth } from "../context/AuthContext";
 import { checkUsername, getCaptcha } from "../api/auth";
 import OtpEntryBox from "../components/auth/OtpEntryBox";
 
-const USERNAME_PATTERN = /^[a-z0-9._]+$/;
+// New usernames: lowercase letters, numbers and underscore only -- no spaces, uppercase or other
+// special characters (mirrors UsernameRules on the backend).
+const USERNAME_PATTERN = /^[a-z0-9_]+$/;
+const USERNAME_RULE_TEXT = "Only lowercase letters, numbers and underscore (_) are allowed";
+
+// Strips everything the username rule doesn't allow as the person types (spaces, uppercase,
+// symbols). Returns the cleaned value plus whether anything was removed, so the form can show a
+// hint instead of silently swallowing keystrokes.
+function sanitizeUsername(raw) {
+  const cleaned = raw.replace(/[^a-z0-9_]/g, "");
+  return { cleaned, changed: cleaned !== raw };
+}
 
 function isValidPhone(value) {
   return /^\d{10}$/.test(value.trim());
@@ -51,6 +62,7 @@ export default function Login() {
 
   const [usernameStatus, setUsernameStatus] = useState(null); // null | "checking" | "available" | "taken"
   const [usernameReason, setUsernameReason] = useState(null);
+  const [usernameHint, setUsernameHint] = useState(null); // shown when a typed character was rejected
   const usernameCheckRef = useRef(null);
 
   // Register-mode only: the OTP access-token OtpEntryBox hands back once form.phoneNumber has been
@@ -80,7 +92,7 @@ export default function Login() {
       setUsernameReason(
         username.length < 3
           ? "At least 3 characters"
-          : "Only lowercase letters, numbers, dots, and underscores"
+          : USERNAME_RULE_TEXT
       );
       return;
     }
@@ -262,14 +274,24 @@ export default function Login() {
                   type="text"
                   required
                   value={form.username}
-                  onChange={(e) => updateField("username", e.target.value)}
-                  placeholder="e.g. durgesh_k07"
+                  onChange={(e) => {
+                    const { cleaned, changed } = sanitizeUsername(e.target.value);
+                    setUsernameHint(changed ? USERNAME_RULE_TEXT : null);
+                    updateField("username", cleaned);
+                  }}
+                  placeholder="Choose a username"
                   autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  maxLength={30}
                   className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
                 />
                 <UsernameStatusIcon status={usernameStatus} />
               </Field>
-              {usernameStatus && usernameStatus !== "available" && usernameReason && (
+              {usernameHint && (
+                <p className="-mt-2 pl-1 text-xs font-medium text-red-600">{usernameHint}</p>
+              )}
+              {!usernameHint && usernameStatus && usernameStatus !== "available" && usernameReason && (
                 <p className="-mt-2 pl-1 text-xs font-medium text-red-600">{usernameReason}</p>
               )}
               {usernameStatus === "available" && (
@@ -282,7 +304,7 @@ export default function Login() {
                   required
                   value={form.fullName}
                   onChange={(e) => updateField("fullName", e.target.value)}
-                  placeholder="Durgesh Kumar"
+                  placeholder="Enter your full name"
                   className="w-full bg-transparent text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
                 />
               </Field>
@@ -361,6 +383,14 @@ export default function Login() {
                 {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={2} /> : <Eye className="h-4 w-4" strokeWidth={2} />}
               </button>
             </Field>
+          )}
+
+          {mode === "login" && loginMethod === "password" && (
+            <div className="-mt-1 flex justify-end">
+              <Link to="/forgot-password" className="text-xs font-semibold text-secondary-500 hover:underline">
+                Forgot password?
+              </Link>
+            </div>
           )}
 
           {mode === "login" && loginMethod === "password" && (

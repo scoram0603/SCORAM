@@ -4,6 +4,7 @@ import AuthLayout from "./layouts/AuthLayout";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
 import Profile from "./pages/Profile";
 import SearchQuestions from "./pages/SearchQuestions";
 import Discussions from "./pages/Discussions";
@@ -114,6 +115,7 @@ function AppRoutes() {
 
       <Route element={<AuthLayout />}>
         <Route path="login" element={<Login />} />
+        <Route path="forgot-password" element={<ForgotPassword />} />
       </Route>
 
       {/* LANDING PAGE -- public support pages, own navbar/footer (LegalPage), no app chrome,

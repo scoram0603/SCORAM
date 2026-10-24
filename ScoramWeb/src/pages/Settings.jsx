@@ -168,13 +168,28 @@ function SaveButton({ saving, disabled = false, label = "Save" }) {
 }
 
 function ChangePasswordCard() {
-  const { updatePassword } = useAuth();
+  const { user, updatePassword } = useAuth();
+  // "password" = confirm with the current password (default); "otp" = "I forgot my current
+  // password" -- confirm with an OTP on the account's own registered phone number instead.
+  const [method, setMethod] = useState("password");
   const [currentPassword, setCurrentPassword] = useState("");
+  const [otpAccessToken, setOtpAccessToken] = useState(null);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+
+  const phone = (user?.phoneNumber || "").trim();
+  const usingOtp = method === "otp";
+
+  function switchMethod(next) {
+    setMethod(next);
+    setError(null);
+    setSuccess(null);
+    setCurrentPassword("");
+    setOtpAccessToken(null);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -185,12 +200,19 @@ function ChangePasswordCard() {
       setError("New passwords don't match.");
       return;
     }
+    if (usingOtp && !otpAccessToken) {
+      setError("Please verify your registered phone number with OTP first.");
+      return;
+    }
 
     setSaving(true);
     try {
-      await updatePassword({ currentPassword, newPassword });
+      await updatePassword(
+        usingOtp ? { otpAccessToken, newPassword } : { currentPassword, newPassword }
+      );
       setSuccess("Password updated successfully.");
       setCurrentPassword("");
+      setOtpAccessToken(null);
       setNewPassword("");
       setConfirmPassword("");
     } catch (err) {
@@ -203,9 +225,48 @@ function ChangePasswordCard() {
   return (
     <SettingsCard icon={Lock} title="Change Password">
       <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-3">
-        <Field icon={Lock} label="Current password">
-          <PasswordInput value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Your current password" autoComplete="current-password" />
-        </Field>
+        {!usingOtp ? (
+          <>
+            <Field icon={Lock} label="Current password">
+              <PasswordInput value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Your current password" autoComplete="current-password" />
+            </Field>
+            <div className="-mt-1 flex justify-end">
+              <button
+                type="button"
+                onClick={() => switchMethod("otp")}
+                className="text-xs font-semibold text-secondary-500 hover:underline"
+              >
+                Forgot current password?
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="rounded-xl2 border border-primary-100 bg-primary-50/50 p-3">
+            <p className="text-xs text-ink-600">
+              {isValidPhone(phone)
+                ? `We'll send an OTP to your registered number ${phone} to confirm it's you.`
+                : "We couldn't find a valid registered phone number on your account."}
+            </p>
+            {isValidPhone(phone) && !otpAccessToken && (
+              <div className="mt-3">
+                <OtpEntryBox key={phone} phoneNumber={phone} onVerified={(token) => setOtpAccessToken(token)} />
+              </div>
+            )}
+            {otpAccessToken && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-mint-600">
+                <CheckCircle2 className="h-4 w-4 shrink-0" strokeWidth={2.25} />
+                Phone number verified
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => switchMethod("password")}
+              className="mt-2 text-xs font-semibold text-secondary-500 hover:underline"
+            >
+              Use current password instead
+            </button>
+          </div>
+        )}
         <Field icon={Lock} label="New password">
           <PasswordInput value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="At least 6 characters" autoComplete="new-password" />
         </Field>
@@ -213,7 +274,7 @@ function ChangePasswordCard() {
           <PasswordInput value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter your new password" autoComplete="new-password" />
         </Field>
         <FeedbackMessage error={error} success={success} />
-        <SaveButton saving={saving} />
+        <SaveButton saving={saving} disabled={usingOtp && !otpAccessToken} label={usingOtp && !otpAccessToken ? "Verify phone number first" : "Save"} />
       </form>
     </SettingsCard>
   );

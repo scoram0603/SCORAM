@@ -50,7 +50,7 @@ namespace ScoramAPI.Controllers
         // (same question all day, for every student, rotating daily) rather than per-user state, so
         // there's nothing to track and the result is trivially cacheable -- with potentially thousands
         // of students hitting the home page, recomputing this per-request would be wasteful for a value
-        // that's identical for everyone until midnight UTC.
+        // that's identical for everyone until midnight IST.
         [HttpGet("today")]
         public async Task<ActionResult<QuestionDetailDto>> GetTodaysChallenge()
         {
@@ -67,7 +67,11 @@ namespace ScoramAPI.Controllers
                 ? "-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
                     System.Text.Encoding.UTF8.GetBytes(string.Join(",", scope.ExamIds.OrderBy(id => id)))))[..16]
                 : string.Empty;
-            var cacheKey = $"todays-challenge-{DateTime.UtcNow:yyyy-MM-dd}{scopeKey}";
+            // The challenge rolls over at India (IST) midnight, not UTC midnight (which would be 5:30 AM
+            // for the students this app is for): the day number and the cache key both use the IST date.
+            var istNow = DateTime.UtcNow.AddHours(5).AddMinutes(30);
+            var istToday = DateOnly.FromDateTime(istNow);
+            var cacheKey = $"todays-challenge-{istToday:yyyy-MM-dd}{scopeKey}";
             if (_cache.TryGetValue(cacheKey, out QuestionDetailDto? cached) && cached != null)
                 return Ok(cached);
 
@@ -78,7 +82,10 @@ namespace ScoramAPI.Controllers
                 var scopedExamIds = scope.ExamIds.ToList();
                 publishedQuery = publishedQuery.Where(q => scopedExamIds.Contains(q.Paper!.ExamId));
             }
+            // Stable order (by Id) -- without an ORDER BY the database may return rows in any order, so
+            // "index N" wasn't guaranteed to be the same question twice, or to move on the next day.
             var publishedIds = await publishedQuery
+                .OrderBy(q => q.Id)
                 .Select(q => q.Id)
                 .ToListAsync();
 
@@ -88,8 +95,8 @@ namespace ScoramAPI.Controllers
             // Deterministic, not random -- the same seed always picks the same index for a given day,
             // so every student (and every server instance, if this ever runs behind more than one)
             // sees the identical "today's challenge" without needing shared/distributed state.
-            var seed = DateTime.UtcNow.Date.DayOfYear + DateTime.UtcNow.Year * 1000;
-            var questionId = publishedIds[seed % publishedIds.Count];
+            // IST day number (+1 every IST midnight) -> consecutive days always land on different questions.
+            var questionId = publishedIds[istToday.DayNumber % publishedIds.Count];
 
             var question = await _db.Questions
                 .Include(q => q.Solutions)
@@ -97,7 +104,9 @@ namespace ScoramAPI.Controllers
                 .FirstAsync(q => q.Id == questionId);
 
             var dto = MapToDetailDto(question);
-            _cache.Set(cacheKey, dto, TimeSpan.FromHours(6));
+            // Cached until the next IST midnight (+1 min slack) so it never outlives its day.
+            var untilMidnight = istToday.AddDays(1).ToDateTime(TimeOnly.MinValue) - istNow;
+            _cache.Set(cacheKey, dto, untilMidnight + TimeSpan.FromMinutes(1));
             return Ok(dto);
         }
 
