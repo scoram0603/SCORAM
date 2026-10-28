@@ -80,6 +80,9 @@ builder.Services.AddScoped<IBulkPaperImportService, BulkPaperImportService>();
 builder.Services.AddScoped<IQuestionBankImportService, QuestionBankImportService>(); // SCORAM_QUESTION_BANK
 builder.Services.AddScoped<IBulkUploadZipService, BulkUploadZipService>(); // rich PYP/PYQ bulk upload -- ZIP package extraction
 builder.Services.AddHostedService<BulkImportStagingCleanupService>(); // sweeps abandoned bulk-import staged images
+// Retries private chat/DM attachment blob deletions that failed at delete time. Registered but OFF unless
+// PrivateAttachments:CleanupSweep:Enabled=true -- enabling it bulk-deletes blobs, so it needs an explicit decision.
+builder.Services.AddHostedService<PrivateAttachmentCleanupService>();
 builder.Services.AddScoped<IQuestionBankMirrorService, QuestionBankMirrorService>(); // auto-mirrors new PYQ questions into the Question Bank
 builder.Services.AddScoped<IBulkImportCommitService, BulkImportCommitService>(); // extracted from BulkImportController.Commit -- see that class's own comment
 builder.Services.AddScoped<IBulkPaperImportCommitService, BulkPaperImportCommitService>(); // extracted from BulkPaperImportController.Commit
@@ -539,6 +542,11 @@ if (swaggerEnabled)
 // These now live in Azure Blob Storage (see AzureBlobService) and are served by
 // UploadedFilesController at the same "/uploads/{subfolder}/{file}" route, so no data migration or
 // frontend change was needed. UseStaticFiles() is kept for any other genuinely static wwwroot assets.
+// PRIVATE ATTACHMENTS -- must stay BEFORE UseStaticFiles: anything under /uploads/ that is not an explicitly
+// public asset folder (chat/DM attachments, unclassified folders) is a 404 here, so neither Azure-backed
+// UploadedFilesController nor a leftover wwwroot/uploads copy can serve it anonymously. Chat and DM
+// attachments are delivered only by the authenticated endpoints in ChatController / DirectMessagesController.
+app.UseMiddleware<ScoramAPI.Middleware.UploadsPrivacyMiddleware>();
 app.UseStaticFiles();
 
 app.UseCors("FrontendDev");

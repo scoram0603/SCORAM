@@ -14,6 +14,7 @@ import { API_BASE_URL } from "../api/client";
 import ConversationsList from "../components/directMessages/ConversationsList";
 import ConversationThread from "../components/directMessages/ConversationThread";
 import RoomInfoPanel from "../components/chat/RoomInfoPanel";
+import { AttachmentDocumentButton, AttachmentImage } from "../components/chat/AttachmentViews";
 import ChooseMyExamsPrompt from "../components/exams/ChooseMyExamsPrompt";
 import { useMyExamsScope } from "../hooks/useMyExamsScope";
 import NotificationBell from "../components/layout/NotificationBell";
@@ -662,14 +663,12 @@ function MessageBubble({ message, isOwn, roomId }) {
         ) : (
           <>
             {message.messageText && <Linkify text={message.messageText} className="whitespace-pre-wrap text-sm" />}
+            {/* Attachments are private: they load through the authenticated API (see api/attachments.js). */}
             {message.messageType === "Image" && message.attachmentUrl && (
-              <img src={fileSrc(message.attachmentUrl)} alt="" className="mt-1.5 max-h-60 rounded-lg" />
+              <AttachmentImage attachmentUrl={message.attachmentUrl} />
             )}
             {message.messageType === "Document" && message.attachmentUrl && (
-              <a href={fileSrc(message.attachmentUrl)} target="_blank" rel="noreferrer" className={`mt-1.5 flex items-center gap-2 rounded-lg p-2 text-xs font-semibold ${isOwn ? "bg-white/10" : "bg-primary-50"}`}>
-                <FileText className="h-4 w-4 shrink-0" strokeWidth={2} />
-                Open document
-              </a>
+              <AttachmentDocumentButton attachmentUrl={message.attachmentUrl} isOwn={isOwn} />
             )}
           </>
         )}

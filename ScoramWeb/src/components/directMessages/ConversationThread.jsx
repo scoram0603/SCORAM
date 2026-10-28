@@ -6,15 +6,11 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useChatConnection } from "../../context/ChatConnectionContext";
 import { getDirectMessages, sendDirectMessage, markConversationRead, deleteDirectMessage } from "../../api/directMessages";
-import { API_BASE_URL } from "../../api/client";
 import { timeAgo } from "../../utils/format";
 import { Avatar } from "./ConversationsList";
 import AudioRecorder from "./AudioRecorder";
-
-function fileSrc(url) {
-  if (!url) return null;
-  return url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
-}
+import { AttachmentDocumentButton, AttachmentImage } from "../chat/AttachmentViews";
+import { useAttachmentObjectUrl } from "../../hooks/useAttachmentObjectUrl";
 
 function lastSeenText(lastSeenAt) {
   const ago = timeAgo(lastSeenAt);
@@ -221,22 +217,15 @@ function MessageBubble({ message, isOwn, onDelete }) {
             ) : (
               message.messageText && <p className="whitespace-pre-wrap text-sm">{message.messageText}</p>
             )}
+            {/* Attachments are private: they load through the authenticated API (see api/attachments.js). */}
             {message.messageType === "Image" && message.attachmentUrl && (
-              <img src={fileSrc(message.attachmentUrl)} alt="" className="mt-1.5 max-h-60 rounded-lg" />
+              <AttachmentImage attachmentUrl={message.attachmentUrl} />
             )}
             {message.messageType === "Document" && message.attachmentUrl && (
-              <a
-                href={fileSrc(message.attachmentUrl)}
-                target="_blank"
-                rel="noreferrer"
-                className={`mt-1.5 flex items-center gap-2 rounded-lg p-2 text-xs font-semibold ${isOwn ? "bg-white/10" : "bg-primary-50"}`}
-              >
-                <FileText className="h-4 w-4 shrink-0" strokeWidth={2} />
-                Open document
-              </a>
+              <AttachmentDocumentButton attachmentUrl={message.attachmentUrl} isOwn={isOwn} />
             )}
             {message.messageType === "Audio" && message.attachmentUrl && (
-              <VoiceNoteBubble url={fileSrc(message.attachmentUrl)} durationSeconds={message.attachmentDurationSeconds} isOwn={isOwn} />
+              <VoiceNoteBubble attachmentUrl={message.attachmentUrl} durationSeconds={message.attachmentDurationSeconds} isOwn={isOwn} />
             )}
           </>
         )}
@@ -257,40 +246,52 @@ function MessageBubble({ message, isOwn, onDelete }) {
   );
 }
 
-function VoiceNoteBubble({ url, durationSeconds, isOwn }) {
+function VoiceNoteBubble({ attachmentUrl, durationSeconds, isOwn }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
+  // The audio file is private: it is fetched with the student's token and played from an object URL.
+  const { status, url, error, retry } = useAttachmentObjectUrl(attachmentUrl);
 
   function toggle() {
     if (!audioRef.current) return;
     if (playing) audioRef.current.pause();
-    else audioRef.current.play();
+    else audioRef.current.play().catch(() => setPlaying(false));
   }
 
   const m = Math.floor((durationSeconds || 0) / 60);
   const s = (durationSeconds || 0) % 60;
+  const ready = status === "ready";
 
   return (
     <div className="mt-1 flex min-w-[180px] items-center gap-2.5">
       <button
         type="button"
-        onClick={toggle}
+        onClick={status === "error" && error?.retryable ? retry : toggle}
+        disabled={status === "loading" || (status === "error" && !error?.retryable)}
         aria-label={playing ? "Pause voice note" : "Play voice note"}
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isOwn ? "bg-white/15" : "bg-primary-50"}`}
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full disabled:opacity-60 ${isOwn ? "bg-white/15" : "bg-primary-50"}`}
       >
-        {playing ? <Pause className="h-3.5 w-3.5" strokeWidth={2.5} /> : <Play className="h-3.5 w-3.5 pl-0.5" strokeWidth={2.5} />}
+        {status === "loading" ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : playing ? (
+          <Pause className="h-3.5 w-3.5" strokeWidth={2.5} />
+        ) : (
+          <Play className="h-3.5 w-3.5 pl-0.5" strokeWidth={2.5} />
+        )}
       </button>
       <span className="flex-1 text-xs font-medium tabular-nums">
-        {m}:{String(s).padStart(2, "0")}
+        {status === "error" ? error.message : `${m}:${String(s).padStart(2, "0")}`}
       </span>
-      <audio
-        ref={audioRef}
-        src={url}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
-        className="hidden"
-      />
+      {ready && (
+        <audio
+          ref={audioRef}
+          src={url}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => setPlaying(false)}
+          className="hidden"
+        />
+      )}
     </div>
   );
 }

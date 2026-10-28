@@ -12,10 +12,13 @@ namespace ScoramAPI.Controllers
     // URLs in that exact shape -- this controller is just what now answers that URL instead of the
     // static-files middleware, so no data migration and no frontend change are needed.
     //
-    // Left unauthenticated (matches the previous static-file behaviour): callers only ever receive a
-    // URL for something they already had legitimate access to -- a question they can see, their own
-    // profile, a chat/DM they're a participant of -- and blob names are unguessable GUIDs, not
-    // sequential IDs.
+    // Anonymous, but ONLY for the explicitly public asset folders in PrivateAttachmentRules.PublicFolders
+    // (question/stimulus images, avatars, exam and organization logos, chat-room icons, landing media).
+    // Private chat / direct-message attachments (chat-attachments, dm-attachments) and any folder that is
+    // not on that list answer 404 here without touching storage -- those attachments are only delivered by
+    // the authenticated, membership-checked endpoints GET /api/chat/messages/{id}/attachment and
+    // GET /api/directmessages/messages/{id}/attachment. UploadsPrivacyMiddleware applies the same rule
+    // earlier in the pipeline (before app.UseStaticFiles) so local wwwroot copies are covered as well.
     //
     // Deliberately NOT [ApiController]: that attribute makes NotFound()/BadRequest() auto-wrap into an
     // "application/problem+json" body. An <img> tag doing a cross-origin (frontend origin != API
@@ -65,6 +68,13 @@ namespace ScoramAPI.Controllers
                 fileName.Contains('/') || fileName.Contains(".."))
             {
                 return BadRequest();
+            }
+
+            // Private attachment folders and unclassified folders are never served anonymously. Bare 404
+            // (not 401/403) so the route does not confirm that a given attachment exists.
+            if (!PrivateAttachmentRules.IsPublicFolder(subfolder))
+            {
+                return NotFound();
             }
 
             var blobName = $"{subfolder}/{fileName}";

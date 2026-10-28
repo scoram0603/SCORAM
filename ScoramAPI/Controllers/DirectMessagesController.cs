@@ -339,17 +339,29 @@ namespace ScoramAPI.Controllers
         // row so the thread doesn't have a gap, but wipes the content -- mirrors ChatController's
         // DeleteOwnMessage for room chat, same UX as WhatsApp/Instagram "delete for everyone").
         [HttpDelete("messages/{messageId:guid}")]
-        public async Task<IActionResult> DeleteMessage(Guid messageId)
+        public async Task<IActionResult> DeleteMessage(Guid messageId, [FromServices] IAzureBlobService blobs)
         {
             var userId = User.GetUserId();
             var message = await _db.DirectMessages.FindAsync(messageId);
             if (message == null) return NotFound();
             if (message.SenderId != userId) return Forbid();
 
+            // "Unsend": hide the message and wipe its text first; the attachment URL is kept ONLY until the
+            // private blob is confirmed deleted (below), so a storage failure leaves a marker that a repeat of
+            // this request -- idempotent, still 204 -- uses to finish the cleanup. MapMessage already hides the
+            // URL of a deleted message, so nothing is exposed in the meantime.
             message.IsDeleted = true;
             message.MessageText = null;
-            message.AttachmentUrl = null;
             await _db.SaveChangesAsync();
+
+            var cleanup = await PrivateAttachmentDelivery.CleanupAsync(
+                blobs, message.AttachmentUrl, PrivateAttachmentRules.DirectMessageFolder,
+                HttpContext?.RequestServices?.GetService<ILoggerFactory>()?.CreateLogger<DirectMessagesController>(), message.Id);
+            if (cleanup is AttachmentCleanupResult.Deleted or AttachmentCleanupResult.SkippedInvalid)
+            {
+                message.AttachmentUrl = null;
+                await _db.SaveChangesAsync();
+            }
 
             var conversation = await _db.DirectConversations.FindAsync(message.ConversationId);
             if (conversation != null)
@@ -423,6 +435,29 @@ namespace ScoramAPI.Controllers
         }
 
 
+        // GET /api/directmessages/messages/{messageId}/attachment -- the ONLY way to read a DM attachment
+        // (image, document or voice note). Requires a signed-in student who is one of the two participants
+        // of the message's conversation -- the same rule as listing the conversation's messages. Resolved
+        // from the STORED message; the client never supplies a blob name. Unknown / deleted / no attachment /
+        // not a participant are the same bare 404 (no existence leak), and authorization runs before storage.
+        [HttpGet("messages/{messageId:guid}/attachment")]
+        public async Task<IActionResult> GetAttachment(Guid messageId, [FromServices] IAzureBlobService blobs, CancellationToken cancellationToken)
+        {
+            var userId = User.GetUserId();
+            var message = await _db.DirectMessages.AsNoTracking()
+                .Where(m => m.Id == messageId)
+                .Select(m => new { m.ConversationId, m.AttachmentUrl, m.IsDeleted })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (message == null || message.IsDeleted || string.IsNullOrEmpty(message.AttachmentUrl)) return NotFound();
+
+            var conversation = await _db.DirectConversations.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == message.ConversationId, cancellationToken);
+            if (conversation == null || !IsParticipant(conversation, userId)) return NotFound();
+
+            return await PrivateAttachmentDelivery.StreamAsync(this, blobs, message.AttachmentUrl, PrivateAttachmentRules.DirectMessageFolder, cancellationToken);
+        }
+
         private async Task<bool> IsParticipant(Guid conversationId, Guid userId)
         {
             var conversation = await _db.DirectConversations.FindAsync(conversationId);
@@ -456,7 +491,8 @@ namespace ScoramAPI.Controllers
             SenderFullName = m.Sender?.FullName ?? "Unknown",
             MessageType = m.MessageType.ToString(),
             MessageText = m.IsDeleted ? null : m.MessageText,
-            AttachmentUrl = m.IsDeleted ? null : m.AttachmentUrl,
+            // The stored "/uploads/..." value is never exposed: clients get the authenticated attachment endpoint for this message.
+            AttachmentUrl = m.IsDeleted || string.IsNullOrEmpty(m.AttachmentUrl) ? null : PrivateAttachmentRules.DirectMessageAttachmentPath(m.Id),
             AttachmentDurationSeconds = m.AttachmentDurationSeconds,
             SharedQuestionId = m.SharedQuestionBankQuestionId,
             SharedQuestionExamName = m.IsDeleted ? null : m.SharedQuestionExamName,

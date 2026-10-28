@@ -286,6 +286,41 @@ export async function apiFetchForm(path, { method = "POST", formData, auth = fal
   return parseApiResponse(response, resolvedToken, isAdminCall);
 }
 
+/**
+ * GET a binary response (an image, document or voice note) with the student's Bearer token and return it as
+ * a Blob. Used for private chat / DM attachments, which are no longer public URLs: an <img src> or <audio src>
+ * cannot send an Authorization header, so the bytes are fetched here and shown through an object URL (see
+ * api/attachments.js). Same session behaviour as apiFetch: one silent token refresh + retry on a 401, and the
+ * same ApiError (with `.status`) for every non-2xx -- so callers can tell 401 / 404 / network apart. The token
+ * only ever travels in the header, never in the URL. An aborted request rethrows the AbortError unchanged.
+ */
+export async function apiFetchBlob(path, { auth = true, signal, _isRetry = false } = {}) {
+  const resolvedToken = auth ? getStoredToken() : null;
+  const headers = {};
+  if (resolvedToken) headers.Authorization = `Bearer ${resolvedToken}`;
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { method: "GET", headers, signal });
+  } catch (networkError) {
+    if (networkError?.name === "AbortError") throw networkError;
+    throw new ApiError(
+      `Couldn't reach the Scoram API at ${API_BASE_URL}. Is the backend running? (${networkError.message})`,
+      0
+    );
+  }
+
+  if (response.status === 401 && resolvedToken && !_isRetry) {
+    const newToken = await refreshStudentSession();
+    if (newToken) return apiFetchBlob(path, { auth, signal, _isRetry: true });
+  }
+
+  if (!response.ok) return parseApiResponse(response, resolvedToken, false); // always throws an ApiError here
+
+  const blob = await response.blob();
+  return { blob, contentType: response.headers.get("content-type") || blob.type || "" };
+}
+
 // Fired at most once per bad token (see the guard in parseApiResponse below) so a page full of
 // requests that all happen to be using the same stale token doesn't fire this a dozen times over --
 // AuthContext/AdminAuthContext each listen for their own event and clear the *matching* session only,

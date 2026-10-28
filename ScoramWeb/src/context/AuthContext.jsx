@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import * as authApi from "../api/auth";
+import { clearAttachmentCache } from "../api/attachments";
 import { getStoredToken, setStoredToken, setStoredRefreshToken, resetSessionExpiredGuard } from "../api/client";
 
 const USER_STORAGE_KEY = "scoram_user";
@@ -177,6 +178,7 @@ export function AuthProvider({ children }) {
     // local session is cleared regardless of whether the request even reaches the server -- a
     // network hiccup on the way out shouldn't trap someone in a logged-in-looking UI.
     authApi.logout().catch(() => {});
+    clearAttachmentCache(); // private chat attachments must not outlive the session in memory
     setStoredToken(null);
     setStoredRefreshToken(null);
     setToken(null);
@@ -189,6 +191,7 @@ export function AuthProvider({ children }) {
   // gone, so that request could only 401. Throws on failure so the caller can show the message.
   const deleteAccount = useCallback(async (payload) => {
     await authApi.deleteAccount(payload);
+    clearAttachmentCache();
     setStoredToken(null);
     setStoredRefreshToken(null);
     setToken(null);

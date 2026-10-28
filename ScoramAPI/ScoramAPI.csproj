@@ -52,4 +52,15 @@
     <InternalsVisibleTo Include="ScoramAPI.Tests" />
   </ItemGroup>
 
+  <!-- Private chat / direct-message attachments are delivered ONLY by the authenticated endpoints (blobs in Azure).
+       Any local copy under wwwroot/uploads (leftovers from before the Azure migration were found here) must never be
+       published or baked into a Docker image. UploadsPrivacyMiddleware already answers 404 for these paths; this keeps
+       the files out of the build output as well. Files on disk are NOT touched; they just stop shipping. -->
+  <ItemGroup>
+    <Content Remove="wwwroot/uploads/chat-attachments/**" />
+    <Content Remove="wwwroot/uploads/dm-attachments/**" />
+    <None Remove="wwwroot/uploads/chat-attachments/**" />
+    <None Remove="wwwroot/uploads/dm-attachments/**" />
+  </ItemGroup>
+
 </Project>

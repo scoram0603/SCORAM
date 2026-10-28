@@ -395,7 +395,7 @@ namespace ScoramAPI.Controllers
 
         // PATCH /api/admin/chat/reports/{id}/resolve  (HandleChatReports)
         [HttpPatch("reports/{id:guid}/resolve")]
-        public async Task<IActionResult> ResolveReport(Guid id, ChatReportResolveDto dto)
+        public async Task<IActionResult> ResolveReport(Guid id, ChatReportResolveDto dto, [FromServices] IAzureBlobService blobs)
         {
             if (!await _permissions.HasPermissionAsync(User, AdminPermission.HandleChatReports)) return Forbid();
 
@@ -415,8 +415,22 @@ namespace ScoramAPI.Controllers
 
             await _db.SaveChangesAsync();
 
+            // A moderator deleting a message removes it for everyone, so its private attachment blob goes too
+            // (same rule and same retry-friendly behaviour as a student's own "delete for everyone": the
+            // URL is cleared only once the blob is confirmed gone).
             if (dto.DeleteMessage && report.ChatMessage != null)
+            {
+                var cleanup = await PrivateAttachmentDelivery.CleanupAsync(
+                    blobs, report.ChatMessage.AttachmentUrl, PrivateAttachmentRules.ChatFolder,
+                    HttpContext?.RequestServices?.GetService<ILoggerFactory>()?.CreateLogger<AdminChatController>(), report.ChatMessageId);
+                if (cleanup is AttachmentCleanupResult.Deleted or AttachmentCleanupResult.SkippedInvalid)
+                {
+                    report.ChatMessage.AttachmentUrl = null;
+                    await _db.SaveChangesAsync();
+                }
+
                 await _hub.Clients.Group($"room-{report.ChatMessage.ChatRoomId}").SendAsync("MessageDeleted", report.ChatMessageId);
+            }
 
             return Ok(new { report.Id, Status = report.Status.ToString() });
         }

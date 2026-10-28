@@ -436,15 +436,29 @@ namespace ScoramAPI.Controllers
             }
         }
         [HttpDelete("messages/{id:guid}")]
-        public async Task<IActionResult> DeleteOwnMessage(Guid id)
+        public async Task<IActionResult> DeleteOwnMessage(Guid id, [FromServices] IAzureBlobService blobs)
         {
             var userId = User.GetUserId();
             var message = await _db.ChatMessages.FindAsync(id);
             if (message == null) return NotFound();
             if (message.UserId != userId) return Forbid();
 
+            // "Delete for everyone": the message is hidden first (so the user-visible result never depends
+            // on slow storage), then its private attachment blob is removed. The stored URL is cleared ONLY
+            // once the blob is confirmed gone; if storage failed it stays on the (already hidden) row, and a
+            // repeat of this request -- idempotent, still 204 -- finishes the cleanup. The blob name is
+            // re-validated against the private folder first, so a public asset can never be deleted here.
             message.IsDeleted = true;
             await _db.SaveChangesAsync();
+
+            var cleanup = await PrivateAttachmentDelivery.CleanupAsync(
+                blobs, message.AttachmentUrl, PrivateAttachmentRules.ChatFolder,
+                HttpContext?.RequestServices?.GetService<ILoggerFactory>()?.CreateLogger<ChatController>(), message.Id);
+            if (cleanup is AttachmentCleanupResult.Deleted or AttachmentCleanupResult.SkippedInvalid)
+            {
+                message.AttachmentUrl = null;
+                await _db.SaveChangesAsync();
+            }
 
             await _hub.Clients.Group($"room-{message.ChatRoomId}").SendAsync("MessageDeleted", message.Id);
             return NoContent();
@@ -578,6 +592,27 @@ namespace ScoramAPI.Controllers
             return Ok(pollDto);
         }
 
+        // GET /api/chat/messages/{id}/attachment -- the ONLY way to read a group-chat attachment. Requires
+        // a signed-in student who is an ACTIVE (non-banned) member of the message's room -- the same rule as
+        // listing the room's messages. The attachment is resolved from the STORED message (the client sends
+        // only a message id, never a blob name). Everything that should not be visible -- unknown message,
+        // deleted message, no attachment, not a member, banned -- is the same bare 404, so the endpoint does
+        // not reveal whether a given attachment exists. Authorization runs BEFORE storage is touched.
+        [HttpGet("messages/{id:guid}/attachment")]
+        public async Task<IActionResult> GetAttachment(Guid id, [FromServices] IAzureBlobService blobs, CancellationToken cancellationToken)
+        {
+            var userId = User.GetUserId();
+            var message = await _db.ChatMessages.AsNoTracking()
+                .Where(m => m.Id == id)
+                .Select(m => new { m.ChatRoomId, m.AttachmentUrl, m.IsDeleted })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (message == null || message.IsDeleted || string.IsNullOrEmpty(message.AttachmentUrl)) return NotFound();
+            if (!await IsActiveMember(message.ChatRoomId, userId)) return NotFound();
+
+            return await PrivateAttachmentDelivery.StreamAsync(this, blobs, message.AttachmentUrl, PrivateAttachmentRules.ChatFolder, cancellationToken);
+        }
+
         // ---------- helpers ----------
 
         private async Task<bool> IsActiveMember(Guid roomId, Guid userId) =>
@@ -622,7 +657,8 @@ namespace ScoramAPI.Controllers
             SenderPhotoUrl = m.User?.PhotoUrl,
             MessageType = m.MessageType.ToString(),
             MessageText = m.IsDeleted ? null : m.MessageText,
-            AttachmentUrl = m.IsDeleted ? null : m.AttachmentUrl,
+            // The stored "/uploads/..." value is never exposed: clients get the authenticated attachment endpoint for this message.
+            AttachmentUrl = m.IsDeleted || string.IsNullOrEmpty(m.AttachmentUrl) ? null : PrivateAttachmentRules.ChatAttachmentPath(m.Id),
             PollId = m.PollId,
             Poll = m.Poll != null ? MapPoll(m.Poll, currentUserId) : null,
             SharedQuestionId = m.SharedQuestionBankQuestionId,
