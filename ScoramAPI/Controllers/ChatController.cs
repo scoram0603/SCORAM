@@ -55,7 +55,9 @@ namespace ScoramAPI.Controllers
             var userId = User.GetUserId();
             var normalizedSearch = search?.Trim();
 
-            var query = _db.ChatRooms.Include(r => r.Exam).AsQueryable();
+            // Read-only list: no change tracking, and everything the response needs is projected below
+            // (previously whole ChatRoom + Exam entities were materialised and tracked for every room).
+            var query = _db.ChatRooms.AsNoTracking().AsQueryable();
 
             // MY EXAMS -- strict scope: an exam-linked group is listed (and searchable) only when its
             // exam is one of the student's. Standalone groups (ExamId null: "Daily Doubt Room",
@@ -68,14 +70,41 @@ namespace ScoramAPI.Controllers
             query = query.Where(r => r.ExamId == null || scopedExamIds.Contains(r.ExamId.Value));
 
             if (!string.IsNullOrWhiteSpace(normalizedSearch))
+            {
                 query = query.Where(r => r.Name.Contains(normalizedSearch));
+            }
+            else
+            {
+                // Default list = featured rooms + rooms the student is an ACTIVE member of. This used to be
+                // applied in memory AFTER member counts and last-message lookups had been computed for every
+                // room in scope (every exam has a room); applying the identical rule here means that work is
+                // only done for rooms that are actually returned. Same rule as before: IsMember is
+                // "has a membership row that is not banned".
+                query = query.Where(r => r.IsFeatured || r.Memberships.Any(m => m.UserId == userId && !m.IsBanned));
+            }
 
             var rooms = await query
                 .Select(r => new
                 {
-                    Room = r,
+                    r.Id,
+                    r.ExamId,
+                    r.Name,
+                    ExamName = r.Exam != null ? r.Exam.Name : null,
+                    ExamLogoUrl = r.Exam != null ? r.Exam.LogoUrl : null,
+                    r.IconUrl,
+                    r.PostPermission,
+                    r.Description,
+                    r.IsFeatured,
+                    r.IsChatDisabled,
+                    r.Language,
+                    r.Rules,
+                    r.CreatedAt,
                     MemberCount = r.Memberships.Count(m => !m.IsBanned),
-                    Membership = r.Memberships.FirstOrDefault(m => m.UserId == userId),
+                    // null = no membership row; otherwise whether that row is banned (one row per user per room).
+                    MembershipIsBanned = r.Memberships
+                        .Where(m => m.UserId == userId)
+                        .Select(m => (bool?)m.IsBanned)
+                        .FirstOrDefault(),
                     LastMessage = _db.ChatMessages
                         .Where(m => m.ChatRoomId == r.Id && !m.IsDeleted)
                         .OrderByDescending(m => m.SentAt)
@@ -93,30 +122,27 @@ namespace ScoramAPI.Controllers
 
             var result = rooms.Select(x => new ChatRoomResponseDto
             {
-                Id = x.Room.Id,
-                ExamId = x.Room.ExamId,
-                ExamName = x.Room.Exam?.Name ?? x.Room.Name,
-                ExamLogoUrl = x.Room.Exam?.LogoUrl,
-                IconUrl = x.Room.Exam?.LogoUrl ?? x.Room.IconUrl,
-                PostPermission = x.Room.PostPermission.ToString(),
-                Description = x.Room.Description,
-                IsFeatured = x.Room.IsFeatured,
-                IsChatDisabled = x.Room.IsChatDisabled,
-                Language = x.Room.Language,
-                Rules = x.Room.Rules,
+                Id = x.Id,
+                ExamId = x.ExamId,
+                ExamName = x.ExamName ?? x.Name,
+                ExamLogoUrl = x.ExamLogoUrl,
+                IconUrl = x.ExamLogoUrl ?? x.IconUrl,
+                PostPermission = x.PostPermission.ToString(),
+                Description = x.Description,
+                IsFeatured = x.IsFeatured,
+                IsChatDisabled = x.IsChatDisabled,
+                Language = x.Language,
+                Rules = x.Rules,
                 MemberCount = x.MemberCount,
-                OnlineCount = _presence.GetOnlineCount(x.Room.Id),
-                IsMember = x.Membership != null && !x.Membership.IsBanned,
-                IsBanned = x.Membership?.IsBanned ?? false,
-                CreatedAt = x.Room.CreatedAt,
+                OnlineCount = _presence.GetOnlineCount(x.Id),
+                IsMember = x.MembershipIsBanned == false,
+                IsBanned = x.MembershipIsBanned ?? false,
+                CreatedAt = x.CreatedAt,
                 LastMessageAt = x.LastMessage?.SentAt,
                 LastMessagePreview = x.LastMessage == null
                     ? null
                     : RoomPreviewFor(x.LastMessage.MessageType, x.LastMessage.MessageText, x.LastMessage.SharedContentTitle, x.LastMessage.SenderName)
             });
-
-            if (string.IsNullOrWhiteSpace(normalizedSearch))
-                result = result.Where(r => r.IsFeatured || r.IsMember);
 
             return Ok(result.ToList());
         }
@@ -215,7 +241,15 @@ namespace ScoramAPI.Controllers
             var userId = User.GetUserId();
             if (!await IsActiveMember(id, userId)) return Forbid();
 
+            // Read-only history page. AsNoTracking: nothing here is modified or saved. AsSplitQuery: the
+            // graph has two independent collections (Mentions, and Poll -> Options -> Votes); as one
+            // JOINed query every message row is multiplied by mentions x options x votes (up to 100
+            // messages per page), so each collection is fetched by its own query instead. The Id
+            // tiebreaker makes the page deterministic across those split queries when two messages share
+            // the exact same SentAt (it only orders such ties, which were previously arbitrary).
             var query = _db.ChatMessages
+                .AsNoTracking()
+                .AsSplitQuery()
                 .Include(m => m.User)
                 .Include(m => m.SenderAdmin)
                 .Include(m => m.Mentions).ThenInclude(mn => mn.MentionedUser)
@@ -227,6 +261,7 @@ namespace ScoramAPI.Controllers
 
             var messages = await query
                 .OrderByDescending(m => m.SentAt)
+                .ThenByDescending(m => m.Id)
                 .Take(Math.Clamp(pageSize, 1, 100))
                 .ToListAsync();
 

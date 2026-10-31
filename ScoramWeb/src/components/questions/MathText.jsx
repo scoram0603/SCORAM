@@ -1,5 +1,8 @@
 import { useMemo } from "react";
 import katex from "katex";
+// KaTeX's own stylesheet -- required for the rendered math to look right. Imported here (not in
+// main.jsx) so it only loads with the math-heavy routes that actually use this component.
+import "katex/dist/katex.min.css";
 import { API_BASE_URL } from "../../api/client";
 
 function imgSrc(url) {

@@ -40,12 +40,20 @@ export default function Login() {
   const [loginMethod, setLoginMethod] = useState("password");
   const [otpPhoneNumber, setOtpPhoneNumber] = useState(""); // login-OTP-mode only
 
-  // Login-password-mode only: AuthController.Login requires a CaptchaId/CaptchaAnswer pair on
-  // every attempt (see api/auth.js's getCaptcha/login). captcha holds the current
-  // { captchaId, question } challenge; captchaAnswer is the person's typed answer.
+  // Login-password mode AND register mode: AuthController.Login and AuthController.Register both
+  // require a CaptchaId/CaptchaAnswer pair on every attempt (see api/auth.js's getCaptcha/login/
+  // register). captcha holds the current { captchaId, question } challenge; captchaAnswer is the
+  // person's typed answer. Login-with-OTP doesn't need one (a real SMS OTP is the proof there).
   const [captcha, setCaptcha] = useState(null);
   const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [captchaLoading, setCaptchaLoading] = useState(false);
+  // Bumped for every captcha request (and when the screen stops needing one) so a slow, superseded
+  // response can never overwrite a newer challenge -- a stale CaptchaId would just fail on submit.
+  const captchaRequestRef = useRef(0);
+  // Synchronous double-submit guard: `isLoading` only flips after React re-renders, so a fast
+  // double-click could otherwise fire two register/login requests with the same single-use captcha.
+  const submittingRef = useRef(false);
+  const captchaRequired = (mode === "login" && loginMethod === "password") || mode === "register";
 
   const [form, setForm] = useState({
     username: "",
@@ -112,25 +120,37 @@ export default function Login() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.username, mode]);
 
-  // Fetches a fresh captcha challenge (see api/auth.js's getCaptcha). Called when the login
-  // (password) screen is first shown, and again after every submit attempt -- the backend
+  // Fetches a fresh captcha challenge (see api/auth.js's getCaptcha). Called whenever the login
+  // (password) or register screen is shown, and again after every submit attempt -- the backend
   // consumes the old CaptchaId regardless of whether that attempt succeeded, so hanging onto it
-  // would just fail the next attempt even with the right answer typed in.
+  // would just fail the next attempt even with the right answer typed in. The old challenge is
+  // dropped immediately so it can't be submitted while the new one is still loading.
   async function refreshCaptcha() {
+    const requestId = ++captchaRequestRef.current;
     setCaptchaLoading(true);
     setCaptchaAnswer("");
+    setCaptcha(null);
     try {
-      setCaptcha(await getCaptcha());
+      const next = await getCaptcha();
+      if (requestId === captchaRequestRef.current) setCaptcha(next);
     } catch {
-      setCaptcha(null); // shown as a retry state below; handleSubmit can't proceed without one
+      // shown as a retry state below; handleSubmit can't proceed without a challenge
+      if (requestId === captchaRequestRef.current) setCaptcha(null);
     } finally {
-      setCaptchaLoading(false);
+      if (requestId === captchaRequestRef.current) setCaptchaLoading(false);
     }
   }
 
+  // Switching between login <-> register (or password <-> OTP login) always starts from a clean
+  // slate: any challenge left over from the other screen is discarded rather than reused.
   useEffect(() => {
-    if (mode === "login" && loginMethod === "password" && !captcha && !captchaLoading) {
+    if (captchaRequired) {
       refreshCaptcha();
+    } else {
+      captchaRequestRef.current++; // invalidate any in-flight request
+      setCaptcha(null);
+      setCaptchaAnswer("");
+      setCaptchaLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, loginMethod]);
@@ -149,6 +169,7 @@ export default function Login() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (submittingRef.current) return;
 
     if (mode === "register") {
       if (form.password !== form.confirmPassword) {
@@ -156,9 +177,13 @@ export default function Login() {
         return;
       }
       if (usernameStatus !== "available" || !registerOtpAccessToken) return;
+      // Registration is blocked until a challenge is loaded AND answered -- the API rejects the
+      // request outright (HTTP 400) without both (RegisterDto.CaptchaId/CaptchaAnswer are [Required]).
+      if (!captcha?.captchaId || captchaAnswer === "") return;
     }
     setConfirmMismatch(false);
 
+    submittingRef.current = true;
     try {
       if (mode === "login") {
         await login({
@@ -168,14 +193,23 @@ export default function Login() {
           captchaAnswer: Number(captchaAnswer),
         });
       } else {
-        await register({ ...form, username: form.username.trim().toLowerCase(), otpAccessToken: registerOtpAccessToken });
+        // `confirmPassword` is UI-only and is dropped by api/auth.js's register().
+        await register({
+          ...form,
+          username: form.username.trim().toLowerCase(),
+          otpAccessToken: registerOtpAccessToken,
+          captchaId: captcha.captchaId,
+          captchaAnswer: Number(captchaAnswer),
+        });
       }
       navigate(redirectTo, { replace: true });
     } catch {
       // login/register already set AuthContext's own `error` state (they're ApiError instances --
       // see client.js) -- nothing else to do here. The old CaptchaId is spent either way (see
       // refreshCaptcha's own comment), so line up a new one for the next attempt.
-      if (mode === "login" && loginMethod === "password") refreshCaptcha();
+      if (captchaRequired) refreshCaptcha();
+    } finally {
+      submittingRef.current = false;
     }
   }
 
@@ -394,29 +428,13 @@ export default function Login() {
           )}
 
           {mode === "login" && loginMethod === "password" && (
-            <Field icon={ShieldCheck} label="Security check">
-              <span className="flex-1 text-sm text-ink-900">
-                {captcha ? captcha.question : captchaLoading ? "Loading…" : "Couldn't load a question"}
-              </span>
-              <input
-                type="text"
-                required
-                inputMode="numeric"
-                value={captchaAnswer}
-                onChange={(e) => setCaptchaAnswer(e.target.value.replace(/\D/g, ""))}
-                placeholder="Answer"
-                className="w-16 shrink-0 bg-transparent text-right text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={refreshCaptcha}
-                className="text-ink-400 hover:text-ink-600"
-                tabIndex={-1}
-                aria-label="Get a new question"
-              >
-                <RefreshCw className={`h-4 w-4 ${captchaLoading ? "animate-spin" : ""}`} strokeWidth={2} />
-              </button>
-            </Field>
+            <CaptchaField
+              captcha={captcha}
+              loading={captchaLoading}
+              answer={captchaAnswer}
+              onAnswerChange={setCaptchaAnswer}
+              onRefresh={refreshCaptcha}
+            />
           )}
 
           {mode === "register" && (
@@ -446,6 +464,14 @@ export default function Login() {
               {confirmMismatch && (
                 <p className="-mt-2 pl-1 text-xs font-medium text-red-600">Passwords don't match.</p>
               )}
+
+              <CaptchaField
+                captcha={captcha}
+                loading={captchaLoading}
+                answer={captchaAnswer}
+                onAnswerChange={setCaptchaAnswer}
+                onRefresh={refreshCaptcha}
+              />
             </>
           )}
 
@@ -473,7 +499,15 @@ export default function Login() {
           {!(mode === "login" && loginMethod === "otp") && (
             <button
               type="submit"
-              disabled={isLoading || (mode === "register" && (usernameStatus !== "available" || !registerOtpAccessToken))}
+              disabled={
+                isLoading ||
+                (mode === "register" &&
+                  (usernameStatus !== "available" ||
+                    !registerOtpAccessToken ||
+                    !captcha?.captchaId ||
+                    captchaLoading ||
+                    captchaAnswer === ""))
+              }
               className="mt-2 flex items-center justify-center gap-1.5 rounded-xl2 bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-60"
             >
               {isLoading ? (
@@ -506,6 +540,36 @@ export default function Login() {
         </p>
       </div>
     </div>
+  );
+}
+
+// The math-question "Security check" row, shared by the password-login and register forms.
+function CaptchaField({ captcha, loading, answer, onAnswerChange, onRefresh }) {
+  return (
+    <Field icon={ShieldCheck} label="Security check">
+      <span className="flex-1 text-sm text-ink-900">
+        {captcha ? captcha.question : loading ? "Loading…" : "Couldn't load a question"}
+      </span>
+      <input
+        type="text"
+        required
+        inputMode="numeric"
+        value={answer}
+        onChange={(e) => onAnswerChange(e.target.value.replace(/\D/g, ""))}
+        placeholder="Answer"
+        aria-label="Security check answer"
+        className="w-16 shrink-0 bg-transparent text-right text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
+      />
+      <button
+        type="button"
+        onClick={onRefresh}
+        className="text-ink-400 hover:text-ink-600"
+        tabIndex={-1}
+        aria-label="Get a new question"
+      >
+        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} strokeWidth={2} />
+      </button>
+    </Field>
   );
 }
 

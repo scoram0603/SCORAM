@@ -5,6 +5,7 @@ using System.Threading.RateLimiting;
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using ScoramAPI.Data;
@@ -44,6 +45,24 @@ builder.Services.AddDbContext<ScoramDbContext>((serviceProvider, options) =>
            .AddInterceptors(serviceProvider.GetRequiredService<SlowQueryInterceptor>()));
 // GET /health/ready (database reachability, cached for a few seconds) -- see Services/ReadinessCheck.cs.
 builder.Services.AddSingleton<ReadinessCheck>();
+
+// ---------- Response compression ----------
+// Brotli/gzip for JSON API responses (list endpoints are the big ones -- exams, questions, chat history).
+// ResponseCompressionDefaults.MimeTypes covers application/json, text/*, application/javascript and
+// image/svg+xml, and deliberately NOT binary images/PDFs/audio (already compressed) or text/event-stream
+// (SignalR's SSE transport) -- so /uploads/* files and SignalR connections are unaffected; WebSocket frames
+// never pass through this middleware at all. "application/problem+json" is added for ASP.NET's
+// auto-generated 400 validation bodies. If the host's edge already compresses, it passes an
+// already-encoded response through untouched (Content-Encoding is set), so this is safe to leave on either way.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[] { "application/problem+json" });
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
+builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
 
 // ---------- Services ----------
 builder.Services.AddScoped<ITokenService, TokenService>();
@@ -175,7 +194,7 @@ builder.Services.AddScoped<IAzureBlobService, AzureBlobService>();
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("login", httpContext => RateLimitPartition.GetFixedWindowLimiter(
-        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        partitionKey: ClientIpResolver.PartitionKey(httpContext),
         factory: _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 5,
@@ -187,7 +206,7 @@ builder.Services.AddRateLimiter(options =>
     // bucket meant a college/CGNAT IP (many students, one address) could 429 everyone's renewals.
     // The refresh token itself is a 256-bit secret, so a looser per-IP limit costs nothing in safety.
     options.AddPolicy("refresh", httpContext => RateLimitPartition.GetFixedWindowLimiter(
-        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        partitionKey: ClientIpResolver.PartitionKey(httpContext),
         factory: _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 60,
@@ -196,7 +215,7 @@ builder.Services.AddRateLimiter(options =>
         }));
 
     options.AddPolicy("register", httpContext => RateLimitPartition.GetFixedWindowLimiter(
-        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        partitionKey: ClientIpResolver.PartitionKey(httpContext),
         factory: _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 10,
@@ -310,7 +329,7 @@ static string GetRateLimitPartitionKey(HttpContext httpContext)
                   ?? httpContext.User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
         if (sub != null) return $"user:{sub}";
     }
-    return $"ip:{httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+    return $"ip:{ClientIpResolver.PartitionKey(httpContext)}";
 }
 
 // ---------- Controllers & Swagger ----------
@@ -467,52 +486,35 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// ---------- Forwarded headers ----------
-// Render (like most host-based PaaS providers) terminates TLS at its edge and proxies plain HTTP to
-// this container, and doesn't publish a fixed/documented proxy IP range, so ASP.NET Core's built-in
-// ForwardedHeadersMiddleware can't be given a real KnownProxies/KnownNetworks allow-list. Clearing
-// those lists used to mean "trust every hop in the header" -- which let a client set its own
-// X-Forwarded-For and have it taken as the real IP, defeating the per-IP login/register rate limits
-// above. As of .NET 8.0.17/9.0.6 Microsoft hardened the built-in middleware the other way instead
-// (see https://learn.microsoft.com/en-us/dotnet/core/compatibility/aspnet-core/8.0/forwarded-headers-unknown-proxies):
-// an empty trusted-proxy list now means forwarded headers are ignored entirely, which would collapse
-// the rate limiter back into one shared bucket for every client -- the exact bug partitioning by IP
-// was meant to fix in the first place. Either behavior is wrong here.
-//
-// Render appends its own edge-determined client IP to X-Forwarded-For rather than overwriting
-// whatever a client already sent (confirmed by Render's own support replies -- see
-// https://feedback.render.com/features/p/send-the-correct-xforwardedfor and
-// https://community.render.com/t/accessing-client-ips-in-a-node-express-app/36282), so the
-// RIGHTMOST entry is always the one Render itself added right before the request reached this
-// container. A client can prepend as many fake entries as it wants, but it cannot control what
-// Render's own edge appends after them. This middleware trusts only that one entry instead of
-// walking the whole header, so it works without knowing Render's actual IP range and isn't affected
-// by the .NET patch-version change above. Must run before anything else reads the scheme or remote
-// IP, so it's the very first middleware.
-app.Use(async (context, next) =>
+// ---------- Forwarded headers / effective client IP (SEC-004) ----------
+// Everything that is keyed by client IP -- the login/refresh/register rate limits, the content-post
+// fallback key, refresh-token CreatedByIp, request logs -- reads HttpContext.Connection.RemoteIpAddress, so
+// this MUST be the first middleware. Render terminates TLS and proxies to this container, so the real client
+// only exists in X-Forwarded-For -- but that header is client-controllable, and no part of this repository
+// establishes Render's proxy addresses or hop count. Hence two modes (see Middleware/ClientIpResolution.cs):
+//  * ClientIp:TrustedProxies / TrustedNetworks configured  -> ASP.NET Core's ForwardedHeadersMiddleware,
+//    honouring the headers ONLY from those proxies (the supported .NET 8 mechanism; set these from staging evidence).
+//  * nothing configured (interim)                           -> the header is considered only when the direct peer
+//    is a private/loopback address (the platform's own network), never from a public caller; still the
+//    rightmost entry unless ClientIp:SkipRightmostEntries says otherwise.
+// ClientIp:DiagnosticSampleLimit=N logs the first N requests' peer / X-Forwarded-For / result so the real chain
+// can be read off a staging deploy. Do NOT also set ASPNETCORE_FORWARDEDHEADERS_ENABLED=true: that adds a
+// trust-everyone forwarded-headers middleware ahead of this one and defeats the whole setting.
+var clientIpOptions = builder.Configuration.GetSection(ClientIpOptions.SectionName).Get<ClientIpOptions>() ?? new ClientIpOptions();
+if (clientIpOptions.HasTrustedProxies) clientIpOptions.ToForwardedHeadersOptions(); // fail fast on a malformed entry
+if (string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_FORWARDEDHEADERS_ENABLED"), "true", StringComparison.OrdinalIgnoreCase))
 {
-    var forwardedFor = context.Request.Headers["X-Forwarded-For"].ToString();
-    if (!string.IsNullOrEmpty(forwardedFor))
-    {
-        var lastHop = forwardedFor.Split(',').Select(s => s.Trim()).LastOrDefault(s => s.Length > 0);
-        if (lastHop != null && System.Net.IPAddress.TryParse(lastHop, out var realIp))
-        {
-            context.Connection.RemoteIpAddress = realIp;
-        }
-    }
+    app.Logger.LogWarning("SEC-004: ASPNETCORE_FORWARDEDHEADERS_ENABLED=true is set. That trusts X-Forwarded-* from ANY caller ahead of the ClientIp settings; unset it.");
+}
+if (!clientIpOptions.HasTrustedProxies && !app.Environment.IsDevelopment())
+{
+    app.Logger.LogWarning("SEC-004: ClientIp:TrustedProxies/TrustedNetworks are not configured; running the INTERIM client-IP rule (forwarded headers only from private-network peers, rightmost X-Forwarded-For entry minus ClientIp:SkipRightmostEntries={Skip}).", clientIpOptions.SkipRightmostEntries);
+}
+app.UseClientIpResolution(clientIpOptions);
 
-    var forwardedProto = context.Request.Headers["X-Forwarded-Proto"].ToString();
-    if (!string.IsNullOrEmpty(forwardedProto))
-    {
-        var lastProto = forwardedProto.Split(',').Select(s => s.Trim()).LastOrDefault(s => s.Length > 0);
-        if (string.Equals(lastProto, "https", StringComparison.OrdinalIgnoreCase) || string.Equals(lastProto, "http", StringComparison.OrdinalIgnoreCase))
-        {
-            context.Request.Scheme = lastProto!;
-        }
-    }
-
-    await next();
-});
+// Outermost response wrapper (before the timing/exception middleware) so error bodies from
+// ExceptionHandlingMiddleware are compressed too. Compression adds "Vary: Accept-Encoding" itself.
+app.UseResponseCompression();
 
 // Diagnostics only: adds X-Trace-Id + Server-Timing response headers and a slow-request warning. Sits
 // outside the exception handler so even a 500 produced by it carries the trace id header.

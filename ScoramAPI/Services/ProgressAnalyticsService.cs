@@ -25,6 +25,29 @@ namespace ScoramAPI.Services
 
     public sealed record TimingsOutcome(TestTimingsResponseDto? Result, int StatusCode, string? Error);
 
+    /// <summary>Inputs a caller already holds, so topic insights do not query them a second time within the
+    /// same request. Every member is optional and is only used when it is provably what the service would
+    /// have loaded itself.</summary>
+    public sealed class TopicInsightPreload
+    {
+        /// <summary>Result of <c>GetMistakeStatesAsync(userId, new MistakeQuery(), ct)</c> (no exam/kind/date
+        /// narrowing). Only used when the insights filter has no exam, kind or day narrowing either --
+        /// otherwise the service queries its own, narrowed set.</summary>
+        public IReadOnlyList<MistakeState>? UnscopedMistakeStates { get; init; }
+
+        /// <summary>Practice-target resolver already loaded for this request (admin-curated taxonomy).</summary>
+        internal PracticeTargetResolver? Resolver { get; init; }
+    }
+
+    /// <summary>Optional capability of an analytics service: topic insights that accept inputs the caller has
+    /// already loaded. Deliberately a separate interface (not a member of <see cref="IProgressAnalyticsService"/>)
+    /// so existing implementations and test fakes of that interface are unaffected; callers fall back to the
+    /// plain overload when the service does not implement this.</summary>
+    public interface IPreloadedTopicInsights
+    {
+        Task<List<TopicInsightDto>> GetTopicInsightsAsync(Guid userId, ProgressFilter filter, TopicInsightPreload? preload, CancellationToken ct);
+    }
+
     public interface IProgressAnalyticsService
     {
         Task<ProgressOverviewDto> GetOverviewAsync(Guid userId, ProgressFilter filter, CancellationToken ct);
@@ -41,7 +64,7 @@ namespace ScoramAPI.Services
     /// AnalyticsCalculator. Aggregation happens in SQL (grouped queries over lean projections); only the
     /// small per-topic / per-attempt result sets are processed in memory.
     /// </summary>
-    public class ProgressAnalyticsService : IProgressAnalyticsService
+    public class ProgressAnalyticsService : IProgressAnalyticsService, IPreloadedTopicInsights
     {
         private readonly ScoramDbContext _db;
         private readonly IRevisionService _revision;
@@ -217,16 +240,20 @@ namespace ScoramAPI.Services
             public int Repeated { get; set; }
         }
 
-        private async Task<Dictionary<string, MistakeCounts>> LoadMistakeCountsAsync(Guid userId, ProgressFilter f, CancellationToken ct)
+        private async Task<Dictionary<string, MistakeCounts>> LoadMistakeCountsAsync(
+            Guid userId, ProgressFilter f, CancellationToken ct, IReadOnlyList<MistakeState>? preloadedUnscoped = null)
         {
             var (from, to) = Range(f);
-            var states = await _revision.GetMistakeStatesAsync(userId, new MistakeQuery
-            {
-                ExamIds = f.ExamIds,
-                Kind = f.Kind,
-                From = from,
-                To = to
-            }, ct);
+            // The preloaded list is the un-narrowed query, so it is only equivalent when this filter narrows nothing.
+            IReadOnlyList<MistakeState> states = preloadedUnscoped != null && f.ExamIds == null && f.Kind == null && !from.HasValue && !to.HasValue
+                ? preloadedUnscoped
+                : await _revision.GetMistakeStatesAsync(userId, new MistakeQuery
+                {
+                    ExamIds = f.ExamIds,
+                    Kind = f.Kind,
+                    From = from,
+                    To = to
+                }, ct);
 
             var map = new Dictionary<string, MistakeCounts>(StringComparer.Ordinal);
             foreach (var s in states.Where(x => x.Wrong > 0))
@@ -320,17 +347,21 @@ namespace ScoramAPI.Services
             _ => 5
         };
 
-        public async Task<List<TopicInsightDto>> GetTopicInsightsAsync(Guid userId, ProgressFilter f, CancellationToken ct)
+        public Task<List<TopicInsightDto>> GetTopicInsightsAsync(Guid userId, ProgressFilter f, CancellationToken ct)
+            => GetTopicInsightsAsync(userId, f, null, ct);
+
+        public async Task<List<TopicInsightDto>> GetTopicInsightsAsync(Guid userId, ProgressFilter f, TopicInsightPreload? preload, CancellationToken ct)
         {
             var buckets = await BuildBucketsAsync(userId, f, ct);
-            return await ToInsightsAsync(userId, f, buckets, ct);
+            return await ToInsightsAsync(userId, f, buckets, ct, preload);
         }
 
-        private async Task<List<TopicInsightDto>> ToInsightsAsync(Guid userId, ProgressFilter f, Dictionary<string, Bucket> buckets, CancellationToken ct)
+        private async Task<List<TopicInsightDto>> ToInsightsAsync(
+            Guid userId, ProgressFilter f, Dictionary<string, Bucket> buckets, CancellationToken ct, TopicInsightPreload? preload = null)
         {
-            var mistakes = await LoadMistakeCountsAsync(userId, f, ct);
+            var mistakes = await LoadMistakeCountsAsync(userId, f, ct, preload?.UnscopedMistakeStates);
             var revision = await LoadRevisionOutcomesAsync(userId, f, ct);
-            var resolver = await PracticeTargetResolver.LoadAsync(_db, ct);
+            var resolver = preload?.Resolver ?? await PracticeTargetResolver.LoadAsync(_db, ct);
             var now = DateTime.UtcNow;
 
             return buckets

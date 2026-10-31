@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import * as signalR from "@microsoft/signalr";
 import { useAuth } from "./AuthContext";
 import { getStoredToken, API_BASE_URL, notifyStudentSessionExpired } from "../api/client";
 
@@ -20,46 +19,60 @@ export function ChatConnectionProvider({ children }) {
       return;
     }
 
-    const token = getStoredToken();
-    const conn = new signalR.HubConnectionBuilder()
-      .withUrl(`${API_BASE_URL}/hubs/chat`, { accessTokenFactory: () => token })
-      .withAutomaticReconnect()
-      .build();
-
-    // The events this provider cares about globally -- everything room/DM-view-specific
-    // (ReceiveMessage, MessageDeleted, PollUpdated, ChatLockChanged, MemberRemoved, and DM presence's
-    // DmPresenceUpdated) is subscribed to directly by whichever view is currently open, via the shared
-    // `connection` below -- ConversationsList and ConversationThread do exactly that for
-    // DmPresenceUpdated.
-    conn.on("ReceiveMention", (message) => setLatestMention(message));
-    conn.on("ReceiveDirectMessage", (message) => setLatestDirectMessage(message));
-    conn.on("ReceiveNotification", (notification) => setLatestNotification(notification));
-
     let cancelled = false;
-    conn.start()
-      .then(() => {
-        if (!cancelled) setConnection(conn);
-      })
-      .catch((err) => {
-        // A dead/expired token never goes through apiFetch (SignalR's own negotiate call bypasses
-        // it entirely), so parseApiResponse's 401 handling in api/client.js never sees this one --
-        // without this check, an expired token just silently fails to connect forever, and the
-        // stale session in localStorage never gets cleared. This IS reachable on the Login page
-        // itself: a token from a previous, since-expired session is enough for `isAuthenticated`
-        // above to read true until some OTHER authenticated call happens to hit the real 401
-        // first. Anything else (offline, backend down, CORS) is left alone -- withAutomaticReconnect
-        // already covers a connection dropping AFTER it connects, and a transient failure here
-        // shouldn't log anyone out.
-        const isAuthFailure =
-          err?.statusCode === 401 ||
-          err?.statusCode === 403 ||
-          /unauthorized|status code '?40[13]'?/i.test(String(err?.message ?? ""));
-        if (isAuthFailure) notifyStudentSessionExpired();
-      });
+    let conn = null;
+
+    (async () => {
+      // @microsoft/signalr is only needed once someone is signed in, so it is fetched here instead of
+      // being bundled into the entry chunk that signed-out/landing visitors download.
+      let signalR;
+      try {
+        signalR = await import("@microsoft/signalr");
+      } catch {
+        return; // chunk failed to load (offline etc.) -- same outcome as a failed connect below: no live updates
+      }
+      if (cancelled) return;
+
+      const token = getStoredToken();
+      conn = new signalR.HubConnectionBuilder()
+        .withUrl(`${API_BASE_URL}/hubs/chat`, { accessTokenFactory: () => token })
+        .withAutomaticReconnect()
+        .build();
+
+      // The events this provider cares about globally -- everything room/DM-view-specific
+      // (ReceiveMessage, MessageDeleted, PollUpdated, ChatLockChanged, MemberRemoved, and DM presence's
+      // DmPresenceUpdated) is subscribed to directly by whichever view is currently open, via the shared
+      // `connection` below -- ConversationsList and ConversationThread do exactly that for
+      // DmPresenceUpdated.
+      conn.on("ReceiveMention", (message) => setLatestMention(message));
+      conn.on("ReceiveDirectMessage", (message) => setLatestDirectMessage(message));
+      conn.on("ReceiveNotification", (notification) => setLatestNotification(notification));
+
+      conn.start()
+        .then(() => {
+          if (!cancelled) setConnection(conn);
+        })
+        .catch((err) => {
+          // A dead/expired token never goes through apiFetch (SignalR's own negotiate call bypasses
+          // it entirely), so parseApiResponse's 401 handling in api/client.js never sees this one --
+          // without this check, an expired token just silently fails to connect forever, and the
+          // stale session in localStorage never gets cleared. This IS reachable on the Login page
+          // itself: a token from a previous, since-expired session is enough for `isAuthenticated`
+          // above to read true until some OTHER authenticated call happens to hit the real 401
+          // first. Anything else (offline, backend down, CORS) is left alone -- withAutomaticReconnect
+          // already covers a connection dropping AFTER it connects, and a transient failure here
+          // shouldn't log anyone out.
+          const isAuthFailure =
+            err?.statusCode === 401 ||
+            err?.statusCode === 403 ||
+            /unauthorized|status code '?40[13]'?/i.test(String(err?.message ?? ""));
+          if (isAuthFailure) notifyStudentSessionExpired();
+        });
+    })();
 
     return () => {
       cancelled = true;
-      conn.stop();
+      conn?.stop();
     };
   }, [isAuthenticated]);
 

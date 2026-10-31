@@ -2,51 +2,53 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import AppLayout from "./layouts/AppLayout";
 import AuthLayout from "./layouts/AuthLayout";
 import ProtectedRoute from "./routes/ProtectedRoute";
-import Home from "./pages/Home";
 import Login from "./pages/Login";
-import ForgotPassword from "./pages/ForgotPassword";
-import Profile from "./pages/Profile";
-import SearchQuestions from "./pages/SearchQuestions";
-import Discussions from "./pages/Discussions";
-import GroupChat from "./pages/GroupChat";
-import QuestionDetail from "./pages/QuestionDetail";
-import QuestionBankSearch from "./pages/QuestionBankSearch";
-import QuestionBankQuestionDetail from "./pages/QuestionBankQuestionDetail";
-import PreviousYearPapers from "./pages/PreviousYearPapers";
-import Quizzes from "./pages/Quizzes";
-import OurTeam from "./pages/OurTeam";
 import NotFound from "./pages/NotFound";
-// LANDING PAGE -- public support pages linked from the new marketing footer
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import Terms from "./pages/Terms";
-import DeleteAccount from "./pages/DeleteAccount";
-// SCORAM_TESTS
-import Tests from "./pages/Tests";
-import PracticeTests from "./pages/PracticeTests";
-import MockTests from "./pages/MockTests";
-import MyTests from "./pages/MyTests";
-import TestAttemptResult from "./pages/TestAttemptResult";
-import TestRunner from "./components/tests/TestRunner";
-import PreExamInstructions from "./pages/PreExamInstructions";
-// GAMIFICATION
-import Leaderboard from "./pages/Leaderboard";
-import ProgressPage from "./pages/Progress";
-import Referrals from "./pages/Referrals";
-// SMART PROGRESS
-import TopicProgress from "./pages/TopicProgress";
-import MistakeBook from "./pages/MistakeBook";
-import Revision from "./pages/Revision";
-import StudyPlan from "./pages/StudyPlan";
-import StudyPartners from "./pages/StudyPartners";
-import Bookmarks from "./pages/Bookmarks";
-import Settings from "./pages/Settings";
-import RateScoram from "./pages/RateScoram";
-// "MY EXAMS" -- see context/MyExamsContext.jsx
-import SelectExams from "./pages/SelectExams";
-import MyExams from "./pages/MyExams";
+import { lazyWithRetry } from "./components/routing/lazyWithRetry";
+import { SuspenseOutlet } from "./components/routing/RouteSuspense";
 import { AuthProvider } from "./context/AuthContext";
 import { MyExamsProvider } from "./context/MyExamsContext";
 import { ChatConnectionProvider } from "./context/ChatConnectionContext";
+
+// ROUTE-LEVEL CODE SPLITTING -- only the app shell, Login and NotFound ship in the entry bundle;
+// every other page downloads on first visit. lazyWithRetry also recovers from a deployment replacing
+// chunk files while a tab is open. Suspense + error boundaries live in the layouts (around their
+// <Outlet />) so the header/sidebar stay put while the page area loads.
+const Home = lazyWithRetry(() => import("./pages/Home"));
+const ForgotPassword = lazyWithRetry(() => import("./pages/ForgotPassword"));
+const Profile = lazyWithRetry(() => import("./pages/Profile"));
+const SearchQuestions = lazyWithRetry(() => import("./pages/SearchQuestions"));
+const Discussions = lazyWithRetry(() => import("./pages/Discussions"));
+const GroupChat = lazyWithRetry(() => import("./pages/GroupChat"));
+const QuestionDetail = lazyWithRetry(() => import("./pages/QuestionDetail"));
+const QuestionBankSearch = lazyWithRetry(() => import("./pages/QuestionBankSearch"));
+const QuestionBankQuestionDetail = lazyWithRetry(() => import("./pages/QuestionBankQuestionDetail"));
+const PreviousYearPapers = lazyWithRetry(() => import("./pages/PreviousYearPapers"));
+const Quizzes = lazyWithRetry(() => import("./pages/Quizzes"));
+const OurTeam = lazyWithRetry(() => import("./pages/OurTeam"));
+const PrivacyPolicy = lazyWithRetry(() => import("./pages/PrivacyPolicy"));
+const Terms = lazyWithRetry(() => import("./pages/Terms"));
+const DeleteAccount = lazyWithRetry(() => import("./pages/DeleteAccount"));
+const Tests = lazyWithRetry(() => import("./pages/Tests"));
+const PracticeTests = lazyWithRetry(() => import("./pages/PracticeTests"));
+const MockTests = lazyWithRetry(() => import("./pages/MockTests"));
+const MyTests = lazyWithRetry(() => import("./pages/MyTests"));
+const TestAttemptResult = lazyWithRetry(() => import("./pages/TestAttemptResult"));
+const TestRunner = lazyWithRetry(() => import("./components/tests/TestRunner"));
+const PreExamInstructions = lazyWithRetry(() => import("./pages/PreExamInstructions"));
+const Leaderboard = lazyWithRetry(() => import("./pages/Leaderboard"));
+const ProgressPage = lazyWithRetry(() => import("./pages/Progress"));
+const Referrals = lazyWithRetry(() => import("./pages/Referrals"));
+const TopicProgress = lazyWithRetry(() => import("./pages/TopicProgress"));
+const MistakeBook = lazyWithRetry(() => import("./pages/MistakeBook"));
+const Revision = lazyWithRetry(() => import("./pages/Revision"));
+const StudyPlan = lazyWithRetry(() => import("./pages/StudyPlan"));
+const StudyPartners = lazyWithRetry(() => import("./pages/StudyPartners"));
+const Bookmarks = lazyWithRetry(() => import("./pages/Bookmarks"));
+const Settings = lazyWithRetry(() => import("./pages/Settings"));
+const RateScoram = lazyWithRetry(() => import("./pages/RateScoram"));
+const SelectExams = lazyWithRetry(() => import("./pages/SelectExams"));
+const MyExams = lazyWithRetry(() => import("./pages/MyExams"));
 
 function AppRoutes() {
   return (
@@ -120,14 +122,16 @@ function AppRoutes() {
 
       {/* LANDING PAGE -- public support pages, own navbar/footer (LegalPage), no app chrome,
           so these are top-level routes rather than nested under AppLayout or AuthLayout. */}
-      <Route path="our-team" element={<OurTeam />} />
-      <Route path="privacy-policy" element={<PrivacyPolicy />} />
-      <Route path="terms-and-conditions" element={<Terms />} />
-      {/* "/terms" was the original URL for this page -- kept as a redirect so links already shared,
-          indexed or printed keep working. */}
-      <Route path="terms" element={<Navigate to="/terms-and-conditions" replace />} />
-      {/* Public on purpose: this is the Google Play Data Safety "delete account URL". */}
-      <Route path="delete-account" element={<DeleteAccount />} />
+      <Route element={<SuspenseOutlet />}>
+        <Route path="our-team" element={<OurTeam />} />
+        <Route path="privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="terms-and-conditions" element={<Terms />} />
+        {/* "/terms" was the original URL for this page -- kept as a redirect so links already shared,
+            indexed or printed keep working. */}
+        <Route path="terms" element={<Navigate to="/terms-and-conditions" replace />} />
+        {/* Public on purpose: this is the Google Play Data Safety "delete account URL". */}
+        <Route path="delete-account" element={<DeleteAccount />} />
+      </Route>
     </Routes>
   );
 }

@@ -905,11 +905,24 @@ namespace ScoramAPI.Data
                 .HasForeignKey(m => m.ChatRoomId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // WithMany(u => u.ChatMessages), NOT WithMany(): User.ChatMessages exists, and leaving it out of this
+            // mapping made EF treat it as a SECOND, convention-discovered relationship with a shadow foreign key
+            // (ChatMessages.UserId1 + its index + FK, always NULL, written on every chat insert, and logged as
+            // "ChatMessage.UserId1 was created in shadow state" at every start-up). See the migration
+            // FixChatMessageUserRelationship.
             modelBuilder.Entity<ChatMessage>()
                 .HasOne(m => m.User)
-                .WithMany()
+                .WithMany(u => u.ChatMessages)
                 .HasForeignKey(m => m.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Serves the two chat-history access paths: the room's newest page (ORDER BY SentAt DESC, Id DESC
+            // TAKE n, optionally SentAt < @before -- ChatController.GetMessages) and each room's newest
+            // non-deleted message for the room list (ChatController.ListRooms). Id is the final key column so the
+            // tiebreaker in GetMessages' ORDER BY is also satisfied by index order. See AddChatMessagesRoomSentAtIndex.
+            modelBuilder.Entity<ChatMessage>()
+                .HasIndex(m => new { m.ChatRoomId, m.SentAt, m.Id })
+                .IsDescending(false, true, true);
 
             modelBuilder.Entity<ChatMessage>()
                 .HasOne(m => m.SenderAdmin)

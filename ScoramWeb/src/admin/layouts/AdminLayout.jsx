@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { Outlet, useLocation } from "react-router-dom";
+import RouteSuspense from "../../components/routing/RouteSuspense";
 import AdminSidebar from "../components/AdminSidebar";
 
 // Desktop (lg+): sticky sidebar. Below lg: a slim top bar with a menu button that opens the same
@@ -47,7 +48,9 @@ export default function AdminLayout() {
           </button>
           <span className="text-sm font-extrabold text-primary-600">SCORAM Admin</span>
         </div>
-        <Outlet />
+        <RouteSuspense>
+          <Outlet />
+        </RouteSuspense>
       </main>
     </div>
   );

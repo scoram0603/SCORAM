@@ -49,33 +49,60 @@ namespace ScoramAPI.Controllers
         {
             var userId = User.GetUserId();
 
+            // Read-only list. AsNoTracking + a scalar projection: the old version tracked and materialised
+            // whole Conversation, User (x2 via Include, then again via the projection) and DirectMessage
+            // entities -- including every user's other columns and the full last-message row -- only to
+            // read a handful of fields from each. The redundant Include(UserA/UserB) is gone because the
+            // projection already navigates c.UserA / c.UserB itself. Sort order, unread counts, online state
+            // and last-seen are unchanged.
             var conversations = await _db.DirectConversations
+                .AsNoTracking()
                 .Where(c => c.UserAId == userId || c.UserBId == userId)
-                .Include(c => c.UserA)
-                .Include(c => c.UserB)
                 .OrderByDescending(c => c.LastMessageAt)
                 .Select(c => new
                 {
-                    Conversation = c,
-                    OtherUser = c.UserAId == userId ? c.UserB : c.UserA,
-                    LastMessage = c.Messages.OrderByDescending(m => m.SentAt).FirstOrDefault(),
+                    c.Id,
+                    c.LastMessageAt,
+                    OtherUserId = c.UserAId == userId ? c.UserBId : c.UserAId,
+                    OtherUsername = c.UserAId == userId ? c.UserB!.Username : c.UserA!.Username,
+                    OtherFullName = c.UserAId == userId ? c.UserB!.FullName : c.UserA!.FullName,
+                    OtherPhotoUrl = c.UserAId == userId ? c.UserB!.PhotoUrl : c.UserA!.PhotoUrl,
+                    OtherLastSeenAt = c.UserAId == userId ? c.UserB!.DmLastSeenAt : c.UserA!.DmLastSeenAt,
+                    LastMessage = c.Messages
+                        .OrderByDescending(m => m.SentAt)
+                        .Select(m => new { m.IsDeleted, m.MessageType, m.MessageText, m.SharedContentTitle })
+                        .FirstOrDefault(),
                     UnreadCount = c.Messages.Count(m => m.SenderId != userId && !m.IsRead)
                 })
                 .ToListAsync();
 
-            return Ok(conversations.Select(x => new ConversationSummaryDto
+            return Ok(conversations.Select(x =>
             {
-                Id = x.Conversation.Id,
-                OtherUserId = x.OtherUser!.Id,
-                OtherUsername = x.OtherUser.Username,
-                OtherFullName = x.OtherUser.FullName,
-                OtherPhotoUrl = x.OtherUser.PhotoUrl,
-                LastMessagePreview = PreviewFor(x.LastMessage),
-                LastMessageType = x.LastMessage?.MessageType.ToString(),
-                LastMessageAt = x.Conversation.LastMessageAt,
-                UnreadCount = x.UnreadCount,
-                IsOnline = _dmPresence.IsOnline(x.OtherUser!.Id),
-                LastSeenAt = x.OtherUser!.DmLastSeenAt
+                // PreviewFor takes a DirectMessage; hand it a lightweight (untracked, in-memory) one built
+                // from just the fields it reads.
+                var last = x.LastMessage == null
+                    ? null
+                    : new DirectMessage
+                    {
+                        IsDeleted = x.LastMessage.IsDeleted,
+                        MessageType = x.LastMessage.MessageType,
+                        MessageText = x.LastMessage.MessageText,
+                        SharedContentTitle = x.LastMessage.SharedContentTitle
+                    };
+                return new ConversationSummaryDto
+                {
+                    Id = x.Id,
+                    OtherUserId = x.OtherUserId,
+                    OtherUsername = x.OtherUsername,
+                    OtherFullName = x.OtherFullName,
+                    OtherPhotoUrl = x.OtherPhotoUrl,
+                    LastMessagePreview = PreviewFor(last),
+                    LastMessageType = last?.MessageType.ToString(),
+                    LastMessageAt = x.LastMessageAt,
+                    UnreadCount = x.UnreadCount,
+                    IsOnline = _dmPresence.IsOnline(x.OtherUserId),
+                    LastSeenAt = x.OtherLastSeenAt
+                };
             }).ToList());
         }
 

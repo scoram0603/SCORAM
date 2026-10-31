@@ -7,6 +7,7 @@ import MobileDrawer from "../components/layout/MobileDrawer";
 import ChatNotificationBridge from "../components/layout/ChatNotificationBridge";
 import Footer from "../components/layout/Footer";
 import Landing from "../pages/Landing";
+import RouteSuspense from "../components/routing/RouteSuspense";
 import { useAuth } from "../context/AuthContext";
 import { useMyExams } from "../context/MyExamsContext";
 import { sidebarNavItems, bottomNavItems } from "../data/mockData";
@@ -56,7 +57,9 @@ export default function AppLayout() {
   if (location.pathname === "/select-exams") {
     return (
       <div className="min-h-screen bg-surface">
-        <Outlet />
+        <RouteSuspense>
+          <Outlet />
+        </RouteSuspense>
       </div>
     );
   }
@@ -69,7 +72,9 @@ export default function AppLayout() {
   if (/^\/tests\/attempt\/[^/]+$/.test(location.pathname)) {
     return (
       <div className="min-h-screen bg-surface">
-        <Outlet />
+        <RouteSuspense>
+          <Outlet />
+        </RouteSuspense>
       </div>
     );
   }
@@ -108,7 +113,9 @@ export default function AppLayout() {
         <Header onMenuClick={() => setDrawerOpen(true)} isAuthenticated={isAuthenticated} />
 
         <div className="min-w-0 flex-1">
+          <RouteSuspense>
           <Outlet />
+        </RouteSuspense>
         </div>
 
         <Footer />

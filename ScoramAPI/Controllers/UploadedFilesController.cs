@@ -1,5 +1,7 @@
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 using ScoramAPI.Services;
 
 namespace ScoramAPI.Controllers
@@ -51,6 +53,17 @@ namespace ScoramAPI.Controllers
             [".wav"] = "audio/wav",
         };
 
+        // Every file FileStorageService.SaveStreamAsync stores is named "{Guid}{ext}", and AzureBlobService.UploadAsync
+        // refuses to overwrite an existing blob -- so the bytes behind a GUID-named URL never change. That is what
+        // makes a one-year "immutable" cache lifetime safe for exactly those names. Anything else in a public folder
+        // (a hand-placed file with a readable name, say) could legitimately be replaced in place, so it is served
+        // exactly as before: no cache headers, no ETag.
+        private static readonly Regex ImmutableFileNamePattern = new(
+            @"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\.[A-Za-z0-9]{1,8}\z",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        private const string ImmutableCacheControl = "public, max-age=31536000, immutable";
+
         private readonly IAzureBlobService _blobService;
 
         public UploadedFilesController(IAzureBlobService blobService)
@@ -75,6 +88,20 @@ namespace ScoramAPI.Controllers
             if (!PrivateAttachmentRules.IsPublicFolder(subfolder))
             {
                 return NotFound();
+            }
+
+            // PUBLIC + GUID-NAMED ONLY (private chat/DM attachments never reach this point -- they 404 above and
+            // are served by authenticated endpoints with their own, non-public caching). The ETag is derived from
+            // the name itself, which is valid precisely because the content behind a GUID name is immutable; that
+            // lets a revalidation ("If-None-Match") be answered with 304 without a round trip to Azure Blob.
+            var immutable = ImmutableFileNamePattern.IsMatch(fileName);
+            EntityTagHeaderValue? entityTag = immutable ? new EntityTagHeaderValue($"\"{fileName}\"") : null;
+
+            if (entityTag != null && MatchesIfNoneMatch(entityTag))
+            {
+                Response.Headers["Cache-Control"] = ImmutableCacheControl;
+                Response.Headers["ETag"] = entityTag.ToString();
+                return StatusCode(StatusCodes.Status304NotModified);
             }
 
             var blobName = $"{subfolder}/{fileName}";
@@ -105,7 +132,26 @@ namespace ScoramAPI.Controllers
                 Response.Headers["Content-Security-Policy"] = "script-src 'none'; sandbox;";
             }
 
+            // Only a file that was actually found gets cache headers -- 404/502 above stay uncached.
+            if (entityTag != null)
+            {
+                Response.Headers["Cache-Control"] = ImmutableCacheControl;
+                Response.Headers["ETag"] = entityTag.ToString();
+            }
+
             return File(stream, contentType);
+        }
+
+        // True when the request's If-None-Match names our ETag (weak comparison, as RFC 9110 requires for
+        // If-None-Match). A bare "*" is deliberately not treated as a match: that would claim the file exists
+        // without checking storage.
+        private bool MatchesIfNoneMatch(EntityTagHeaderValue entityTag)
+        {
+            foreach (var candidate in Request.GetTypedHeaders().IfNoneMatch)
+            {
+                if (candidate.Compare(entityTag, useStrongComparison: false)) return true;
+            }
+            return false;
         }
     }
 }

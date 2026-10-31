@@ -69,30 +69,43 @@ namespace ScoramAPI.Tests
         }
 
         // ---- challenge validation ---------------------------------------------------------
+        // ValidateChallenge takes the duration in MINUTES (the student types 1 minute .. 30 days; see
+        // MinChallengeMinutes / MaxChallengeMinutes). 1 day = 1440 minutes. Question count is 1..1000.
 
         [Theory]
-        [InlineData(StudyChallengeType.Practice, 50, null, 7, true)]
-        [InlineData(StudyChallengeType.Practice, 2, null, 7, false)]
+        [InlineData(StudyChallengeType.Practice, 50, null, 10080, true)]
+        // 50 questions in 7 days
+        [InlineData(StudyChallengeType.Practice, 1, null, 10080, true)]
+        // lowest allowed question count
+        [InlineData(StudyChallengeType.Practice, 0, null, 10080, false)]
         // too few questions
-
-        [InlineData(StudyChallengeType.Practice, null, null, 7, false)]
+        [InlineData(StudyChallengeType.Practice, 1000, null, 10080, true)]
+        // highest allowed question count
+        [InlineData(StudyChallengeType.Practice, 1001, null, 10080, false)]
+        // too many questions
+        [InlineData(StudyChallengeType.Practice, null, null, 10080, false)]
         // missing count
-
         [InlineData(StudyChallengeType.Accuracy, 50, null, 0, false)]
         // invalid duration
-
-        [InlineData(StudyChallengeType.Speed, 50, null, 31, false)]
-        // too long
-
-        [InlineData(StudyChallengeType.Streak, null, 7, 7, true)]
-        [InlineData(StudyChallengeType.Streak, null, 8, 7, false)]
+        [InlineData(StudyChallengeType.Accuracy, 50, null, 1, true)]
+        // 1 minute is the shortest allowed duration
+        [InlineData(StudyChallengeType.Speed, 50, null, 43200, true)]
+        // exactly 30 days
+        [InlineData(StudyChallengeType.Speed, 50, null, 44640, false)]
+        // 31 days: too long
+        [InlineData(StudyChallengeType.Streak, null, 7, 10080, true)]
+        // 7-day streak inside 7 days
+        [InlineData(StudyChallengeType.Streak, null, 8, 10080, false)]
         // target can't exceed the period
-
+        [InlineData(StudyChallengeType.Streak, null, 7, 7, false)]
+        // 7 MINUTES leaves room for 1 study day, not 7
+        [InlineData(StudyChallengeType.Streak, null, 1, 10080, false)]
+        // a streak needs at least 2 days
         public void ValidateChallenge_MatchesExpectedValidity(
             StudyChallengeType type,
             int? q,
             int? days,
-            int duration,
+            int durationMinutes,
             bool valid)
         {
             Assert.Equal(
@@ -101,7 +114,22 @@ namespace ScoramAPI.Tests
                     type,
                     q,
                     days,
-                    duration) == null);
+                    durationMinutes) == null);
+        }
+
+        [Theory]
+        [InlineData(1, 1)]
+        [InlineData(1440, 1)]
+        [InlineData(1441, 2)]
+        [InlineData(10080, 7)]
+        public void DaysInWindow_RoundsUpToWholeDays(int minutes, int expectedDays)
+            => Assert.Equal(expectedDays, StudyPartnerRules.DaysInWindow(minutes));
+
+        [Fact]
+        public void EffectiveMinutes_PrefersExactMinutes_AndFallsBackToDaysForOlderRows()
+        {
+            Assert.Equal(90, StudyPartnerRules.EffectiveMinutes(90, 1));
+            Assert.Equal(7 * 1440, StudyPartnerRules.EffectiveMinutes(null, 7));
         }
 
         // ---- challenge scoring ------------------------------------------------------------
