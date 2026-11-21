@@ -4,7 +4,13 @@ import {
   CalendarDays, Shuffle, History, LayoutList, Rows3, ChevronLeft, ChevronRight, RotateCcw,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
-import { searchQuestionBank, getQuestionBankSubjects, getQuestionBankTopics, getQuestionBankExams, getQuestionBankYears } from "../api/questionBank";
+import {
+  searchQuestionBank, getQuestionBankSubjects, getQuestionBankExams, getQuestionBankYears,
+  qbCatalogKeys, loadQuestionBankTopics, fetchQuestionBankTotal,
+} from "../api/questionBank";
+import { setCatalog } from "../api/catalogCache";
+import { isCallerAbort } from "../api/client";
+import { useCatalog } from "../hooks/useCatalog";
 import QuestionBankFeedCard from "../components/questions/QuestionBankFeedCard";
 import QuestionBankFeedCardSkeleton from "../components/questions/QuestionBankFeedCardSkeleton";
 import QuestionBankSidebar from "../components/questions/QuestionBankSidebar";
@@ -18,6 +24,7 @@ import {
 } from "../utils/browseProgress";
 
 const PAGE_SIZE = 10;
+const EMPTY_LIST = [];
 const RECENT_SEARCHES_KEY = "scoram:qb:recent-searches";
 const LANGUAGE_OPTIONS = [
   { value: "Hindi", label: "Hindi" },
@@ -120,12 +127,7 @@ export default function QuestionBankSearch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope.isScoped, scope.ready, scope.isEmpty, scope.examIds, examIds.join(",")]);
 
-  const [subjects, setSubjects] = useState([]);
-  const [subjectsExamId, setSubjectsExamId] = useState(null); // which exam `subjects` was loaded for
   const [topics, setTopics] = useState([]);
-  const [exams, setExams] = useState([]);
-  const [allYears, setAllYears] = useState([]);
-  const [totalQuestionCount, setTotalQuestionCount] = useState(null);
 
   const [items, setItems] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -143,13 +145,12 @@ export default function QuestionBankSearch() {
   const searchInputRef = useRef(null);
   const pendingSlideAdvanceRef = useRef(false);
 
-  useEffect(() => {
-    if (!canFetch) return;
-    getQuestionBankExams().then(setExams).catch(() => {});
-    getQuestionBankYears().then(setAllYears).catch(() => {});
-    // Real total, unfiltered -- powers the "X Questions" stat card regardless of active filters.
-    searchQuestionBank({ page: 1, pageSize: 1 }).then((d) => setTotalQuestionCount(d.totalCount)).catch(() => {});
-  }, [canFetch]);
+  // Exams / years / subjects / total come from the shared catalog cache (api/catalogCache.js): a revisit
+  // paints instantly from memory, anything older than 3 min is refreshed in the background, concurrent
+  // identical requests (this screen, Practice Tests, StrictMode's double effects) are one request, and the
+  // entries are dropped when My Exams changes or the student logs out.
+  const exams = useCatalog(qbCatalogKeys.exams(), () => getQuestionBankExams(), { enabled: canFetch }).data ?? EMPTY_LIST;
+  const allYears = useCatalog(qbCatalogKeys.years(), () => getQuestionBankYears(), { enabled: canFetch }).data ?? EMPTY_LIST;
 
   // EXAM-WISE FILTERS -- when the results are for exactly one exam (picked in the Exam filter, or the student's
   // single My Exam) the Subject/Topic lists are that exam's own, so a subject/topic renamed for one exam shows
@@ -157,14 +158,16 @@ export default function QuestionBankSearch() {
   // global list, unchanged. The selected ids stay in the same ?subjectIds=/?topicIds= URL params either way; they
   // are just sent to the API as examSubjectIds/examTopicIds when the list is exam-wise.
   const activeExamId = examIds.length === 1 ? examIds[0] : (scope.isScoped && scope.examIds?.length === 1 ? scope.examIds[0] : null);
-  useEffect(() => {
-    if (!canFetch) return undefined;
-    let cancelled = false;
-    getQuestionBankSubjects(activeExamId)
-      .then((list) => { if (!cancelled) { setSubjects(list); setSubjectsExamId(activeExamId); } })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [canFetch, activeExamId]);
+  const subjectsQuery = useCatalog(qbCatalogKeys.subjects(activeExamId), () => getQuestionBankSubjects(activeExamId), { enabled: canFetch });
+  // The last list that arrived, and the exam it was loaded for. When activeExamId changes the previous list
+  // stays in place until the new one is available (exactly as before) -- an empty list in between would flip
+  // `examWise` and fire a wrongly-filtered page load.
+  const [loadedSubjects, setLoadedSubjects] = useState({ list: EMPTY_LIST, examId: null });
+  if (subjectsQuery.data !== undefined && (loadedSubjects.list !== subjectsQuery.data || loadedSubjects.examId !== activeExamId)) {
+    setLoadedSubjects({ list: subjectsQuery.data, examId: activeExamId });
+  }
+  const subjects = loadedSubjects.list;
+  const subjectsExamId = loadedSubjects.examId; // which exam `subjects` was loaded for
 
   const examWise = subjects.length > 0 && subjects.every((s) => s.isExamSpecific === true);
   const subjectFilter = examWise ? { examSubjectIds: subjectIds } : { subjectIds };
@@ -188,20 +191,53 @@ export default function QuestionBankSearch() {
   useEffect(() => {
     if (subjectIds.length === 0) {
       setTopics([]);
-      return;
+      return undefined;
     }
-    Promise.all(subjectIds.map((id) => getQuestionBankTopics(id, examWise ? subjectsExamId : undefined).catch(() => [])))
+    let cancelled = false;
+    Promise.all(subjectIds.map((id) => loadQuestionBankTopics(id, examWise ? subjectsExamId : undefined).catch(() => [])))
       .then((lists) => {
+        if (cancelled) return;
         const merged = new Map();
         lists.flat().forEach((t) => merged.set(t.id, t));
         setTopics(Array.from(merged.values()));
       })
-      .catch(() => setTopics([]));
+      .catch(() => { if (!cancelled) setTopics([]); });
+    return () => { cancelled = true; };
   }, [subjectIds.join(","), examWise, subjectsExamId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // No search text and no filter chosen: the page's own totalCount IS the global question total (still
+  // limited to My Exams server-side, exactly like the old dedicated pageSize=1 request).
+  const isUnfiltered = !search.trim() && subjectIds.length === 0 && topicIds.length === 0 && examIds.length === 0
+    && years.length === 0 && languages.length === 0;
+
+  // "X Questions" stat card + Surprise Me. Normally seeded for free by an unfiltered page (see loadPage);
+  // only when the student arrived with filters / a restored session -- so no unfiltered page ever loads --
+  // is ONE single-row request made, and only after the page they are waiting for has settled.
+  const settled = status === "success" || status === "error";
+  const totalQuery = useCatalog(qbCatalogKeys.total(), fetchQuestionBankTotal, {
+    enabled: canFetch && settled && (!isUnfiltered || status === "error"),
+  });
+  const totalQuestionCount = totalQuery.data ?? null;
+
+  // Every in-flight page request (first page AND "load more"), so a filter change aborts all of them,
+  // and a generation number that makes any result from before the latest first-page load / filter change
+  // inert even if it somehow arrives (a stale "load more" must never append old-filter items).
+  const inflightRef = useRef(new Set());
+  const loadGenRef = useRef(0);
+  const cancelAllPages = useCallback(() => {
+    loadGenRef.current += 1;
+    inflightRef.current.forEach((c) => c.abort());
+    inflightRef.current.clear();
+  }, []);
 
   const loadPage = useCallback(
     (pageNum, { append }) => {
+      // A new first page supersedes everything still running.
+      if (!append) cancelAllPages();
+      const gen = loadGenRef.current;
       const controller = new AbortController();
+      inflightRef.current.add(controller);
+      const isStale = () => controller.signal.aborted || gen !== loadGenRef.current;
       setStatus(append ? "loading-more" : "loading");
 
       searchQuestionBank(
@@ -209,26 +245,34 @@ export default function QuestionBankSearch() {
         { signal: controller.signal }
       )
         .then((data) => {
+          if (isStale()) return;
           setItems((prev) => (append ? [...prev, ...data.items] : data.items));
           setTotalCount(data.totalCount);
           setHasMore(pageNum * data.pageSize < data.totalCount);
           pageRef.current = pageNum;
           setStatus("success");
+          if (isUnfiltered) setCatalog(qbCatalogKeys.total(), data.totalCount);
           if (pendingSlideAdvanceRef.current) {
             pendingSlideAdvanceRef.current = false;
             setSlideIndex((i) => i + 1);
           }
         })
         .catch((err) => {
-          if (err.name === "AbortError") return;
+          // A cancelled request is not a failure. (apiFetch turns AbortError into an ApiError, so the
+          // error's name cannot be used -- the request's own signal is the reliable test.)
+          if (isCallerAbort(err, controller.signal) || isStale()) return;
           setStatus("error");
-        });
+        })
+        .finally(() => inflightRef.current.delete(controller));
 
       return controller;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [search, subjectIds.join(","), topicIds.join(","), examWise, examIds.join(","), years.join(","), languages.join(",")]
   );
+
+  // Leaving the screen: nothing may still be running (or write state) afterwards.
+  useEffect(() => cancelAllPages, [cancelAllPages]);
 
   // Filters/search changed -- start over from page 1.
   useEffect(() => {
@@ -247,6 +291,9 @@ export default function QuestionBankSearch() {
     return () => {
       clearTimeout(debounceRef.current);
       controller?.abort();
+      // Filters/search changed (or the screen is going away): also cancel any "load more" still in
+      // flight for the OLD filters, and make whatever it returns inert.
+      cancelAllPages();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadPage, canFetch]);

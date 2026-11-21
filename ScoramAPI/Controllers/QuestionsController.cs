@@ -266,13 +266,13 @@ namespace ScoramAPI.Controllers
 
         // GET /api/questions/8f14e45f-ceea-467e-add1-000000000001
         [HttpGet("{id:guid}")]
-        public async Task<ActionResult<QuestionDetailDto>> GetById(Guid id)
+        public async Task<ActionResult<QuestionDetailDto>> GetById(Guid id, CancellationToken ct = default)
         {
             var question = await _db.Questions
                 .Include(x => x.Solutions)
                 .Include(x => x.Exam)
                 .Include(x => x.Paper).ThenInclude(p => p!.Exam)
-                .FirstOrDefaultAsync(x => x.Id == id);
+                .FirstOrDefaultAsync(x => x.Id == id, ct);
 
             if (question == null) return NotFound();
 
@@ -285,13 +285,30 @@ namespace ScoramAPI.Controllers
 
             // Like/Dislike counts + the current viewer's own vote (SCORAM_QUESTION_BANK's
             // QuestionVote table, reused here for the legacy question too -- see Models/QuestionModels.cs).
-            dto.LikeCount = await _db.QuestionVotes.CountAsync(v => v.QuestionId == id && v.IsLike);
-            dto.DislikeCount = await _db.QuestionVotes.CountAsync(v => v.QuestionId == id && !v.IsLike);
-            if (User.Identity?.IsAuthenticated == true)
+            //
+            // PERFORMANCE (API-08): the two counts + the viewer's vote + bookmark were four sequential round
+            // trips; now one command (correlated scalar subqueries over Question.Votes). An anonymous viewer
+            // is passed as Guid.Empty, which matches no vote or bookmark.
+            var isAuthenticated = User.Identity?.IsAuthenticated == true;
+            var uid = isAuthenticated ? User.GetUserId() : Guid.Empty;
+            var engagement = await _db.Questions
+                .AsNoTracking()
+                .Where(x => x.Id == id)
+                .Select(x => new
+                {
+                    Likes = x.Votes.Count(v => v.IsLike),
+                    Dislikes = x.Votes.Count(v => !v.IsLike),
+                    MyVote = x.Votes.Where(v => v.UserId == uid).Select(v => (bool?)v.IsLike).FirstOrDefault(),
+                    IsBookmarked = _db.Bookmarks.Any(b => b.QuestionId == id && b.UserId == uid)
+                })
+                .FirstOrDefaultAsync(ct);
+
+            dto.LikeCount = engagement?.Likes ?? 0;
+            dto.DislikeCount = engagement?.Dislikes ?? 0;
+            if (isAuthenticated)
             {
-                var myVote = await _db.QuestionVotes.FirstOrDefaultAsync(v => v.QuestionId == id && v.UserId == User.GetUserId());
-                dto.MyVote = myVote?.IsLike;
-                dto.IsBookmarked = await _db.Bookmarks.AnyAsync(b => b.QuestionId == id && b.UserId == User.GetUserId());
+                dto.MyVote = engagement?.MyVote;
+                dto.IsBookmarked = engagement?.IsBookmarked ?? false;
             }
 
             return Ok(dto);

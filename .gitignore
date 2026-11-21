@@ -49,3 +49,5 @@ publish-audit/
 
 # Local dependency lockfile backups
 ScoramWeb/package-lock.before-vitest-upgrade.json
+
+ScoramAPI/publish/

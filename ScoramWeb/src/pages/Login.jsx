@@ -33,7 +33,7 @@ export default function Login() {
   // "login" | "register" -- defaults to "login" exactly as before; the landing page's Sign Up CTAs
   // link to /login?mode=register to open straight into the registration form.
   const [mode, setMode] = useState(() => (searchParams.get("mode") === "register" ? "register" : "login"));
-  const { login, loginWithOtp, register, isLoading, error, clearError, sessionExpired } = useAuth();
+  const { login, loginWithOtp, register, isLoading, error, clearError, sessionExpired, sessionRevokedElsewhere } = useAuth();
 
   // "password" | "otp" -- login-mode only. Register always goes through OTP now (see the Phone
   // number field below), so there's nothing to toggle there.
@@ -221,7 +221,9 @@ export default function Login() {
         {sessionExpired && (
           <div className="mb-4 flex items-start gap-2 rounded-xl2 border border-accent-100 bg-accent-50 p-3 text-sm text-accent-600">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.25} />
-            Your session expired. Please log in again.
+            {sessionRevokedElsewhere
+              ? "Your account was logged in on another device. You have been logged out."
+              : "Your session expired. Please log in again."}
           </div>
         )}
 

@@ -995,7 +995,27 @@ namespace ScoramAPI.Controllers
 
             using var stream = new MemoryStream();
             workbook.SaveAs(stream);
-            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "question-bank-template.xlsx");
+            return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "pyq-bulk-upload-template.xlsx");
+        }
+
+        // GET /api/admin/question-bank/template/csv -- same columns/sample row as the Excel template.
+        // UTF-8 with BOM so Excel opens the Hindi text correctly; fields are quoted per RFC 4180.
+        [HttpGet("template/csv")]
+        public IActionResult DownloadCsvTemplate()
+        {
+            string[] headers = { "QuestionText", "OptionA", "OptionB", "OptionC", "OptionD", "CorrectOption", "Explanation", "Subject", "Topic", "SourceReference", "Language", "ExamYears" };
+            string[] sample =
+            {
+                "भारतीय स्थल पर 'गढ़े सोने' के साक्ष्य निम्नलिखित में से किस स्थान से मिले हैं?",
+                "लोथल और कालीबंगा", "बुर्जहोम और चिरांद", "चोपड़ा और रंगपुर", "रंगपुर और लोथल",
+                "D", "Explanation from source book.", "Ancient History", "Stone Age", "NCERT Class 11, Ch. 4",
+                "Hindi", "UP TGT:2016; UP TGT:2019; SSC CGL:2021"
+            };
+            static string Q(string v) => "\"" + v.Replace("\"", "\"\"") + "\"";
+            var csv = string.Join(",", headers.Select(Q)) + "\r\n" + string.Join(",", sample.Select(Q)) + "\r\n";
+            var bytes = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true).GetPreamble()
+                .Concat(System.Text.Encoding.UTF8.GetBytes(csv)).ToArray();
+            return File(bytes, "text/csv", "pyq-bulk-upload-template.csv");
         }
 
         // GET /api/admin/question-bank/template/json
@@ -1029,7 +1049,7 @@ namespace ScoramAPI.Controllers
                 WriteIndented = true,
                 Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             });
-            return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", "question-bank-template.json");
+            return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", "pyq-bulk-upload-template.json");
         }
 
         // ======================================================================================

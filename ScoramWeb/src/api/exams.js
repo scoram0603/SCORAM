@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import { catalogKey } from "./catalogCache";
 
 // GET /api/exams -- public list, same endpoint the admin picker uses. organizationId (optional)
 // scopes it to one Organization's exams -- see api/organizations.js's own header comment.
@@ -10,4 +11,11 @@ export function listExams({ organizationId, search, signal } = {}) {
   if (search && search.trim()) params.set("search", search.trim());
   const qs = params.toString();
   return apiFetch(`/api/exams${qs ? `?${qs}` : ""}`, { signal });
+}
+
+// Key for the shared, UNFILTERED public exam list (what the home/landing "popular exams" strips and
+// the signed-out exam pickers all load). Public: identical for every visitor, so it is not tied to a
+// student and survives logout. Filtered calls (organizationId / search) are not cached.
+export function publicExamListKey() {
+  return catalogKey("exams:list", "", { scope: "public" });
 }

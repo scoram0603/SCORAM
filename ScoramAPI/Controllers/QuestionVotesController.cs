@@ -75,8 +75,14 @@ namespace ScoramAPI.Controllers
 
             await _db.SaveChangesAsync();
 
-            var likeCount = await _db.QuestionVotes.Where(matchesQuestion).CountAsync(v => v.IsLike);
-            var dislikeCount = await _db.QuestionVotes.Where(matchesQuestion).CountAsync(v => !v.IsLike);
+            // PERFORMANCE (API-08): like and dislike counts in ONE grouped command (0-2 rows, grouped by IsLike;
+            // a missing group means 0) instead of two sequential counts.
+            var tallies = await _db.QuestionVotes.Where(matchesQuestion)
+                .GroupBy(v => v.IsLike)
+                .Select(g => new { IsLike = g.Key, Count = g.Count() })
+                .ToListAsync();
+            var likeCount = tallies.Where(t => t.IsLike).Select(t => t.Count).FirstOrDefault();
+            var dislikeCount = tallies.Where(t => !t.IsLike).Select(t => t.Count).FirstOrDefault();
             var myVote = await _db.QuestionVotes.Where(matchesQuestion).Where(v => v.UserId == userId).Select(v => (bool?)v.IsLike).FirstOrDefaultAsync();
 
             return Ok(new QuestionVoteResponseDto { LikeCount = likeCount, DislikeCount = dislikeCount, MyVote = myVote });

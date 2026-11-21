@@ -2988,6 +2988,10 @@ namespace ScoramAPI.Migrations
                     b.Property<DateTime?>("RevokedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("RevokedReason")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -3779,6 +3783,9 @@ namespace ScoramAPI.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ActiveSessionId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("BonusMockAttempts")

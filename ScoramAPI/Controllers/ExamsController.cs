@@ -40,7 +40,7 @@ namespace ScoramAPI.Controllers
         // blocked exams -- see IsBlocked -- for non-admin callers; GET /api/admin/exams below is the
         // unfiltered version admins manage from.
         [HttpGet]
-        public async Task<ActionResult<List<ExamResponseDto>>> List([FromQuery] Guid? organizationId, [FromQuery] string? search = null)
+        public async Task<ActionResult<List<ExamResponseDto>>> List([FromQuery] Guid? organizationId, [FromQuery] string? search = null, CancellationToken ct = default)
         {
             // ORGANIZATION HIERARCHY -- a blocked Organization hides every exam under it from this
             // public list too, without touching each exam's own IsBlocked flag (see
@@ -80,9 +80,9 @@ namespace ScoramAPI.Controllers
                     OrganizationId = e.OrganizationId,
                     OrganizationName = e.Organization != null ? e.Organization.Name : null
                 })
-                .ToListAsync();
+                .ToListAsync(ct);
 
-            var bankCounts = await GetQuestionBankCountsByExamAsync(_db);
+            var bankCounts = await GetQuestionBankCountsByExamAsync(_db, exams.Select(e => e.Id).ToList(), ct);
             foreach (var exam in exams)
                 exam.QuestionCount += bankCounts.GetValueOrDefault(exam.Id);
 
@@ -93,7 +93,7 @@ namespace ScoramAPI.Controllers
         // exams under a blocked Organization) too, for the admin "Manage Exams" screen.
         [HttpGet("/api/admin/exams")]
         [Authorize(Roles = "Admin,SuperAdmin")]
-        public async Task<ActionResult<List<ExamResponseDto>>> AdminList([FromQuery] Guid? organizationId)
+        public async Task<ActionResult<List<ExamResponseDto>>> AdminList([FromQuery] Guid? organizationId, CancellationToken ct = default)
         {
             var query = _db.Exams.AsQueryable();
             if (organizationId.HasValue) query = query.Where(e => e.OrganizationId == organizationId.Value);
@@ -114,9 +114,9 @@ namespace ScoramAPI.Controllers
                     OrganizationId = e.OrganizationId,
                     OrganizationName = e.Organization != null ? e.Organization.Name : null
                 })
-                .ToListAsync();
+                .ToListAsync(ct);
 
-            var bankCounts = await GetQuestionBankCountsByExamAsync(_db);
+            var bankCounts = await GetQuestionBankCountsByExamAsync(_db, exams.Select(e => e.Id).ToList(), ct);
             foreach (var exam in exams)
                 exam.QuestionCount += bankCounts.GetValueOrDefault(exam.Id);
 
@@ -829,25 +829,38 @@ namespace ScoramAPI.Controllers
         // Same two safeguards as the single-exam version above: excludes bank questions that are
         // just an auto-mirror of an already-counted PYP question, and dedupes (QuestionId, ExamId)
         // pairs so a question tagged to one exam across multiple years only counts once for it.
-        private static async Task<Dictionary<Guid, int>> GetQuestionBankCountsByExamAsync(ScoramDbContext db)
+        //
+        // PERFORMANCE (API-07): this used to load EVERY mirrored question id plus EVERY distinct
+        // (question, exam) pair of the whole bank into memory and group them in C# on each call
+        // (scaling with bank size, and always over the whole bank even when `search` /
+        // `organizationId` narrowed the exam list). It is now ONE server-side grouped query that
+        // returns only (examId, count) rows -- same rule, same numbers:
+        //   per exam, the number of DISTINCT bank questions that are IsActive, not IsTestOnly, tagged
+        //   to that exam (any year), and NOT the target of any Question.MirroredToQuestionBank-
+        //   QuestionId (every mirror is excluded regardless of its Paper's status -- deliberately NOT
+        //   QuestionBankController.VisibleQuestions(), which lets published mirrors through).
+        // examIds restricts the aggregate to the exams actually being returned; List/AdminList only
+        // ever read counts for those ids, so the output is unchanged.
+        private static async Task<Dictionary<Guid, int>> GetQuestionBankCountsByExamAsync(
+            ScoramDbContext db, List<Guid> examIds, CancellationToken ct)
         {
-            var mirroredBankQuestionIds = await db.Questions
-                .Where(q => q.MirroredToQuestionBankQuestionId != null)
-                .Select(q => q.MirroredToQuestionBankQuestionId!.Value)
-                .Distinct()
-                .ToListAsync();
-            var mirroredSet = mirroredBankQuestionIds.ToHashSet();
+            if (examIds.Count == 0)
+                return new Dictionary<Guid, int>();
 
-            var pairs = await db.QuestionBankQuestions
-                .Where(x => x.IsActive && !x.IsTestOnly)
-                .SelectMany(x => x.ExamMappings.Select(m => new { QuestionId = x.Id, m.ExamId }))
-                .Distinct()
-                .ToListAsync();
+            var rows = await db.QuestionBankExamMappings
+                .Where(m => examIds.Contains(m.ExamId)
+                    && m.QuestionBankQuestion!.IsActive
+                    && !m.QuestionBankQuestion.IsTestOnly
+                    && !db.Questions.Any(q => q.MirroredToQuestionBankQuestionId == m.QuestionBankQuestionId))
+                .GroupBy(m => m.ExamId)
+                .Select(g => new
+                {
+                    ExamId = g.Key,
+                    Count = g.Select(m => m.QuestionBankQuestionId).Distinct().Count()
+                })
+                .ToListAsync(ct);
 
-            return pairs
-                .Where(p => !mirroredSet.Contains(p.QuestionId))
-                .GroupBy(p => p.ExamId)
-                .ToDictionary(g => g.Key, g => g.Count());
+            return rows.ToDictionary(r => r.ExamId, r => r.Count);
         }
 
         // Exam-wise Subject & Topic Management rows (classifications -> topics -> subjects) belong to the exam

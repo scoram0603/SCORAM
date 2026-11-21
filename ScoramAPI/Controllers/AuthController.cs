@@ -83,6 +83,21 @@ namespace ScoramAPI.Controllers
         // of its own first for the gamification records).
         private async Task<AuthResponseDto> IssueAuthResponseAsync(User user)
         {
+            // SINGLE-DEVICE LOGIN -- every successful Register/Login/LoginWithOtp call ends up here,
+            // and from this point on this is the only active session for this student: every refresh
+            // token issued before this moment is superseded, so the device holding one gets a clean,
+            // specific SESSION_REVOKED the next time it tries to refresh (see Refresh()'s
+            // RevokedReasonSupersededByLogin branch) instead of being misread as token theft. A fresh
+            // ActiveSessionId is baked into the access token issued below (its "sid" claim -- see
+            // TokenService.GenerateToken) and checked on every subsequent request (see Program.cs's
+            // OnTokenValidated), so that device's *next request*, not just its next refresh, also
+            // fails. InvalidateAsync clears the cached value immediately rather than waiting out the
+            // cache's TTL.
+            await _refreshTokens.SupersedeForNewLoginAsync(user.Id);
+            user.ActiveSessionId = Guid.NewGuid();
+            await _db.SaveChangesAsync();
+            await _securityStamps.InvalidateAsync(user.Id, isAdmin: false);
+
             var (token, expiresAt) = _tokenService.GenerateToken(user);
             var (refreshToken, _) = await _refreshTokens.IssueAsync(user.Id, isAdmin: false, HttpContext.Connection.RemoteIpAddress?.ToString(), HttpContext.GetUserAgent());
 
@@ -276,6 +291,17 @@ namespace ScoramAPI.Controllers
                 if (graced != null)
                 {
                     stored = graced;
+                }
+                else if (stored.RevokedReason == RefreshToken.RevokedReasonSupersededByLogin)
+                {
+                // SINGLE-DEVICE LOGIN -- this token wasn't stolen or double-used: it was deliberately
+                // superseded because this same student logged in again somewhere else (see
+                // AuthController.IssueAuthResponseAsync / RefreshTokenService.SupersedeForNewLoginAsync).
+                // Report the specific reason and stop here -- do NOT fall into the theft-response
+                // branch below, which would revoke the *new* device's just-issued session as
+                // collateral damage for presenting what is, from this account's point of view, simply
+                // an old, correctly-revoked token.
+                return Unauthorized(new { code = "SESSION_REVOKED", message = "Your account was logged in on another device." });
                 }
                 else
                 {

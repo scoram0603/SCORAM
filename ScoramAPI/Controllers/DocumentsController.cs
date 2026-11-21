@@ -272,10 +272,10 @@ namespace ScoramAPI.Controllers
             return null;
         }
 
-        // Reads "AzureBlobStorage:MaxFileSizeMB" from appsettings.json on every call (rather than
-        // caching it at startup) so an ops change to the config takes effect without a restart --
+        // Reads "BlobStorage:MaxFileSizeMB" (App Service: BlobStorage__MaxFileSizeMB) from configuration on every call
+        // (rather than caching it at startup) so an ops change to the config takes effect without a restart --
         // consistent with how the rest of the config is read via IConfiguration elsewhere.
-        private long MaxFileSizeBytes => (_config.GetValue<int?>("AzureBlobStorage:MaxFileSizeMB") ?? 10) * 1024L * 1024L;
+        private long MaxFileSizeBytes => (_config.GetValue<int?>("BlobStorage:MaxFileSizeMB") ?? 10) * 1024L * 1024L;
 
         private static DocumentApiResponse<object?> Fail(string message) => new()
         {

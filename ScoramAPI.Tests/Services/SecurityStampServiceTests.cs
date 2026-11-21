@@ -118,5 +118,78 @@ namespace ScoramAPI.Tests.Services
 
             Assert.True(stillValid); // cache TTL (60s) hasn't elapsed, so this reads the cached pre-change value
         }
+
+        // ---- SINGLE-DEVICE LOGIN: IsSessionValidAsync -------------------------------------------
+
+        [Fact]
+        public async Task IsSessionValidAsync_ReturnsTrue_WhenTokenSessionIdMatchesCurrentDbValue()
+        {
+            var sessionId = Guid.NewGuid();
+            var user = new User { Id = Guid.NewGuid(), Username = "s1", Email = "s1@example.com", FullName = "S1", PasswordHash = "x", ActiveSessionId = sessionId };
+            _db.Users.Add(user);
+            await _db.SaveChangesAsync();
+
+            Assert.True(await _service.IsSessionValidAsync(user.Id, sessionId.ToString()));
+        }
+
+        [Fact]
+        public async Task IsSessionValidAsync_ReturnsFalse_WhenASecondLoginSupersededIt()
+        {
+            // The actual mechanism: AuthController.IssueAuthResponseAsync assigns a NEW
+            // ActiveSessionId on every login; a token carrying the PREVIOUS value (device A, still
+            // holding its old access token) must stop validating once that happens -- this is what
+            // makes single-device enforcement take effect on device A's very next request.
+            var firstSessionId = Guid.NewGuid();
+            var user = new User { Id = Guid.NewGuid(), Username = "s2", Email = "s2@example.com", FullName = "S2", PasswordHash = "x", ActiveSessionId = firstSessionId };
+            _db.Users.Add(user);
+            await _db.SaveChangesAsync();
+
+            user.ActiveSessionId = Guid.NewGuid(); // device B logs in
+            await _db.SaveChangesAsync();
+            await _service.InvalidateAsync(user.Id, isAdmin: false);
+
+            Assert.False(await _service.IsSessionValidAsync(user.Id, firstSessionId.ToString()));
+        }
+
+        [Fact]
+        public async Task IsSessionValidAsync_ReturnsFalse_WhenUserHasNeverLoggedInSinceThisFeatureShipped()
+        {
+            // ActiveSessionId null (the deployment-safety grandfather case -- see the
+            // AddSingleDeviceLogin migration's comment): TokenService never puts a "sid" claim on
+            // such a user's token in the first place, so Program.cs's OnTokenValidated never calls
+            // this method for them -- but this still fails closed on its own if it's ever called with
+            // a sid claim that doesn't correspond to any real session (e.g. a hand-crafted token).
+            var user = new User { Id = Guid.NewGuid(), Username = "s3", Email = "s3@example.com", FullName = "S3", PasswordHash = "x", ActiveSessionId = null };
+            _db.Users.Add(user);
+            await _db.SaveChangesAsync();
+
+            Assert.False(await _service.IsSessionValidAsync(user.Id, Guid.NewGuid().ToString()));
+        }
+
+        [Fact]
+        public async Task IsValidAsync_AndIsSessionValidAsync_ShareOneCacheEntry_NeitherStalesTheOther()
+        {
+            // SecurityStamp and ActiveSessionId are cached together under one key (see
+            // SecurityStampService.GetStateAsync's own comment) -- this proves priming the cache via
+            // one of the two public methods still gives the OTHER method the correct, current value,
+            // rather than a half-populated or stale one.
+            var stamp = Guid.NewGuid();
+            var sessionId = Guid.NewGuid();
+            var user = new User { Id = Guid.NewGuid(), Username = "s4", Email = "s4@example.com", FullName = "S4", PasswordHash = "x", SecurityStamp = stamp, ActiveSessionId = sessionId };
+            _db.Users.Add(user);
+            await _db.SaveChangesAsync();
+
+            Assert.True(await _service.IsValidAsync(user.Id, isAdmin: false, tokenStamp: stamp.ToString())); // primes the shared cache entry
+            Assert.True(await _service.IsSessionValidAsync(user.Id, sessionId.ToString())); // reads it back correctly
+
+            await _service.InvalidateAsync(user.Id, isAdmin: false);
+            user.SecurityStamp = Guid.NewGuid();
+            user.ActiveSessionId = Guid.NewGuid();
+            await _db.SaveChangesAsync();
+
+            // Re-primed via the OTHER method this time -- still correct for both.
+            Assert.True(await _service.IsSessionValidAsync(user.Id, user.ActiveSessionId.Value.ToString()));
+            Assert.True(await _service.IsValidAsync(user.Id, isAdmin: false, tokenStamp: user.SecurityStamp.ToString()));
+        }
     }
 }

@@ -1,19 +1,18 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Loader2, ChevronDown, Sparkles, Play } from "lucide-react";
-import { getQuestionBankSubjects, getQuestionBankTopics, getQuestionBankExams } from "../api/questionBank";
+import { getQuestionBankSubjects, getQuestionBankTopics, getQuestionBankExams, qbCatalogKeys } from "../api/questionBank";
+import { useCatalog } from "../hooks/useCatalog";
 import { listPracticeTestTemplates, DIFFICULTY_OPTIONS, LANGUAGE_OPTIONS } from "../api/practiceTests";
 import ChooseMyExamsPrompt from "../components/exams/ChooseMyExamsPrompt";
 import { useMyExamsScope } from "../hooks/useMyExamsScope";
 
+const EMPTY = [];
 const QUESTION_COUNT_OPTIONS = [10, 20, 30, 50];
 const DURATION_OPTIONS = [10, 20, 30, 45, 60];
 
 export default function PracticeTests() {
   const navigate = useNavigate();
-  const [subjects, setSubjects] = useState([]);
-  const [topics, setTopics] = useState([]);
-  const [exams, setExams] = useState([]);
 
   // SMART PROGRESS -- "Practice this topic" deep links pre-select the filters (?subjectId=&topicId=&examId=).
   // They are only initial values; the student can still change everything.
@@ -37,22 +36,18 @@ export default function PracticeTests() {
   const scope = useMyExamsScope();
   const canFetch = scope.ready && !scope.isEmpty;
 
+  // Subjects / exams / topics come from the shared catalog cache (same entries the Question Bank
+  // screen uses), so moving between the two screens does not refetch them.
+  const subjects = useCatalog(qbCatalogKeys.subjects(), () => getQuestionBankSubjects(), { enabled: canFetch }).data ?? EMPTY;
+  const exams = useCatalog(qbCatalogKeys.exams(), () => getQuestionBankExams(), { enabled: canFetch }).data ?? EMPTY;
+  const topics = useCatalog(qbCatalogKeys.topics(subjectId), () => getQuestionBankTopics(subjectId), { enabled: Boolean(subjectId) }).data ?? EMPTY;
+
   useEffect(() => {
     if (!canFetch) return;
-    getQuestionBankSubjects().then(setSubjects).catch(() => {});
-    getQuestionBankExams().then(setExams).catch(() => {});
     listPracticeTestTemplates({ page: 1, pageSize: 10 })
       .then((res) => setTemplates(res.items))
       .catch(() => setTemplates([]));
   }, [canFetch]);
-
-  useEffect(() => {
-    if (!subjectId) {
-      setTopics([]);
-      return;
-    }
-    getQuestionBankTopics(subjectId).then(setTopics).catch(() => setTopics([]));
-  }, [subjectId]);
 
   function handleGenerate(e) {
     e.preventDefault();

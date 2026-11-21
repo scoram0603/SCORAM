@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Search, Check, Loader2, AlertCircle, X } from "lucide-react";
 import { listOrganizations } from "../../api/organizations";
 import { listExams } from "../../api/exams";
+import { isCallerAbort } from "../../api/client";
 
 // ORGANIZATION HIERARCHY -- "pick an Organization, then pick from its exams" instead of one flat
 // list of every exam at once. Used by the My Exams first-time selection screen, the My Exams
@@ -44,7 +45,7 @@ export default function OrganizationExamPicker({ selectedIds, onToggle, excludeI
     const controller = new AbortController();
     listOrganizations({ signal: controller.signal })
       .then((orgs) => setOrganizations(orgs))
-      .catch((err) => { if (err.name !== "AbortError") setStatus("error"); });
+      .catch((err) => { if (!isCallerAbort(err, controller.signal)) setStatus("error"); });
     return () => controller.abort();
   }, [reloadKey]);
 
@@ -58,7 +59,7 @@ export default function OrganizationExamPicker({ selectedIds, onToggle, excludeI
         setStatus("ready");
         onExamsLoaded?.(list);
       })
-      .catch((err) => { if (err.name !== "AbortError") setStatus("error"); })
+      .catch((err) => { if (!isCallerAbort(err, controller.signal)) setStatus("error"); })
       .finally(() => { if (!controller.signal.aborted) setSearching(false); });
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps

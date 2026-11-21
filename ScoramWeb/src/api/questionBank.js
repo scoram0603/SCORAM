@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import { catalogKey, loadCatalog } from "./catalogCache";
 
 function toQueryString(params = {}) {
   const query = new URLSearchParams();
@@ -60,4 +61,28 @@ export function getQuestionBankExams() {
 // GET /api/question-bank/years
 export function getQuestionBankYears() {
   return apiFetch("/api/question-bank/years", { optionalAuth: true });
+}
+
+// ---- Shared catalog cache (see catalogCache.js) ----
+// Keys for the lookups the Question Bank and Practice Tests screens both need. They are user-scoped:
+// the server filters these lists by the signed-in student's My Exams. Call them at render time so the
+// key always carries the current student; pair them with useCatalog(key, fetcher).
+export const qbCatalogKeys = {
+  exams: () => catalogKey("qb:exams"),
+  years: () => catalogKey("qb:years"),
+  subjects: (examId) => catalogKey("qb:subjects", examId ?? ""),
+  topics: (subjectId, examId) => catalogKey("qb:topics", `${subjectId}|${examId ?? ""}`),
+  // The global (unfiltered) question total behind the "Questions" stat card.
+  total: () => catalogKey("qb:total"),
+};
+
+// Cached, de-duplicated topic list for one subject (used by effects that merge several subjects).
+export function loadQuestionBankTopics(subjectId, examId) {
+  return loadCatalog(qbCatalogKeys.topics(subjectId, examId), () => getQuestionBankTopics(subjectId, examId));
+}
+
+// The unfiltered total: one request with a single-row page, only used when no unfiltered page of
+// results has already told us the total.
+export function fetchQuestionBankTotal() {
+  return searchQuestionBank({ page: 1, pageSize: 1 }).then((d) => d.totalCount);
 }

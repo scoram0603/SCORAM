@@ -50,6 +50,17 @@ namespace ScoramAPI.Services
                 new Claim("stamp", user.SecurityStamp.ToString())
             };
 
+            // SINGLE-DEVICE LOGIN -- deliberately OMITTED (not added as an empty claim) when
+            // ActiveSessionId is null, i.e. for a student who hasn't logged in since this feature
+            // shipped. Program.cs's OnTokenValidated treats a missing "sid" claim as "not enforced
+            // for this token" rather than a mismatch -- see that migration's comment for why that's
+            // required for a safe deployment. Once this student logs in again (here or on any other
+            // device), every subsequently issued token carries this claim.
+            if (user.ActiveSessionId is Guid activeSessionId)
+            {
+                claims.Add(new Claim("sid", activeSessionId.ToString()));
+            }
+
             var token = new JwtSecurityToken(
                 issuer: jwtSection["Issuer"],
                 audience: jwtSection["Audience"],

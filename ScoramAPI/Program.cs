@@ -1,3 +1,4 @@
+
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -18,11 +19,6 @@ using StackExchange.Redis;
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------- Port binding ----------
-// The Dockerfile sets ASPNETCORE_URLS=http://+:8080, which is the normal ASP.NET Core mechanism and
-// takes precedence whenever it's present. Render (and some other host-based PaaS providers) instead
-// inject a PORT environment variable and expect the app to bind to that -- this fallback only kicks
-// in when PORT is set and ASPNETCORE_URLS is NOT, so local development (which sets neither) and the
-// Docker image (which sets ASPNETCORE_URLS) are both unaffected.
 var renderPort = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrWhiteSpace(renderPort) && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
 {
@@ -30,30 +26,34 @@ if (!string.IsNullOrWhiteSpace(renderPort) && string.IsNullOrWhiteSpace(Environm
 }
 
 // ---------- Structured logging ----------
-// Reads the "Serilog" section in appsettings.json (and appsettings.Development.json, which can
-// override with more verbose levels locally) -- console output during development, plus a rolling
-// daily file under logs/ so production issues can be investigated after the fact.
 builder.Host.UseSerilog((context, configuration) => configuration
     .ReadFrom.Configuration(context.Configuration));
 
 // ---------- Database ----------
-// SlowQueryInterceptor only OBSERVES finished commands (it logs any slower than Observability:SlowQueryMs,
-// never alters a command or its result) -- see Data/SlowQueryInterceptor.cs.
+// SlowQueryInterceptor observes finished database commands.
+// EnableRetryOnFailure retries transient SQL connection failures.
 builder.Services.AddSingleton<SlowQueryInterceptor>();
+
 builder.Services.AddDbContext<ScoramDbContext>((serviceProvider, options) =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
-           .AddInterceptors(serviceProvider.GetRequiredService<SlowQueryInterceptor>()));
-// GET /health/ready (database reachability, cached for a few seconds) -- see Services/ReadinessCheck.cs.
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        sql =>
+        {
+            sql.EnableRetryOnFailure(
+                maxRetryCount: 3,
+                maxRetryDelay: TimeSpan.FromSeconds(5),
+                errorNumbersToAdd: null
+            );
+        })
+    .AddInterceptors(
+        serviceProvider.GetRequiredService<SlowQueryInterceptor>()
+    )
+);
+
+// GET /health/ready
 builder.Services.AddSingleton<ReadinessCheck>();
 
 // ---------- Response compression ----------
-// Brotli/gzip for JSON API responses (list endpoints are the big ones -- exams, questions, chat history).
-// ResponseCompressionDefaults.MimeTypes covers application/json, text/*, application/javascript and
-// image/svg+xml, and deliberately NOT binary images/PDFs/audio (already compressed) or text/event-stream
-// (SignalR's SSE transport) -- so /uploads/* files and SignalR connections are unaffected; WebSocket frames
-// never pass through this middleware at all. "application/problem+json" is added for ASP.NET's
-// auto-generated 400 validation bodies. If the host's edge already compresses, it passes an
-// already-encoded response through untouched (Content-Encoding is set), so this is safe to leave on either way.
 builder.Services.AddResponseCompression(options =>
 {
     options.EnableForHttps = true;
@@ -66,7 +66,7 @@ builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = System
 
 // ---------- Services ----------
 builder.Services.AddScoped<ITokenService, TokenService>();
-builder.Services.AddSingleton<ITotpService, TotpService>(); // stateless, pure algorithm -- see TotpService's own comment
+builder.Services.AddSingleton<ITotpService, TotpService>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 builder.Services.AddScoped<ISecurityStampService, SecurityStampService>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
@@ -74,62 +74,53 @@ builder.Services.AddScoped<IAdminPermissionService, AdminPermissionService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPushNotificationService, PushNotificationService>();
-// Off-request-path delivery + My-Exams/broadcast fan-out -- see Services/NotificationWorkQueue.cs.
+
 builder.Services.AddSingleton<INotificationWorkQueue, NotificationWorkQueue>();
 builder.Services.AddHostedService<NotificationWorker>();
 builder.Services.AddScoped<INotificationFanOutService, NotificationFanOutService>();
-// ADMIN PLATFORM -- app config / feature flags / version policy, and the analytics layer behind the new dashboard.
+
 builder.Services.AddScoped<IAppConfigService, AppConfigService>();
 builder.Services.AddScoped<IAdminAnalyticsService, AdminAnalyticsService>();
 
-// STUDY PARTNER -- shared progress numbers (same definitions as the Progress page) used by
-// StudyPartnersController for profile / compare / leaderboard / challenges.
 builder.Services.AddScoped<IStudentProgressService, StudentProgressService>();
-// SMART PROGRESS -- thresholds (Analytics section) + analytics / Mistake Book / study plan services.
-builder.Services.Configure<ScoramAPI.Services.Analytics.AnalyticsOptions>(builder.Configuration.GetSection(ScoramAPI.Services.Analytics.AnalyticsOptions.SectionName));
+
+builder.Services.Configure<ScoramAPI.Services.Analytics.AnalyticsOptions>(
+    builder.Configuration.GetSection(ScoramAPI.Services.Analytics.AnalyticsOptions.SectionName));
+
 builder.Services.AddScoped<IProgressAnalyticsService, ProgressAnalyticsService>();
 builder.Services.AddScoped<IRevisionService, RevisionService>();
 builder.Services.AddScoped<IStudyPlanService, StudyPlanService>();
-builder.Services.AddSingleton<IDmViewingService, DmViewingService>(); // DIRECT MESSAGES -- which thread a student has open right now (suppresses redundant notifications)
-builder.Services.AddScoped<IAccountDeletionService, AccountDeletionService>(); // self-service account deletion -- see AccountDeletionService's own comment
+builder.Services.AddSingleton<IDmViewingService, DmViewingService>();
+builder.Services.AddScoped<IAccountDeletionService, AccountDeletionService>();
 builder.Services.AddScoped<IMsg91Service, Msg91Service>();
-builder.Services.AddSingleton<ICaptchaService, CaptchaService>(); // lightweight math captcha for Register/Login -- see CaptchaService's own comment
+builder.Services.AddSingleton<ICaptchaService, CaptchaService>();
+
 builder.Services.AddScoped<IBulkImportService, BulkImportService>();
 builder.Services.AddScoped<IBulkPaperImportService, BulkPaperImportService>();
-builder.Services.AddScoped<IQuestionBankImportService, QuestionBankImportService>(); // SCORAM_QUESTION_BANK
-builder.Services.AddScoped<IBulkUploadZipService, BulkUploadZipService>(); // rich PYP/PYQ bulk upload -- ZIP package extraction
-builder.Services.AddHostedService<BulkImportStagingCleanupService>(); // sweeps abandoned bulk-import staged images
-// Retries private chat/DM attachment blob deletions that failed at delete time. Registered but OFF unless
-// PrivateAttachments:CleanupSweep:Enabled=true -- enabling it bulk-deletes blobs, so it needs an explicit decision.
+builder.Services.AddScoped<IQuestionBankImportService, QuestionBankImportService>();
+builder.Services.AddScoped<IBulkUploadZipService, BulkUploadZipService>();
+builder.Services.AddHostedService<BulkImportStagingCleanupService>();
 builder.Services.AddHostedService<PrivateAttachmentCleanupService>();
-builder.Services.AddScoped<IQuestionBankMirrorService, QuestionBankMirrorService>(); // auto-mirrors new PYQ questions into the Question Bank
-builder.Services.AddScoped<IBulkImportCommitService, BulkImportCommitService>(); // extracted from BulkImportController.Commit -- see that class's own comment
-builder.Services.AddScoped<IBulkPaperImportCommitService, BulkPaperImportCommitService>(); // extracted from BulkPaperImportController.Commit
-builder.Services.AddScoped<IQuestionBankImportCommitService, QuestionBankImportCommitService>(); // extracted from QuestionBankAdminController.Commit
-builder.Services.AddScoped<ITestBulkImportService, TestBulkImportService>(); // Mock Test / Practice Template bulk upload
-builder.Services.AddScoped<ITestAttemptService, TestAttemptService>(); // SCORAM_TESTS
-builder.Services.AddScoped<ISubjectManagementService, SubjectManagementService>(); // Subject Management (admin)
-builder.Services.AddScoped<IExamTaxonomyService, ExamTaxonomyService>(); // Exam-wise Subject & Topic Management (admin)
-builder.Services.AddScoped<IBusinessIdService, BusinessIdService>(); // Business IDs (EXMSSC001, SUB001, ...) -- SuperAdmin change + one-time backfill
-builder.Services.AddScoped<IGamificationService, GamificationService>(); // GAMIFICATION
-builder.Services.AddScoped<IMyExamScopeService, MyExamScopeService>(); // MY EXAMS -- strict per-student exam content scope, see MyExamScopeService
-// SHARED CONTENT / BULK QUESTION EDITOR -- these three were never registered, so every endpoint whose
-// controller (or [FromServices] parameter) needs them failed at DI resolution with a 500 before running
-// any code: /api/admin/bulk-question-editor/*, /api/admin/papers/{id}/stimulus-links/*,
-// /api/admin/papers/{id}/content-preview, and student test Start/GetAttempt/Submit for papers.
+builder.Services.AddScoped<IQuestionBankMirrorService, QuestionBankMirrorService>();
+builder.Services.AddScoped<IBulkImportCommitService, BulkImportCommitService>();
+builder.Services.AddScoped<IBulkPaperImportCommitService, BulkPaperImportCommitService>();
+builder.Services.AddScoped<IQuestionBankImportCommitService, QuestionBankImportCommitService>();
+builder.Services.AddScoped<ITestBulkImportService, TestBulkImportService>();
+builder.Services.AddScoped<ITestAttemptService, TestAttemptService>();
+builder.Services.AddScoped<ISubjectManagementService, SubjectManagementService>();
+builder.Services.AddScoped<IExamTaxonomyService, ExamTaxonomyService>();
+builder.Services.AddScoped<IBusinessIdService, BusinessIdService>();
+builder.Services.AddScoped<IGamificationService, GamificationService>();
+builder.Services.AddScoped<IMyExamScopeService, MyExamScopeService>();
+
 builder.Services.AddScoped<IBulkQuestionEditService, BulkQuestionEditService>();
 builder.Services.AddScoped<IStimulusLinkService, StimulusLinkService>();
 builder.Services.AddScoped<IPaperContentService, PaperContentService>();
-// ---------- Redis (optional -- see ConnectionStrings:Redis) ----------
-// Everything below degrades gracefully to today's single-instance-only behavior when this isn't
-// configured, or when it's configured but unreachable at startup: SignalR keeps working exactly as
-// before (just without a backplane, so a message sent by a client connected to one instance won't
-// reach a client connected to a different instance), presence tracking stays in-memory-per-instance
-// (see ChatPresenceService/DmPresenceService's own comments), and IDistributedCache falls back to an
-// in-memory implementation. None of this requires Redis to run the app at all -- it's what makes
-// running MORE THAN ONE instance of it actually correct.
+
+// ---------- Redis (optional) ----------
 var redisConnectionString = builder.Configuration.GetConnectionString("Redis");
 IConnectionMultiplexer? redisMultiplexer = null;
+
 if (!string.IsNullOrWhiteSpace(redisConnectionString))
 {
     try
@@ -138,10 +129,6 @@ if (!string.IsNullOrWhiteSpace(redisConnectionString))
     }
     catch (Exception ex)
     {
-        // Deliberately not fatal: Redis being unreachable at the exact moment this process started
-        // shouldn't take the whole app down with it, any more than the DB being briefly unreachable
-        // does (see the /health endpoint's own comment further down). Falls through to the
-        // single-instance-only registrations below.
         Console.Error.WriteLine($"Redis configured but unreachable at startup, falling back to single-instance-only behavior: {ex.Message}");
     }
 }
@@ -149,22 +136,23 @@ if (!string.IsNullOrWhiteSpace(redisConnectionString))
 if (redisMultiplexer != null)
 {
     builder.Services.AddSingleton(redisMultiplexer);
-    builder.Services.AddSingleton<IChatPresenceService, RedisChatPresenceService>(); // GROUP CHAT -- online user list, now correct across instances
-    builder.Services.AddSingleton<IDmPresenceService, RedisDmPresenceService>(); // DIRECT MESSAGES -- same reasoning
+    builder.Services.AddSingleton<IChatPresenceService, RedisChatPresenceService>();
+    builder.Services.AddSingleton<IDmPresenceService, RedisDmPresenceService>();
     builder.Services.AddStackExchangeRedisCache(options => options.Configuration = redisConnectionString);
-    builder.Services.AddSingleton<IBackgroundJobQueue, RedisBackgroundJobQueue>(); // moves Meilisearch indexing off the Publish/Unpublish/Delete request path -- see PapersController
-    builder.Services.AddHostedService<SearchIndexWorker>(); // consumes the queue above -- no reason to run it when there's nothing to consume
-    builder.Services.AddHostedService<BulkImportCommitWorker>(); // consumes bulk-import commit jobs -- see BulkImportController.Commit
-    builder.Services.AddHostedService<BulkPaperImportCommitWorker>(); // consumes bulk-paper-import commit jobs -- see BulkPaperImportController.Commit
-    builder.Services.AddHostedService<QuestionBankImportCommitWorker>(); // consumes question-bank-import commit jobs -- see QuestionBankAdminController.Commit
+    builder.Services.AddSingleton<IBackgroundJobQueue, RedisBackgroundJobQueue>();
+    builder.Services.AddHostedService<SearchIndexWorker>();
+    builder.Services.AddHostedService<BulkImportCommitWorker>();
+    builder.Services.AddHostedService<BulkPaperImportCommitWorker>();
+    builder.Services.AddHostedService<QuestionBankImportCommitWorker>();
 }
 else
 {
-    builder.Services.AddSingleton<IChatPresenceService, ChatPresenceService>(); // GROUP CHAT -- online user list
-    builder.Services.AddSingleton<IDmPresenceService, DmPresenceService>(); // DIRECT MESSAGES -- "Active now" / "Last seen"
+    builder.Services.AddSingleton<IChatPresenceService, ChatPresenceService>();
+    builder.Services.AddSingleton<IDmPresenceService, DmPresenceService>();
     builder.Services.AddDistributedMemoryCache();
-    builder.Services.AddSingleton<IBackgroundJobQueue, NullBackgroundJobQueue>(); // IsAvailable=false -- callers fall back to running the work inline, exactly as before this existed
+    builder.Services.AddSingleton<IBackgroundJobQueue, NullBackgroundJobQueue>();
 }
+
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IInstantSearchService, InstantSearchService>();
@@ -172,25 +160,13 @@ builder.Services.AddScoped<IFallbackSearchService, FallbackSearchService>();
 builder.Services.AddSingleton<IStagedDataCache, StagedDataCache>();
 
 // ---------- Azure Blob Storage ----------
-// BlobServiceClient is thread-safe and expensive to construct, so it's a Singleton -- built once
-// from the connection string here. This does NOT connect to Azure; parsing a connection string is
-// purely local, so this is safe to do even while AzureBlobStorage:ConnectionString in appsettings.json
-// is still the DEMO placeholder. Nothing actually reaches Azure until an upload/download/delete call
-// happens inside AzureBlobService.
-builder.Services.AddSingleton(_ => new BlobServiceClient(builder.Configuration["AzureBlobStorage:ConnectionString"]));
+var blobConn = builder.Configuration["BlobStorage:ConnectionString"];
+
+Console.WriteLine($"BLOB CONFIG CHECK: {(string.IsNullOrWhiteSpace(blobConn) ? "MISSING" : "AVAILABLE")}");
+builder.Services.AddSingleton(_ => new BlobServiceClient(builder.Configuration["BlobStorage:ConnectionString"]));
 builder.Services.AddScoped<IAzureBlobService, AzureBlobService>();
 
 // ---------- Rate limiting ----------
-// Applied to the student and admin login endpoints (see [EnableRateLimiting("login")] on
-// AuthController.Login / AdminAuthController.Login) and student registration (AuthController.Register)
-// -- a basic but real defense against credential-stuffing/brute-force and mass fake-account creation
-// at the scale this app is meant to run at.
-//
-// Partitioned per client IP via AddPolicy(...GetFixedWindowLimiter...) rather than AddFixedWindowLimiter
-// -- the previous AddFixedWindowLimiter("login", ...) created ONE shared bucket for every client hitting
-// the endpoint, so 5 legitimate students trying to log in within the same minute from different places
-// could lock every other student out of logging in for the rest of that window. Partitioning by IP gives
-// each caller their own bucket, which is what "Per-IP, 5 attempts/minute" was always meant to mean.
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("login", httpContext => RateLimitPartition.GetFixedWindowLimiter(
@@ -202,9 +178,6 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 
-    // Silent token renewal is automatic app traffic, not a password attempt: sharing the 5/min "login"
-    // bucket meant a college/CGNAT IP (many students, one address) could 429 everyone's renewals.
-    // The refresh token itself is a 256-bit secret, so a looser per-IP limit costs nothing in safety.
     options.AddPolicy("refresh", httpContext => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: ClientIpResolver.PartitionKey(httpContext),
         factory: _ => new FixedWindowRateLimiterOptions
@@ -223,18 +196,6 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 
-    // Partitioned by user id, not IP -- these are all [Authorize]-gated actions, and IP-partitioning
-    // would wrongly throttle every student behind the same NAT/office/college wifi as one shared
-    // bucket, the exact bug the login/register partitioning above was written to avoid in the first
-    // place (just the IP-vs-user version of it). GetRateLimitPartitionKey falls back to IP only for
-    // an unauthenticated caller -- UseRateLimiter runs before UseAuthorization in this pipeline (see
-    // below), so a request with no/invalid token still needs a safe partition key here before
-    // [Authorize] gets the chance to reject it with 401.
-    //
-    // "content-post": chat/DM messages, discussion comments and replies, and sharing a question/
-    // paper into a room or conversation -- the actions that create new content another
-    // user/room/conversation actually sees, so unrestricted volume is a direct spam/flood vector
-    // against other students, not just a cost concern the way login/register's brute-force risk is.
     options.AddPolicy("content-post", httpContext => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: GetRateLimitPartitionKey(httpContext),
         factory: _ => new FixedWindowRateLimiterOptions
@@ -244,8 +205,6 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 
-    // SMART PROGRESS -- revision answers and per-question timing pings. Generous (a revision session
-    // answers up to ~20 questions in a few minutes; timings go out every ~20s) but bounded per student/IP.
     options.AddPolicy("smart-progress-write", httpContext => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: GetRateLimitPartitionKey(httpContext),
         factory: _ => new FixedWindowRateLimiterOptions
@@ -255,10 +214,6 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 
-    // Upvote/downvote/poll-vote -- cheap individually, but an unthrottled script could still
-    // manipulate a solution's ranking or a poll's result by hammering this. Looser than
-    // "content-post" since a burst of legitimate votes while scrolling a long discussion thread is
-    // normal, unlike a burst of 30 chat messages.
     options.AddPolicy("vote", httpContext => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: GetRateLimitPartitionKey(httpContext),
         factory: _ => new FixedWindowRateLimiterOptions
@@ -268,9 +223,6 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 
-    // Reporting a message/comment -- deliberately the strictest of the three. A genuine user reports
-    // things rarely; a mass-report script is either harassment (trying to get another user's content
-    // auto-hidden/reviewed en masse) or pure noise that wastes admin moderation time either way.
     options.AddPolicy("report", httpContext => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: GetRateLimitPartitionKey(httpContext),
         factory: _ => new FixedWindowRateLimiterOptions
@@ -280,8 +232,6 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 
-    // Feedback form submissions -- a real student sends a handful at most. Partitioned by user id
-    // (not IP) for the same NAT/college-wifi reason as the policies above.
     options.AddPolicy("feedback", httpContext => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: GetRateLimitPartitionKey(httpContext),
         factory: _ => new FixedWindowRateLimiterOptions
@@ -291,8 +241,6 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 
-    // STUDENT REVIEWS -- create / edit / withdraw the caller's single review. A student has one review, so a
-    // handful of writes an hour is generous. Partitioned by user id like "feedback".
     options.AddPolicy("review-write", httpContext => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: GetRateLimitPartitionKey(httpContext),
         factory: _ => new FixedWindowRateLimiterOptions
@@ -302,8 +250,6 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 
-    // PUBLIC landing-page reads (reviews + landing content). Anonymous and cached server-side, so this only has
-    // to stop scraping/abuse; the partition key falls back to the client IP for anonymous callers.
     options.AddPolicy("public-read", httpContext => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: GetRateLimitPartitionKey(httpContext),
         factory: _ => new FixedWindowRateLimiterOptions
@@ -316,11 +262,6 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
-// Shared by every user-partitioned policy above -- see "content-post"'s own comment for why this
-// falls back to IP instead of throwing when the caller isn't authenticated (checking
-// User.Identity?.IsAuthenticated directly here rather than reusing GetUserId()'s throw-on-missing
-// behavior, which is the right contract for code that already knows it's dealing with an
-// authenticated principal, but not for a partition-key selector that runs before that's guaranteed).
 static string GetRateLimitPartitionKey(HttpContext httpContext)
 {
     if (httpContext.User.Identity?.IsAuthenticated == true)
@@ -329,17 +270,16 @@ static string GetRateLimitPartitionKey(HttpContext httpContext)
                   ?? httpContext.User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
         if (sub != null) return $"user:{sub}";
     }
+
     return $"ip:{ClientIpResolver.PartitionKey(httpContext)}";
 }
 
 // ---------- Controllers & Swagger ----------
-// Enums as strings ("Easy", "Medium", "A", "Pending", ...) in both requests and responses --
-// without this, System.Text.Json defaults to raw integers (0/1/2...), which is fragile for any
-// frontend code (magic numbers) and unreadable in Swagger. This affects every enum-typed field
-// across the API (DifficultyLevel, OptionLetter, AdminTaskStatus, AdminRole, etc.) -- safe/additive
-// since most controllers were already manually calling .ToString() on outbound enums anyway.
-builder.Services.AddControllers(options => options.Filters.Add<ScoramAPI.Middleware.MustChangePasswordFilter>())
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddControllers(options =>
+        options.Filters.Add<ScoramAPI.Middleware.MustChangePasswordFilter>())
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -359,6 +299,7 @@ builder.Services.AddSwaggerGen(options =>
         In = Microsoft.OpenApi.Models.ParameterLocation.Header,
         Description = "Paste the JWT token here (no need to prefix with 'Bearer ')."
     };
+
     options.AddSecurityDefinition("Bearer", jwtScheme);
     options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
     {
@@ -366,23 +307,24 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-// ---------- SignalR (real-time chat) ----------
+// ---------- SignalR ----------
 var signalRBuilder = builder.Services.AddSignalR();
+
 if (redisMultiplexer != null)
 {
-    // Without this, a message sent by a client connected to one instance never reaches a client
-    // connected to a different one -- see this file's earlier Redis comment block. This is the one
-    // piece that actually needs the connection string rather than just the already-connected
-    // multiplexer, since the SignalR Redis package manages its own separate connection internally.
     signalRBuilder.AddStackExchangeRedis(redisConnectionString!);
 }
 
 // ---------- JWT Authentication ----------
 var jwtSection = builder.Configuration.GetSection("Jwt");
-// Fail fast with a readable message instead of a NullReferenceException (missing key) or an opaque
-// IDX10603 on the first login (key shorter than HS256's 256-bit minimum).
-if (string.IsNullOrWhiteSpace(jwtSection["Key"]) || Encoding.UTF8.GetByteCount(jwtSection["Key"]!) < 32)
-    throw new InvalidOperationException("Jwt:Key is missing or shorter than 32 bytes. Set it via configuration / the Jwt__Key environment variable.");
+
+if (string.IsNullOrWhiteSpace(jwtSection["Key"]) ||
+    Encoding.UTF8.GetByteCount(jwtSection["Key"]!) < 32)
+{
+    throw new InvalidOperationException(
+        "Jwt:Key is missing or shorter than 32 bytes. Set it via configuration / the Jwt__Key environment variable.");
+}
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -396,42 +338,34 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        // Default skew is 5 minutes, which silently stretches the 60-minute access token to 65.
         ClockSkew = TimeSpan.FromSeconds(30),
         ValidIssuer = jwtSection["Issuer"],
         ValidAudience = jwtSection["Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSection["Key"]!))
     };
 
-    // Allow SignalR clients to send the JWT via query string (browsers can't set headers on websocket upgrade)
     options.Events = new JwtBearerEvents
     {
         OnMessageReceived = context =>
         {
             var accessToken = context.Request.Query["access_token"];
             var path = context.HttpContext.Request.Path;
+
             if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
             {
                 context.Token = accessToken;
             }
+
             return Task.CompletedTask;
         },
 
-        // Closes the "token still cryptographically valid but should no longer work" gap -- password
-        // change, logout-everywhere, and deactivation all regenerate SecurityStamp (see
-        // SecurityStampService), and this is what actually makes that regeneration reject an
-        // already-issued access token instead of just affecting future logins.
         OnTokenValidated = async context =>
         {
             var principal = context.Principal;
-            // Same dual-claim-type check as ClaimsPrincipalExtensions.GetUserId() -- and for the same
-            // reason: MapInboundClaims isn't explicitly disabled anywhere in this file, so depending on
-            // the token handler in use, "sub" may already have been remapped to the long
-            // ClaimTypes.NameIdentifier URI by the time this event fires. Checking only one would work
-            // fine against one handler and fail every single authenticated request against the other --
-            // exactly the kind of thing that's easy to get wrong without testing both.
+
             var subClaim = principal?.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)
                            ?? principal?.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
+
             var stampClaim = principal?.FindFirst("stamp")?.Value;
 
             if (subClaim == null || stampClaim == null || !Guid.TryParse(subClaim, out var principalId))
@@ -441,28 +375,64 @@ builder.Services.AddAuthentication(options =>
             }
 
             var isAdmin = principal!.IsInRole("Admin") || principal.IsInRole("SuperAdmin");
-            var stampService = context.HttpContext.RequestServices.GetRequiredService<ScoramAPI.Services.ISecurityStampService>();
+
+            var stampService = context.HttpContext.RequestServices
+                .GetRequiredService<ScoramAPI.Services.ISecurityStampService>();
 
             if (!await stampService.IsValidAsync(principalId, isAdmin, stampClaim))
             {
                 context.Fail("Token has been revoked.");
+                return;
+            }
+
+            // SINGLE-DEVICE LOGIN -- students only (isAdmin accounts never carry a "sid" claim -- see
+            // TokenService.GenerateAdminToken and AdminSessionsController for why admins are exempt).
+            // A token with no "sid" claim at all was issued before this student's first post-deployment
+            // login (see the AddSingleDeviceLogin migration's comment) and is intentionally NOT checked
+            // here -- this is what keeps existing sessions alive across the deployment of this feature.
+            var sidClaim = principal.FindFirst("sid")?.Value;
+            if (!isAdmin && sidClaim != null)
+            {
+                if (!await stampService.IsSessionValidAsync(principalId, sidClaim))
+                {
+                    // Distinguished from the generic "Token has been revoked." above via
+                    // HttpContext.Items so the OnChallenge handler below can give the client the
+                    // specific, machine-readable SESSION_REVOKED code instead of a bodyless 401 --
+                    // every OTHER revocation reason (expired token, logout, password change,
+                    // deactivation, the stamp check above) deliberately keeps producing that same
+                    // bodyless 401 it always has.
+                    context.HttpContext.Items["AuthFailureCode"] = "SESSION_REVOKED";
+                    context.Fail("Session has been superseded by a login on another device.");
+                }
             }
         }
+    };
+
+    options.Events.OnChallenge = context =>
+    {
+        if (context.HttpContext.Items["AuthFailureCode"] is "SESSION_REVOKED")
+        {
+            context.HandleResponse();
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.Response.ContentType = "application/json";
+            return context.Response.WriteAsync(
+                "{\"code\":\"SESSION_REVOKED\",\"message\":\"Your account was logged in on another device.\"}");
+        }
+
+        // Every other 401 (missing/expired/malformed token, SecurityStamp mismatch from logout,
+        // password change, deactivation, etc.) deliberately does NOT call context.HandleResponse()
+        // here, so JwtBearerHandler's own default challenge logic still runs afterward -- the same
+        // bodyless 401 + WWW-Authenticate header clients have always gotten for those.
+        return Task.CompletedTask;
     };
 });
 
 builder.Services.AddAuthorization();
 
-// ---------- CORS (React/Vite frontend, local dev + deployed) ----------
-// Local dev origins are always included in Development so `dotnet run` keeps working with no extra
-// setup. The deployed frontend's origin(s) come from configuration -- Cors:AllowedOrigins -- which in
-// Render's env-var style is Cors__AllowedOrigins__0, Cors__AllowedOrigins__1, etc. This intentionally
-// never falls back to AllowAnyOrigin(): the app uses AllowCredentials() for cookie/token-bearing
-// requests, and browsers reject AllowAnyOrigin() + AllowCredentials() together anyway. If no origins
-// are configured in a non-Development environment, cross-origin requests are simply rejected (fails
-// closed rather than open) until Cors:AllowedOrigins is set.
+// ---------- CORS ----------
 var configuredCorsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 var devCorsOrigins = new[] { "http://localhost:5173", "http://localhost:3000", "https://scoram.in" };
+
 var corsOrigins = builder.Environment.IsDevelopment()
     ? devCorsOrigins.Concat(configuredCorsOrigins).Distinct().ToArray()
     : configuredCorsOrigins;
@@ -476,8 +446,6 @@ builder.Services.AddCors(options =>
             policy.WithOrigins(corsOrigins)
                   .AllowAnyHeader()
                   .AllowAnyMethod()
-                  // Lets the admin web app read the download filename and the row-cap flag on report exports.
-                  // Only the listed ORIGINS above may read them; nothing else about CORS changes.
                   .WithExposedHeaders("Content-Disposition", "X-Report-Truncated")
                   .AllowCredentials();
         }
@@ -486,160 +454,152 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// ---------- Forwarded headers / effective client IP (SEC-004) ----------
-// Everything that is keyed by client IP -- the login/refresh/register rate limits, the content-post
-// fallback key, refresh-token CreatedByIp, request logs -- reads HttpContext.Connection.RemoteIpAddress, so
-// this MUST be the first middleware. Render terminates TLS and proxies to this container, so the real client
-// only exists in X-Forwarded-For -- but that header is client-controllable, and no part of this repository
-// establishes Render's proxy addresses or hop count. Hence two modes (see Middleware/ClientIpResolution.cs):
-//  * ClientIp:TrustedProxies / TrustedNetworks configured  -> ASP.NET Core's ForwardedHeadersMiddleware,
-//    honouring the headers ONLY from those proxies (the supported .NET 8 mechanism; set these from staging evidence).
-//  * nothing configured (interim)                           -> the header is considered only when the direct peer
-//    is a private/loopback address (the platform's own network), never from a public caller; still the
-//    rightmost entry unless ClientIp:SkipRightmostEntries says otherwise.
-// ClientIp:DiagnosticSampleLimit=N logs the first N requests' peer / X-Forwarded-For / result so the real chain
-// can be read off a staging deploy. Do NOT also set ASPNETCORE_FORWARDEDHEADERS_ENABLED=true: that adds a
-// trust-everyone forwarded-headers middleware ahead of this one and defeats the whole setting.
-var clientIpOptions = builder.Configuration.GetSection(ClientIpOptions.SectionName).Get<ClientIpOptions>() ?? new ClientIpOptions();
-if (clientIpOptions.HasTrustedProxies) clientIpOptions.ToForwardedHeadersOptions(); // fail fast on a malformed entry
-if (string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_FORWARDEDHEADERS_ENABLED"), "true", StringComparison.OrdinalIgnoreCase))
+// ---------- Forwarded headers / effective client IP ----------
+var clientIpOptions = builder.Configuration.GetSection(ClientIpOptions.SectionName)
+    .Get<ClientIpOptions>() ?? new ClientIpOptions();
+
+if (clientIpOptions.HasTrustedProxies)
 {
-    app.Logger.LogWarning("SEC-004: ASPNETCORE_FORWARDEDHEADERS_ENABLED=true is set. That trusts X-Forwarded-* from ANY caller ahead of the ClientIp settings; unset it.");
+    clientIpOptions.ToForwardedHeadersOptions();
 }
+
+if (string.Equals(
+        Environment.GetEnvironmentVariable("ASPNETCORE_FORWARDEDHEADERS_ENABLED"),
+        "true",
+        StringComparison.OrdinalIgnoreCase))
+{
+    app.Logger.LogWarning(
+        "SEC-004: ASPNETCORE_FORWARDEDHEADERS_ENABLED=true is set. That trusts X-Forwarded-* from ANY caller ahead of the ClientIp settings; unset it.");
+}
+
 if (!clientIpOptions.HasTrustedProxies && !app.Environment.IsDevelopment())
 {
-    app.Logger.LogWarning("SEC-004: ClientIp:TrustedProxies/TrustedNetworks are not configured; running the INTERIM client-IP rule (forwarded headers only from private-network peers, rightmost X-Forwarded-For entry minus ClientIp:SkipRightmostEntries={Skip}).", clientIpOptions.SkipRightmostEntries);
+    app.Logger.LogWarning(
+        "SEC-004: ClientIp:TrustedProxies/TrustedNetworks are not configured; running the INTERIM client-IP rule (forwarded headers only from private-network peers, rightmost X-Forwarded-For entry minus ClientIp:SkipRightmostEntries={Skip}).",
+        clientIpOptions.SkipRightmostEntries);
 }
+
 app.UseClientIpResolution(clientIpOptions);
 
-// Outermost response wrapper (before the timing/exception middleware) so error bodies from
-// ExceptionHandlingMiddleware are compressed too. Compression adds "Vary: Accept-Encoding" itself.
 app.UseResponseCompression();
-
-// Diagnostics only: adds X-Trace-Id + Server-Timing response headers and a slow-request warning. Sits
-// outside the exception handler so even a 500 produced by it carries the trace id header.
 app.UseMiddleware<RequestTimingMiddleware>();
-
-// Must be the first middleware that can fail so it catches exceptions thrown by anything after it.
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseSerilogRequestLogging();
 
-// Swagger is only served in Development by default -- exposing full API surface + "Try it out"
-// (which accepts a real JWT) to the public internet is a needless attack-surface increase in
-// production. Set Swagger:EnableInProduction=true (env var Swagger__EnableInProduction) if you
-// deliberately want it reachable in a non-Development environment; it still has no hard-coded
-// server URL, so Swashbuckle keeps inferring it from the incoming request either way.
+// ---------- Swagger ----------
 var swaggerEnabled = app.Environment.IsDevelopment()
     || builder.Configuration.GetValue<bool>("Swagger:EnableInProduction");
+
 if (swaggerEnabled)
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-// Uploaded images (exam logos, question/option/explanation diagrams, profile photos, chat/DM
-// attachments) used to live on local disk at wwwroot/uploads/{subfolder}/{file} and were served here
-// via app.UseStaticFiles(). Render's filesystem is ephemeral -- it resets on every redeploy/restart --
-// so anything written there at runtime was silently lost, leaving broken image URLs in the database.
-// These now live in Azure Blob Storage (see AzureBlobService) and are served by
-// UploadedFilesController at the same "/uploads/{subfolder}/{file}" route, so no data migration or
-// frontend change was needed. UseStaticFiles() is kept for any other genuinely static wwwroot assets.
-// PRIVATE ATTACHMENTS -- must stay BEFORE UseStaticFiles: anything under /uploads/ that is not an explicitly
-// public asset folder (chat/DM attachments, unclassified folders) is a 404 here, so neither Azure-backed
-// UploadedFilesController nor a leftover wwwroot/uploads copy can serve it anonymously. Chat and DM
-// attachments are delivered only by the authenticated endpoints in ChatController / DirectMessagesController.
+// ---------- Static files and upload privacy ----------
 app.UseMiddleware<ScoramAPI.Middleware.UploadsPrivacyMiddleware>();
 app.UseStaticFiles();
 
 app.UseCors("FrontendDev");
 app.UseHttpsRedirection();
 app.UseAuthentication();
-// ADMIN PLATFORM -- maintenance mode (fails open; admin routes and /api/app-config are exempt).
+
 app.UseMiddleware<ScoramAPI.Middleware.MaintenanceModeMiddleware>();
 
-// MY EXAMS -- fail CLOSED on the exam-scoped public routes. These endpoints stay open to anonymous
-// visitors (public catalog), and a signed-in student's exam scope is applied from their token. If a
-// request carries a Bearer token that FAILS validation (typically an expired short-lived access
-// token), ASP.NET would otherwise quietly treat the caller as anonymous -- and an anonymous caller is
-// unscoped, so an idle student would briefly see every exam's content. Answer 401 instead: the web
-// and Flutter clients already refresh the session and retry once on a 401 when they sent a token.
-// A request with NO Authorization header is untouched (genuine anonymous browsing).
+// ---------- My Exams scoped public routes ----------
 var myExamsScopedPublicPrefixes = new[]
 {
     "/api/papers", "/api/question-bank", "/api/questions", "/api/mocktests",
     "/api/practice-tests/templates", "/api/discussions"
 };
+
 app.Use(async (context, next) =>
 {
     var hasBearer = context.Request.Headers.Authorization.ToString()
         .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase);
+
     if (hasBearer && context.User.Identity?.IsAuthenticated != true)
     {
         var path = context.Request.Path;
-        if (myExamsScopedPublicPrefixes.Any(prefix => path.StartsWithSegments(prefix, StringComparison.OrdinalIgnoreCase)))
+
+        if (myExamsScopedPublicPrefixes.Any(prefix =>
+                path.StartsWithSegments(prefix, StringComparison.OrdinalIgnoreCase)))
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             context.Response.ContentType = "application/json";
-            await context.Response.WriteAsync("{\"message\":\"Your session has expired. Please sign in again.\"}");
+
+            // SINGLE-DEVICE LOGIN -- this middleware runs between UseAuthentication() and
+            // UseAuthorization(), so for these specific "scoped public" prefixes it answers the 401
+            // itself and returns before the JwtBearerEvents.OnChallenge handler above ever gets a
+            // chance to run (that handler only fires via UseAuthorization()'s ChallengeAsync). Without
+            // this check, a device revoked by a newer login would see the same generic message as any
+            // other auth failure on exactly the routes (Question Bank, papers, exams) it's most likely
+            // to be actively polling -- so mirror OnChallenge's AuthFailureCode check here. Every other
+            // reason this branch is reached (missing token, expired token, SecurityStamp mismatch from
+            // logout/password change/deactivation) keeps the original generic message, unchanged.
+            await context.Response.WriteAsync(
+                context.Items["AuthFailureCode"] is "SESSION_REVOKED"
+                    ? "{\"code\":\"SESSION_REVOKED\",\"message\":\"Your account was logged in on another device.\"}"
+                    : "{\"message\":\"Your session has expired. Please sign in again.\"}");
+
             return;
         }
     }
+
     await next();
 });
 
 app.UseRateLimiter();
 app.UseAuthorization();
 
-// Lightweight liveness endpoint for Render's health checks -- deliberately does NOT touch the
-// database or Meilisearch, so a slow/unavailable dependency never gets the whole container marked
-// unhealthy and cycled. It only reports "the ASP.NET Core process is up and serving requests".
+// ---------- Health endpoints ----------
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 
-// Readiness: can this instance reach its database right now? NOT for the host's restart-on-failure health
-// check (keep that pointed at /health above) -- for deploy gates, uptime monitors and diagnosis. Reports
-// only up/down, never connection details. See Services/ReadinessCheck.cs.
-app.MapGet("/health/ready", async (ReadinessCheck readiness, CancellationToken cancellationToken) =>
+app.MapGet("/health/ready", async (
+    ReadinessCheck readiness,
+    CancellationToken cancellationToken) =>
 {
     var result = await readiness.CheckAsync(cancellationToken);
+
     return Results.Json(
-        new { status = result.Ready ? "ready" : "unavailable", database = result.Database },
-        statusCode: result.Ready ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
+        new
+        {
+            status = result.Ready ? "ready" : "unavailable",
+            database = result.Database
+        },
+        statusCode: result.Ready
+            ? StatusCodes.Status200OK
+            : StatusCodes.Status503ServiceUnavailable);
 });
 
 app.MapControllers();
 app.MapHub<ChatHub>("/hubs/chat");
 
-// One-time-per-restart check: creates the first SuperAdmin from SUPERADMIN_EMAIL/SUPERADMIN_PASSWORD
-// if none exists yet. No-ops immediately on every later restart. See SuperAdminBootstrapService.
-//
-// Wrapped in try/catch deliberately: this runs before app.Run(), so an unhandled exception here
-// (most likely: migrations haven't been applied yet -- there's no automatic Database.Migrate() call
-// anywhere, migrations are applied manually/via the deploy pipeline) would stop the process from ever
-// reaching app.Run() at all, taking the /health endpoint down with it -- exactly the kind of
-// DB-dependency-takes-down-liveness failure that endpoint's own comment says it's meant to avoid. A
-// SuperAdmin that fails to bootstrap on this attempt will simply be retried on the next restart.
+// ---------- SuperAdmin bootstrap ----------
 try
 {
     await ScoramAPI.Services.SuperAdminBootstrapService.RunAsync(app.Services, app.Logger);
 }
 catch (Exception ex)
 {
-    app.Logger.LogError(ex, "SuperAdmin bootstrap check failed at startup (likely: migrations not yet applied). Will retry on next restart.");
+    app.Logger.LogError(
+        ex,
+        "SuperAdmin bootstrap check failed at startup (likely: migrations not yet applied). Will retry on next restart.");
 }
 
-// One-time, idempotent: gives every pre-existing Exam / Subject / Test / Mock Test / Admin its
-// human-readable Business ID (oldest first, deterministic). Runs AFTER the SuperAdmin bootstrap above
-// so a freshly-bootstrapped admin is numbered too. Same fail-soft reasoning as the block above --
-// it must never stop the process from reaching app.Run() -- and a failed attempt is rolled back
-// completely and simply retried on the next restart. Set BusinessIds:AutoBackfillOnStartup=false
-// to skip it and run POST /api/admin/business-ids/backfill (dry run first) by hand instead.
+// ---------- Business ID startup backfill ----------
 try
 {
-    await ScoramAPI.Services.BusinessIdService.RunStartupBackfillAsync(app.Services, app.Configuration, app.Logger);
+    await ScoramAPI.Services.BusinessIdService.RunStartupBackfillAsync(
+        app.Services,
+        app.Configuration,
+        app.Logger);
 }
 catch (Exception ex)
 {
-    app.Logger.LogError(ex, "Business ID backfill failed at startup (likely: migrations not yet applied). Nothing was changed; it will be retried on the next restart.");
+    app.Logger.LogError(
+        ex,
+        "Business ID backfill failed at startup (likely: migrations not yet applied). Nothing was changed; it will be retried on the next restart.");
 }
 
 app.Run();

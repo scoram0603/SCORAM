@@ -155,5 +155,75 @@ namespace ScoramAPI.Tests.Services
             Assert.False((await _service.FindByRawTokenAsync(studentRaw, isAdmin: false))!.IsActive);
             Assert.True((await _service.FindByRawTokenAsync(adminRaw, isAdmin: true))!.IsActive); // untouched
         }
+
+        // ---- SINGLE-DEVICE LOGIN: SupersedeForNewLoginAsync --------------------------------------
+
+        [Fact]
+        public async Task SupersedeForNewLoginAsync_RevokesEveryActiveTokenForThatStudent_ButNotOthers()
+        {
+            var principalA = Guid.NewGuid();
+            var principalB = Guid.NewGuid();
+            var (rawA1, _) = await _service.IssueAsync(principalA, isAdmin: false, createdByIp: null); // device A
+            var (rawA2, _) = await _service.IssueAsync(principalA, isAdmin: false, createdByIp: null); // a stray second row for A, e.g. an old login nothing ever revoked
+            var (rawB, _) = await _service.IssueAsync(principalB, isAdmin: false, createdByIp: null); // unrelated student
+
+            await _service.SupersedeForNewLoginAsync(principalA); // device B's new login for A
+
+            Assert.False((await _service.FindByRawTokenAsync(rawA1, isAdmin: false))!.IsActive);
+            Assert.False((await _service.FindByRawTokenAsync(rawA2, isAdmin: false))!.IsActive);
+            Assert.True((await _service.FindByRawTokenAsync(rawB, isAdmin: false))!.IsActive); // a different student, untouched
+        }
+
+        [Fact]
+        public async Task SupersedeForNewLoginAsync_TagsRevokedTokensWithTheSupersededReason()
+        {
+            // This is the detail AuthController.Refresh() depends on to tell "superseded by a newer
+            // login" apart from every other way a token ends up revoked (rotation, Logout,
+            // ChangePassword/ResetPassword, the theft-reuse response) -- see that method's own
+            // comment on why conflating them would revoke the WRONG (newer) session.
+            var principalId = Guid.NewGuid();
+            var (raw, _) = await _service.IssueAsync(principalId, isAdmin: false, createdByIp: null);
+
+            await _service.SupersedeForNewLoginAsync(principalId);
+
+            var found = await _service.FindByRawTokenAsync(raw, isAdmin: false);
+            Assert.Equal(RefreshToken.RevokedReasonSupersededByLogin, found!.RevokedReason);
+        }
+
+        [Fact]
+        public async Task SupersedeForNewLoginAsync_NeverTouchesAnAdminSessionForTheSamePrincipalId()
+        {
+            // Admins are intentionally exempt from single-device enforcement (see
+            // AdminSessionsController) -- this method must never revoke an admin's own active
+            // session, even for the astronomically-unlikely-but-isolation-should-hold-anyway case of
+            // a shared Guid discussed in SecurityStampServiceTests.
+            var principalId = Guid.NewGuid();
+            var (studentRaw, _) = await _service.IssueAsync(principalId, isAdmin: false, createdByIp: null);
+            var (adminRaw, _) = await _service.IssueAsync(principalId, isAdmin: true, createdByIp: null);
+
+            await _service.SupersedeForNewLoginAsync(principalId);
+
+            Assert.False((await _service.FindByRawTokenAsync(studentRaw, isAdmin: false))!.IsActive);
+            Assert.True((await _service.FindByRawTokenAsync(adminRaw, isAdmin: true))!.IsActive); // untouched
+        }
+
+        [Fact]
+        public async Task SupersedeForNewLoginAsync_DoesNotReviveOrRetagAnAlreadyRevokedToken()
+        {
+            // A token revoked some other way (e.g. a prior Logout) keeps its original RevokedAt and
+            // its (null) RevokedReason -- it must not be re-stamped as "superseded by login" just
+            // because it happens to still be sitting in the table.
+            var principalId = Guid.NewGuid();
+            var (raw, _) = await _service.IssueAsync(principalId, isAdmin: false, createdByIp: null);
+            await _service.RevokeAllAsync(principalId, isAdmin: false); // e.g. Logout
+            var afterLogout = (await _service.FindByRawTokenAsync(raw, isAdmin: false))!;
+            var revokedAtFromLogout = afterLogout.RevokedAt;
+
+            await _service.SupersedeForNewLoginAsync(principalId);
+
+            var after = await _service.FindByRawTokenAsync(raw, isAdmin: false);
+            Assert.Equal(revokedAtFromLogout, after!.RevokedAt);
+            Assert.Null(after.RevokedReason);
+        }
     }
 }

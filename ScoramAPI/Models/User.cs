@@ -41,6 +41,22 @@ namespace ScoramAPI.Models
         // event last changed this value, so it's treated as revoked even though it hasn't expired yet.
         public Guid SecurityStamp { get; set; } = Guid.NewGuid();
 
+        // SINGLE-DEVICE LOGIN -- a fresh value is generated every time this student successfully
+        // logs in (Register/Login/LoginWithOtp -- see AuthController.IssueAuthResponseAsync), which
+        // also supersedes every refresh token issued before that moment (see
+        // RefreshTokenService.SupersedeForNewLoginAsync). Baked into the access token as the "sid"
+        // claim and checked on every authenticated request (see IActiveSessionService and
+        // Program.cs's OnTokenValidated) -- a mismatch means a newer login has happened elsewhere,
+        // which is reported as the specific SESSION_REVOKED error code rather than the generic
+        // "token revoked" 401 a SecurityStamp mismatch produces (logout/password-change/etc. still go
+        // through SecurityStamp only and are deliberately NOT affected by this column).
+        //
+        // Null for any account that has not logged in since this feature shipped -- see that
+        // migration's comment for why that is safe. Admin accounts have no equivalent column:
+        // AdminSessionsController's existing multi-session management means admins are intentionally
+        // exempt from single-device enforcement.
+        public Guid? ActiveSessionId { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Notification preferences -- default true for both (see ScoramDbContext for the matching

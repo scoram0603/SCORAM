@@ -114,7 +114,20 @@ async function refreshStudentSession() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refreshToken }),
         });
-        if (!res.ok) return null;
+        if (!res.ok) {
+          // SINGLE-DEVICE LOGIN — distinguish "logged in on another device" from every other reason
+          // a refresh token is dead (expired, used, logged out, password changed). apiFetch's own
+          // 401 handling below (parseApiResponse -> notifyExpiredToken) fires the actual
+          // scoram:session-expired event against the ORIGINAL request's response, not this one, so
+          // the reason is threaded through via this module-level flag rather than this function's
+          // return value (kept as a plain token-or-null so every existing caller is unaffected). See
+          // ScoramAPI's AuthController.Refresh for the { code, message } shape.
+          if (res.status === 401) {
+            const data = await res.json().catch(() => null);
+            if (data?.code === "SESSION_REVOKED") studentSessionRevoked = true;
+          }
+          return null;
+        }
         const data = await res.json();
         setStoredToken(data.token);
         setStoredRefreshToken(data.refreshToken);
@@ -330,22 +343,34 @@ const ADMIN_SESSION_EXPIRED_EVENT = "scoram:admin-session-expired";
 let studentExpiredEventFired = false;
 let adminExpiredEventFired = false;
 
+// SINGLE-DEVICE LOGIN — set by refreshStudentSession above the moment it sees SESSION_REVOKED on
+// the refresh call; read and cleared here when the resulting scoram:session-expired event actually
+// fires. Students only — admins are intentionally multi-device (see AdminSessionsController), so
+// the admin event never carries this.
+let studentSessionRevoked = false;
+
 function notifyExpiredToken(isAdminToken) {
   if (isAdminToken) {
     if (adminExpiredEventFired) return;
     adminExpiredEventFired = true;
-  } else {
-    if (studentExpiredEventFired) return;
-    studentExpiredEventFired = true;
+    window.dispatchEvent(new CustomEvent(ADMIN_SESSION_EXPIRED_EVENT));
+    return;
   }
-  window.dispatchEvent(new CustomEvent(isAdminToken ? ADMIN_SESSION_EXPIRED_EVENT : SESSION_EXPIRED_EVENT));
+  if (studentExpiredEventFired) return;
+  studentExpiredEventFired = true;
+  const revokedElsewhere = studentSessionRevoked;
+  studentSessionRevoked = false;
+  window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: { revokedElsewhere } }));
 }
 
 // Called once a fresh login/token is stored, so the NEXT time that token eventually goes bad,
 // the expired-session event is allowed to fire again instead of staying silenced forever.
 export function resetSessionExpiredGuard(isAdminToken) {
   if (isAdminToken) adminExpiredEventFired = false;
-  else studentExpiredEventFired = false;
+  else {
+    studentExpiredEventFired = false;
+    studentSessionRevoked = false;
+  }
 }
 
 // Same "dead token" cleanup as a REST 401 above, for SignalR's own negotiate/connection failures
@@ -376,6 +401,14 @@ async function parseApiResponse(response, resolvedToken, isAdminToken) {
   }
 
   return data;
+}
+
+// True when a failed request was cancelled BY THE CALLER (its own AbortController), i.e. the result
+// is stale and must be ignored rather than shown as an error. apiFetch rewrites a fetch AbortError
+// into an ApiError(timedOut), so `err.name === "AbortError"` never matches for apiFetch -- the
+// caller's signal is the reliable test. (A raw AbortError, e.g. from apiFetchBlob, also counts.)
+export function isCallerAbort(error, signal) {
+  return Boolean(signal?.aborted) || error?.name === "AbortError";
 }
 
 export class ApiError extends Error {

@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import * as myExamsApi from "../api/myExams";
+import { invalidateCatalog } from "../api/catalogCache";
 import { useAuth } from "./AuthContext";
 
 // "MY EXAMS" -- loads a student's saved exam preferences once per session (mirrors AuthContext's
@@ -43,10 +44,21 @@ export function MyExamsProvider({ children }) {
   // the saved selection server-side either way.
   const [loadError, setLoadError] = useState(false);
 
+  // The cached catalog (api/catalogCache.js) is filtered server-side by My Exams, so it is dropped
+  // whenever the selection changes. refresh() runs on every login too, so it only invalidates when the
+  // exam set really differs from the last one seen (the first load just records the baseline).
+  const scopeRef = useRef(null);
+  const noteScope = useCallback((list) => {
+    scopeRef.current = (list || []).map((e) => e.examId).sort().join(",");
+  }, []);
+
   const refresh = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await myExamsApi.getMyExams();
+      const before = scopeRef.current;
+      noteScope(res.exams);
+      if (before !== null && before !== scopeRef.current) invalidateCatalog();
       setExams(res.exams || []);
       setPrimaryExamId(res.primaryExamId || null);
       setHasLoaded(true);
@@ -55,7 +67,7 @@ export function MyExamsProvider({ children }) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [noteScope]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -67,6 +79,7 @@ export function MyExamsProvider({ children }) {
       // Logged out (or a different student just logged in) -- clear immediately so the previous
       // session's selections can never leak into the next one (spec section 9: logging out and
       // another user logging in must not show the previous user's My Exams).
+      scopeRef.current = null;
       setExams([]);
       setPrimaryExamId(null);
       setHasLoaded(false);
@@ -88,6 +101,8 @@ export function MyExamsProvider({ children }) {
 
   const save = useCallback(async ({ examIds, primaryExamId: newPrimaryId }) => {
     const res = await myExamsApi.setMyExams({ examIds, primaryExamId: newPrimaryId });
+    invalidateCatalog();
+    noteScope(res.exams);
     setExams(res.exams || []);
     setPrimaryExamId(res.primaryExamId || null);
     setHasLoaded(true);
@@ -106,14 +121,16 @@ export function MyExamsProvider({ children }) {
       }
     }
     return res;
-  }, [user]);
+  }, [user, noteScope]);
 
   const addExam = useCallback(async (examId) => {
     const res = await myExamsApi.addMyExam(examId);
+    invalidateCatalog();
+    noteScope(res.exams);
     setExams(res.exams || []);
     setPrimaryExamId(res.primaryExamId || null);
     return res;
-  }, []);
+  }, [noteScope]);
 
   const removeExam = useCallback(async (examId) => {
     await myExamsApi.removeMyExam(examId);
@@ -122,10 +139,12 @@ export function MyExamsProvider({ children }) {
 
   const setPrimary = useCallback(async (examId) => {
     const res = await myExamsApi.setPrimaryExam(examId);
+    invalidateCatalog();
+    noteScope(res.exams);
     setExams(res.exams || []);
     setPrimaryExamId(res.primaryExamId || null);
     return res;
-  }, []);
+  }, [noteScope]);
 
   const examIds = useMemo(() => exams.map((e) => e.examId), [exams]);
   const hasConfigured = hasLoaded && exams.length > 0;

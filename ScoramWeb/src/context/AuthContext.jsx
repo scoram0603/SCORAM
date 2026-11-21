@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import * as authApi from "../api/auth";
 import { clearAttachmentCache } from "../api/attachments";
+import { clearCatalog } from "../api/catalogCache";
 import { getStoredToken, setStoredToken, setStoredRefreshToken, resetSessionExpiredGuard } from "../api/client";
 
 const USER_STORAGE_KEY = "scoram_user";
@@ -34,6 +35,11 @@ export function AuthProvider({ children }) {
   // not on a normal manual logout -- so the login screen can show "please log in again" instead of
   // silently landing there with no explanation.
   const [sessionExpired, setSessionExpired] = useState(false);
+  // SINGLE-DEVICE LOGIN — true only when sessionExpired is true AND the specific reason was a login
+  // on another device (see api/client.js's notifyExpiredToken), so the login page can show that
+  // specific message instead of the generic "please log in again" one. Always false for every other
+  // way a session ends (plain expiry, manual logout, password change, deactivation).
+  const [sessionRevokedElsewhere, setSessionRevokedElsewhere] = useState(false);
 
   // Keep localStorage in sync whenever user/token state changes
   useEffect(() => {
@@ -63,12 +69,13 @@ export function AuthProvider({ children }) {
   // (notifications poll, SignalR negotiate/reconnect, etc.) just keeps failing against a token that
   // will never start working again until a real re-login happens.
   useEffect(() => {
-    function handleExpired() {
+    function handleExpired(event) {
       setStoredToken(null);
       setStoredRefreshToken(null);
       setToken(null);
       setUser(null);
       setSessionExpired(true);
+      setSessionRevokedElsewhere(Boolean(event.detail?.revokedElsewhere));
     }
     window.addEventListener("scoram:session-expired", handleExpired);
     return () => window.removeEventListener("scoram:session-expired", handleExpired);
@@ -90,6 +97,7 @@ export function AuthProvider({ children }) {
   const applyAuthResponse = useCallback((res) => {
     resetSessionExpiredGuard(false);
     setSessionExpired(false);
+    setSessionRevokedElsewhere(false);
     // Written synchronously (not just via the `useEffect` below) because the caller navigates to a
     // new, already-"authenticated" page immediately after this returns (see Login.jsx's
     // handleLoginOtpVerified/handleSubmit) -- that next page's own effects (fetching exams,
@@ -179,11 +187,13 @@ export function AuthProvider({ children }) {
     // network hiccup on the way out shouldn't trap someone in a logged-in-looking UI.
     authApi.logout().catch(() => {});
     clearAttachmentCache(); // private chat attachments must not outlive the session in memory
+    clearCatalog(); // so must this student's cached My-Exams-scoped catalog (exams/subjects/years/total)
     setStoredToken(null);
     setStoredRefreshToken(null);
     setToken(null);
     setUser(null);
     setSessionExpired(false);
+    setSessionRevokedElsewhere(false);
   }, []);
 
   // Permanently deletes the account server-side, then drops the local session. Deliberately does
@@ -192,11 +202,13 @@ export function AuthProvider({ children }) {
   const deleteAccount = useCallback(async (payload) => {
     await authApi.deleteAccount(payload);
     clearAttachmentCache();
+    clearCatalog();
     setStoredToken(null);
     setStoredRefreshToken(null);
     setToken(null);
     setUser(null);
     setSessionExpired(false);
+    setSessionRevokedElsewhere(false);
   }, []);
 
   const updateNotificationPreferences = useCallback(async (prefs) => {
@@ -250,6 +262,7 @@ export function AuthProvider({ children }) {
       isLoading,
       error,
       sessionExpired,
+      sessionRevokedElsewhere,
       login,
       loginWithOtp,
       register,
@@ -265,7 +278,7 @@ export function AuthProvider({ children }) {
       clearError: () => setError(null),
     }),
     [
-      user, token, isLoading, error, sessionExpired, login, loginWithOtp, register, logout, deleteAccount,
+      user, token, isLoading, error, sessionExpired, sessionRevokedElsewhere, login, loginWithOtp, register, logout, deleteAccount,
       updateNotificationPreferences, updateProfilePhoto, removeProfilePhoto, updateBasicProfile,
       updatePassword, updateEmail, updatePhoneNumber,
     ]

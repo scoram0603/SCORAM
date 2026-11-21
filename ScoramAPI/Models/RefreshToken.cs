@@ -27,6 +27,19 @@ namespace ScoramAPI.Models
         public DateTime? RevokedAt { get; set; }
         public Guid? ReplacedByTokenId { get; set; }
 
+        // SINGLE-DEVICE LOGIN -- set only by RefreshTokenService.SupersedeForNewLoginAsync, to tell
+        // "this token stopped being active because the same student logged in again somewhere else"
+        // apart from every other way a token ends up with RevokedAt set (normal rotation, Logout,
+        // ChangePassword/ResetPassword, or this method's own theft-reuse response below). Checked in
+        // AuthController.Refresh() so a device that got superseded this way is told the specific
+        // SESSION_REVOKED reason instead of being misread as token theft -- which matters because the
+        // theft branch revokes every OTHER active session too, and that must never fire just because
+        // the very login that superseded this token is still using its own, brand new one.
+        public const string RevokedReasonSupersededByLogin = "SupersededByLogin";
+
+        [System.ComponentModel.DataAnnotations.MaxLength(50)]
+        public string? RevokedReason { get; set; }
+
         // Best-effort audit trail, not a security control on its own -- see the forwarded-headers
         // comment in Program.cs for why a client-controlled IP can't be fully trusted.
         public string? CreatedByIp { get; set; }

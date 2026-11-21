@@ -25,7 +25,7 @@ namespace ScoramAPI.Tests.Services
             return new TokenService(config);
         }
 
-        private static User BuildUser(Guid? securityStamp = null) => new User
+        private static User BuildUser(Guid? securityStamp = null, Guid? activeSessionId = null) => new User
         {
             Id = Guid.NewGuid(),
             Username = "testuser",
@@ -33,6 +33,7 @@ namespace ScoramAPI.Tests.Services
             FullName = "Test User",
             PasswordHash = "irrelevant-for-this-test",
             SecurityStamp = securityStamp ?? Guid.NewGuid(),
+            ActiveSessionId = activeSessionId,
         };
 
         private static Admin BuildAdmin(AdminRole role = AdminRole.Admin, bool mustChangePassword = false, Guid? securityStamp = null) => new Admin
@@ -59,6 +60,48 @@ namespace ScoramAPI.Tests.Services
             var jwt = Decode(token);
 
             Assert.Equal(stamp.ToString(), jwt.Claims.Single(c => c.Type == "stamp").Value);
+        }
+
+        [Fact]
+        public void GenerateToken_IncludesSidClaimMatchingUser_WhenActiveSessionIdIsSet()
+        {
+            var sessionId = Guid.NewGuid();
+            var user = BuildUser(activeSessionId: sessionId);
+            var service = BuildTokenService();
+
+            var (token, _) = service.GenerateToken(user);
+            var jwt = Decode(token);
+
+            Assert.Equal(sessionId.ToString(), jwt.Claims.Single(c => c.Type == "sid").Value);
+        }
+
+        [Fact]
+        public void GenerateToken_OmitsSidClaimEntirely_WhenActiveSessionIdIsNull()
+        {
+            // Deployment safety (see the AddSingleDeviceLogin migration's comment): a student who
+            // hasn't logged in since single-device login shipped has ActiveSessionId == null, and
+            // their token must carry NO "sid" claim at all -- not an empty one -- so
+            // Program.cs's OnTokenValidated treats it as "not enforced yet" rather than a mismatch.
+            var user = BuildUser(activeSessionId: null);
+            var service = BuildTokenService();
+
+            var (token, _) = service.GenerateToken(user);
+            var jwt = Decode(token);
+
+            Assert.DoesNotContain(jwt.Claims, c => c.Type == "sid");
+        }
+
+        [Fact]
+        public void GenerateAdminToken_NeverIncludesASidClaim()
+        {
+            // Admins are intentionally exempt from single-device enforcement (see
+            // AdminSessionsController) -- the Admin model has no ActiveSessionId column at all, and
+            // admin tokens must never carry this claim regardless.
+            var service = BuildTokenService();
+            var (token, _) = service.GenerateAdminToken(BuildAdmin());
+            var jwt = Decode(token);
+
+            Assert.DoesNotContain(jwt.Claims, c => c.Type == "sid");
         }
 
         [Fact]

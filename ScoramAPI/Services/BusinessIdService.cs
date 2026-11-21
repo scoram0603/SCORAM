@@ -217,6 +217,19 @@ namespace ScoramAPI.Services
 
         public async Task<BusinessIdBackfillResultDto> BackfillAsync(bool dryRun, CancellationToken ct)
         {
+            // Program.cs enables SqlServerRetryingExecutionStrategy, which refuses a user-initiated
+            // transaction unless the whole unit runs inside strategy.ExecuteAsync (the strategy must be
+            // able to re-run it from the top). A retry re-runs the delegate, so start with a clean tracker.
+            var strategy = _db.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
+            {
+                _db.ChangeTracker.Clear();
+                return await BackfillCoreAsync(dryRun, ct);
+            });
+        }
+
+        private async Task<BusinessIdBackfillResultDto> BackfillCoreAsync(bool dryRun, CancellationToken ct)
+        {
             if (_db.Database.CurrentTransaction != null)
                 throw new InvalidOperationException("Backfill must own its transaction.");
 

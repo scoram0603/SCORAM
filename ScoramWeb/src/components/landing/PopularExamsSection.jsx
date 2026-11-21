@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { GraduationCap, ArrowRight } from "lucide-react";
-import { listExams } from "../../api/exams";
+import { listExams, publicExamListKey } from "../../api/exams";
+import { useCatalog } from "../../hooks/useCatalog";
 import { API_BASE_URL } from "../../api/client";
 import ScrollReveal from "./ScrollReveal";
 
@@ -28,20 +29,13 @@ function logoSrc(url) {
 // have questions, sorted by question count, real exam names and logos — never a hardcoded list of
 // exams that may not actually be in the database yet.
 export default function PopularExamsSection() {
-  const [exams, setExams] = useState([]);
-  const [status, setStatus] = useState("loading");
+  const { data } = useCatalog(publicExamListKey(), () => listExams());
+  const exams = useMemo(
+    () => (data ?? []).filter((e) => e.questionCount > 0).sort((a, b) => b.questionCount - a.questionCount).slice(0, 7),
+    [data]
+  );
 
-  useEffect(() => {
-    listExams()
-      .then((data) => {
-        const withQuestions = data.filter((e) => e.questionCount > 0).sort((a, b) => b.questionCount - a.questionCount);
-        setExams(withQuestions.slice(0, 7));
-        setStatus("ready");
-      })
-      .catch(() => setStatus("error"));
-  }, []);
-
-  if (status !== "ready" || exams.length === 0) return null;
+  if (exams.length === 0) return null;
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">

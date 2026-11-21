@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
-import { listExams } from "../../api/exams";
+import { listExams, publicExamListKey } from "../../api/exams";
+import { useCatalog } from "../../hooks/useCatalog";
 import { API_BASE_URL } from "../../api/client";
 
 const BADGE_TINTS = [
@@ -23,20 +24,15 @@ function logoSrc(url) {
 }
 
 export default function PopularExams() {
-  const [exams, setExams] = useState([]);
-  const [status, setStatus] = useState("loading");
+  // Shared, de-duplicated catalog request (api/catalogCache.js) -- the landing strip and the signed-out
+  // exam pickers use the same GET /api/exams. filter() copies, so sorting never touches the cached list.
+  const { data } = useCatalog(publicExamListKey(), () => listExams());
+  const exams = useMemo(
+    () => (data ?? []).filter((e) => e.questionCount > 0).sort((a, b) => b.questionCount - a.questionCount).slice(0, 6),
+    [data]
+  );
 
-  useEffect(() => {
-    listExams()
-      .then((data) => {
-        const withQuestions = data.filter((e) => e.questionCount > 0).sort((a, b) => b.questionCount - a.questionCount);
-        setExams(withQuestions.slice(0, 6));
-        setStatus("ready");
-      })
-      .catch(() => setStatus("error"));
-  }, []);
-
-  if (status !== "ready" || exams.length === 0) return null; // nothing honest to show yet
+  if (exams.length === 0) return null; // nothing honest to show yet (loading, failed, or no exam has questions)
 
   return (
     <section className="pb-6 sm:px-6 lg:px-0">

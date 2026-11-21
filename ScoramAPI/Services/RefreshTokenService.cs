@@ -32,6 +32,17 @@ namespace ScoramAPI.Services
         // Every active token for this principal -- used when a password change, deactivation, or
         // detected token-reuse means every outstanding session should end, not just the one in hand.
         Task RevokeAllAsync(Guid principalId, bool isAdmin);
+
+        // SINGLE-DEVICE LOGIN -- revokes every currently-active refresh token for this student
+        // (always isAdmin: false; admins are exempt -- see AdminSessionsController) because a NEW
+        // login is about to supersede them, tagging each with
+        // RefreshToken.RevokedReasonSupersededByLogin. Deliberately a separate method from
+        // RevokeAllAsync above rather than an extra parameter on it: every existing call site of
+        // RevokeAllAsync (Logout, ChangePassword, ResetPassword, the Refresh() theft-reuse response)
+        // must keep producing a plain revoke with no reason, so AuthController.Refresh() can tell
+        // "superseded by a newer login" apart from those and avoid the collateral damage described
+        // on that method's own comment.
+        Task SupersedeForNewLoginAsync(Guid principalId);
     }
 
     public class RefreshTokenService : IRefreshTokenService
@@ -71,24 +82,37 @@ namespace ScoramAPI.Services
 
         public async Task<bool> RotateAsync(RefreshToken token, RefreshToken replacement)
         {
-            await using var tx = await _db.Database.BeginTransactionAsync();
-
-            // Conditional UPDATE: only the first of several concurrent refreshes wins the revoke.
+            // A user-initiated transaction must run inside the execution strategy (Program.cs enables
+            // retry-on-failure), otherwise EF throws "does not support user-initiated transactions".
+            var strategy = _db.Database.CreateExecutionStrategy();
             var now = DateTime.UtcNow;
-            var revoked = await _db.RefreshTokens
-                .Where(t => t.Id == token.Id && t.RevokedAt == null)
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(t => t.RevokedAt, now)
-                    .SetProperty(t => t.ReplacedByTokenId, replacement.Id));
-            if (revoked == 0)
+            var rotated = await strategy.ExecuteAsync(async () =>
             {
-                await tx.RollbackAsync();
-                return false;
-            }
+                // A retry re-runs this delegate: make sure the replacement isn't left tracked from a failed attempt.
+                var entry = _db.Entry(replacement);
+                if (entry.State != EntityState.Detached) entry.State = EntityState.Detached;
 
-            _db.RefreshTokens.Add(replacement);
-            await _db.SaveChangesAsync();
-            await tx.CommitAsync();
+                await using var tx = await _db.Database.BeginTransactionAsync();
+
+                // Conditional UPDATE: only the first of several concurrent refreshes wins the revoke.
+                var revoked = await _db.RefreshTokens
+                    .Where(t => t.Id == token.Id && t.RevokedAt == null)
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(t => t.RevokedAt, now)
+                        .SetProperty(t => t.ReplacedByTokenId, replacement.Id));
+                if (revoked == 0)
+                {
+                    await tx.RollbackAsync();
+                    return false;
+                }
+
+                _db.RefreshTokens.Add(replacement);
+                await _db.SaveChangesAsync();
+                await tx.CommitAsync();
+                return true;
+            });
+
+            if (!rotated) return false;
 
             token.RevokedAt = now;
             token.ReplacedByTokenId = replacement.Id;
@@ -117,6 +141,21 @@ namespace ScoramAPI.Services
                 .ToListAsync();
 
             foreach (var t in tokens) t.RevokedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task SupersedeForNewLoginAsync(Guid principalId)
+        {
+            var tokens = await _db.RefreshTokens
+                .Where(t => t.PrincipalId == principalId && !t.IsAdmin && t.RevokedAt == null)
+                .ToListAsync();
+
+            var now = DateTime.UtcNow;
+            foreach (var t in tokens)
+            {
+                t.RevokedAt = now;
+                t.RevokedReason = RefreshToken.RevokedReasonSupersededByLogin;
+            }
             await _db.SaveChangesAsync();
         }
     }

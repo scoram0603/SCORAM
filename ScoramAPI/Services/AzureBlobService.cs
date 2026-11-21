@@ -64,12 +64,13 @@ namespace ScoramAPI.Services
         private readonly ILogger<AzureBlobService> _logger;
 
         // Constructing a BlobContainerClient from an already-built BlobServiceClient is purely local
-        // (no network call), so this is safe to do even while AzureBlobStorage:ConnectionString is
+        // (no network call), so this is safe to do even while BlobStorage:ConnectionString is
         // still the DEMO placeholder -- nothing actually reaches Azure until UploadAsync/
         // DownloadAsync/ExistsAsync/DeleteAsync is called.
+        // Container name comes from BlobStorage:ContainerName (App Service: BlobStorage__ContainerName).
         public AzureBlobService(BlobServiceClient blobServiceClient, IConfiguration config, ILogger<AzureBlobService> logger)
         {
-            var containerName = config["AzureBlobStorage:ContainerName"] ?? "uploads";
+            var containerName = config["BlobStorage:ContainerName"] ?? "uploads";
             _containerClient = blobServiceClient.GetBlobContainerClient(containerName);
             _logger = logger;
         }

@@ -1,0 +1,23 @@
+SCORAM - Azure App Service config update
+Config section renamed: AzureBlobStorage -> BlobStorage
+(App Service rejected AzureBlobStorage__* as App Setting names.)
+
+Modified files (paths relative to the solution root):
+  ScoramAPI/Program.cs
+      BlobServiceClient now reads BlobStorage:ConnectionString. Comment updated.
+  ScoramAPI/Services/AzureBlobService.cs
+      Container name now read from BlobStorage:ContainerName (default "uploads" unchanged).
+  ScoramAPI/Controllers/DocumentsController.cs
+      Max upload size now read from BlobStorage:MaxFileSizeMB (code default 10 unchanged).
+  ScoramAPI/appsettings.json
+      Section "AzureBlobStorage" renamed to "BlobStorage". Values unchanged
+      (ConnectionString "" / ContainerName "uploads" / MaxFileSizeMB 100). _COMMENT updated.
+  ScoramAPI/appsettings.Development.json
+      Comment text only (pointer to the renamed section). No values changed.
+
+NOT changed: class/interface names (AzureBlobService, IAzureBlobService), DI registrations,
+blob upload/download/exists/delete/prefix-delete logic, JWT, CORS, Redis, SQL, Firebase, MSG91.
+
+ACTION REQUIRED: any existing environment variable, user-secret or appsettings.Production.json
+entry named AzureBlobStorage__* / AzureBlobStorage:* must be renamed to BlobStorage__* / BlobStorage:*
+or the app will fall back to an empty connection string and the "uploads" container default.

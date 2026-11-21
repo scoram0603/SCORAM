@@ -171,8 +171,11 @@ namespace ScoramAPI.Services
         private async Task<Taxonomy> LoadTaxonomyAsync(Guid examId, CancellationToken ct)
         {
             var subjects = await _db.ExamSubjects.AsNoTracking().Where(s => s.ExamId == examId).ToListAsync(ct);
+            // The exam's subject ids are already in memory: a plain IN list instead of a correlated EXISTS (same rows --
+            // ExamTopic.ExamSubjectId is a required FK).
+            var subjectIds = subjects.Select(s => s.Id).ToList();
             var topics = await _db.ExamTopics.AsNoTracking()
-                .Where(t => _db.ExamSubjects.Any(s => s.Id == t.ExamSubjectId && s.ExamId == examId)).ToListAsync(ct);
+                .Where(t => subjectIds.Contains(t.ExamSubjectId)).ToListAsync(ct);
             var tax = new Taxonomy
             {
                 Subjects = subjects.ToDictionary(s => s.Id),
@@ -1506,27 +1509,63 @@ namespace ScoramAPI.Services
                 }).ToList();
         }
 
+        // Question Bank filter by exam subject ids (the student "exam-specific subjects" list).
+        //
+        // PERF (round 5): this used to be `Any(explicit...) || Any(fallback ... Any(mapping) && !Any(classification))`
+        // evaluated per outer question -- an OR of nested correlated EXISTS, which SQL Server can only run row by row
+        // against every visible question. It is now ONE semi-join, `x.Id IN (explicit UNION fallback)`, the same shape
+        // the admin SubjectQuestionIds/TopicQuestionIds already use, and the fallback branch is driven from the small
+        // side (the requested ExamSubject rows) instead of probing from every question. Semantics are unchanged:
+        //  * explicit: a classification row naming one of the subjects counts only while the question is still mapped
+        //    to that row's exam (stale rows are ignored);
+        //  * fallback: the question's global subject equals the exam subject's BaseSubjectId, it is mapped to that
+        //    exam, and NO classification row exists for (question, exam) -- including a row whose subject is NULL
+        //    (a tombstone), hence the NOT EXISTS deliberately does not look at ExamSubjectId;
+        //  * the id list may span several exams (rows from each are included); no IsActive check, as before;
+        //  * a NULL BaseSubjectId never matches (explicit guard: a nullable join key could match NULL = NULL);
+        //  * an empty list matches nothing; a question matched by several branches still appears once (semi-join).
+        // Do not turn this back into `explicitIds.Contains(x.Id) || fallbackIds.Contains(x.Id)`: that is an OR of two
+        // IN-subqueries again. Do not materialise matching question ids into a List<Guid>: a bank-wide subject can
+        // match thousands.
         public IQueryable<QuestionBankQuestion> FilterByExamSubjects(IQueryable<QuestionBankQuestion> source, IReadOnlyCollection<Guid> examSubjectIds)
         {
             var list = examSubjectIds.ToList();
-            return source.Where(x =>
-                _db.QuestionBankExamClassifications.Any(c => c.QuestionBankQuestionId == x.Id && c.ExamSubjectId != null && list.Contains(c.ExamSubjectId.Value)
-                    && _db.QuestionBankExamMappings.Any(m => m.QuestionBankQuestionId == x.Id && m.ExamId == c.ExamId))
-                || _db.ExamSubjects.Any(es => list.Contains(es.Id) && es.BaseSubjectId == x.SubjectId
-                    && _db.QuestionBankExamMappings.Any(m => m.QuestionBankQuestionId == x.Id && m.ExamId == es.ExamId)
-                    && !_db.QuestionBankExamClassifications.Any(c => c.QuestionBankQuestionId == x.Id && c.ExamId == es.ExamId)));
+            var explicitIds = _db.QuestionBankExamClassifications
+                .Where(c => c.ExamSubjectId != null && list.Contains(c.ExamSubjectId.Value)
+                    && _db.QuestionBankExamMappings.Any(m => m.QuestionBankQuestionId == c.QuestionBankQuestionId && m.ExamId == c.ExamId))
+                .Select(c => c.QuestionBankQuestionId);
+            var fallbackIds =
+                from es in _db.ExamSubjects
+                where list.Contains(es.Id) && es.BaseSubjectId != null
+                join q in _db.QuestionBankQuestions on es.BaseSubjectId.Value equals q.SubjectId
+                where _db.QuestionBankExamMappings.Any(m => m.QuestionBankQuestionId == q.Id && m.ExamId == es.ExamId)
+                    && !_db.QuestionBankExamClassifications.Any(c => c.QuestionBankQuestionId == q.Id && c.ExamId == es.ExamId)
+                select q.Id;
+            var matching = explicitIds.Union(fallbackIds);
+            return source.Where(x => matching.Contains(x.Id));
         }
 
+        // Same, for exam topic ids. The fallback additionally needs the topic's own subject to line up with the
+        // question's global subject, and the question's global topic to equal the exam topic's BaseTopicId.
         public IQueryable<QuestionBankQuestion> FilterByExamTopics(IQueryable<QuestionBankQuestion> source, IReadOnlyCollection<Guid> examTopicIds)
         {
             var list = examTopicIds.ToList();
-            return source.Where(x =>
-                _db.QuestionBankExamClassifications.Any(c => c.QuestionBankQuestionId == x.Id && c.ExamTopicId != null && list.Contains(c.ExamTopicId.Value)
-                    && _db.QuestionBankExamMappings.Any(m => m.QuestionBankQuestionId == x.Id && m.ExamId == c.ExamId))
-                || _db.ExamTopics.Any(et => list.Contains(et.Id) && et.BaseTopicId == x.TopicId
-                    && _db.ExamSubjects.Any(es => es.Id == et.ExamSubjectId && es.BaseSubjectId == x.SubjectId
-                        && _db.QuestionBankExamMappings.Any(m => m.QuestionBankQuestionId == x.Id && m.ExamId == es.ExamId)
-                        && !_db.QuestionBankExamClassifications.Any(c => c.QuestionBankQuestionId == x.Id && c.ExamId == es.ExamId))));
+            var explicitIds = _db.QuestionBankExamClassifications
+                .Where(c => c.ExamTopicId != null && list.Contains(c.ExamTopicId.Value)
+                    && _db.QuestionBankExamMappings.Any(m => m.QuestionBankQuestionId == c.QuestionBankQuestionId && m.ExamId == c.ExamId))
+                .Select(c => c.QuestionBankQuestionId);
+            var fallbackIds =
+                from et in _db.ExamTopics
+                where list.Contains(et.Id) && et.BaseTopicId != null
+                join es in _db.ExamSubjects on et.ExamSubjectId equals es.Id
+                where es.BaseSubjectId != null
+                join q in _db.QuestionBankQuestions
+                    on new { S = es.BaseSubjectId.Value, T = et.BaseTopicId.Value } equals new { S = q.SubjectId, T = q.TopicId }
+                where _db.QuestionBankExamMappings.Any(m => m.QuestionBankQuestionId == q.Id && m.ExamId == es.ExamId)
+                    && !_db.QuestionBankExamClassifications.Any(c => c.QuestionBankQuestionId == q.Id && c.ExamId == es.ExamId)
+                select q.Id;
+            var matching = explicitIds.Union(fallbackIds);
+            return source.Where(x => matching.Contains(x.Id));
         }
 
         public async Task<Dictionary<Guid, (string? Subject, string? Topic)>> ResolveNamesAsync(Guid examId, IReadOnlyCollection<(Guid Id, Guid SubjectId, Guid TopicId)> questions, CancellationToken ct = default)

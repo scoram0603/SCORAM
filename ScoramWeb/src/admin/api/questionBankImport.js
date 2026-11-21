@@ -142,9 +142,13 @@ async function downloadFile(token, path, fallbackFileName) {
 }
 
 export function downloadExcelTemplate(token) {
-  return downloadFile(token, "/api/admin/question-bank/template/excel", "question-bank-template.xlsx");
+  return downloadFile(token, "/api/admin/question-bank/template/excel", "pyq-bulk-upload-template.xlsx");
+}
+
+export function downloadCsvTemplate(token) {
+  return downloadFile(token, "/api/admin/question-bank/template/csv", "pyq-bulk-upload-template.csv");
 }
 
 export function downloadJsonTemplate(token) {
-  return downloadFile(token, "/api/admin/question-bank/template/json", "question-bank-template.json");
+  return downloadFile(token, "/api/admin/question-bank/template/json", "pyq-bulk-upload-template.json");
 }

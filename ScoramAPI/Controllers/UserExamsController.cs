@@ -60,6 +60,8 @@ namespace ScoramAPI.Controllers
             if (examIds.Count > MaxSelectedExams)
                 return BadRequest(new { message = $"You can select at most {MaxSelectedExams} exams." });
 
+            var userId = User.GetUserId();
+
             if (examIds.Count > 0)
             {
                 // ONE query for the whole selection, and "available" means exactly what the public
@@ -68,14 +70,29 @@ namespace ScoramAPI.Controllers
                     .Where(e => examIds.Contains(e.Id))
                     .Select(e => e.Id)
                     .ToListAsync();
-                if (examIds.Except(validExamIds).Any())
+
+                // An exam the student ALREADY had saved can later become unavailable (an admin blocks it
+                // or its Organization). The editor is seeded from the saved list, so such an id comes
+                // straight back here -- rejecting the whole save would trap the student forever (they
+                // couldn't change anything). Drop those quietly; only a NEWLY added unknown/blocked
+                // exam is an error.
+                var alreadySaved = await _db.UserExamPreferences
+                    .Where(p => p.UserId == userId && examIds.Contains(p.ExamId))
+                    .Select(p => p.ExamId)
+                    .ToListAsync();
+                var invalid = examIds.Except(validExamIds).ToList();
+                if (invalid.Except(alreadySaved).Any())
                     return BadRequest(new { message = "One or more selected exams could not be found." });
+
+                var dropped = invalid.ToHashSet();
+                examIds = examIds.Where(id => !dropped.Contains(id)).ToList();
+                if (dto.PrimaryExamId.HasValue && dropped.Contains(dto.PrimaryExamId.Value))
+                    dto.PrimaryExamId = null; // the unavailable primary is gone; a valid one is picked below
             }
 
             if (dto.PrimaryExamId.HasValue && !examIds.Contains(dto.PrimaryExamId.Value))
                 return BadRequest(new { message = "Primary exam must be one of the selected exams." });
 
-            var userId = User.GetUserId();
             var existing = await _db.UserExamPreferences.Where(p => p.UserId == userId).ToListAsync();
             var now = DateTime.UtcNow;
 
@@ -208,10 +225,13 @@ namespace ScoramAPI.Controllers
         private IQueryable<Exam> AvailableExams() =>
             _db.Exams.Where(e => !e.IsBlocked && (e.Organization == null || !e.Organization.IsBlocked));
 
+        // Unavailable (blocked) exams are hidden from the student's list, matching what Set accepts.
         private Task<List<UserExamPreference>> LoadOrderedAsync(Guid userId) =>
             _db.UserExamPreferences
                 .Include(p => p.Exam)
-                .Where(p => p.UserId == userId)
+                .Where(p => p.UserId == userId
+                    && !p.Exam!.IsBlocked
+                    && (p.Exam.Organization == null || !p.Exam.Organization.IsBlocked))
                 .OrderByDescending(p => p.IsPrimary)
                 .ThenBy(p => p.CreatedAt)
                 .ToListAsync();

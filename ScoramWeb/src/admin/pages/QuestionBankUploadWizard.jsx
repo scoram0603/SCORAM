@@ -6,7 +6,7 @@ import {
 import { useAdminAuth } from "../context/AdminAuthContext";
 import {
   previewQuestionBankImport, commitQuestionBankImport, getQuestionBankImportStatus, getQuestionBankImportHistory, rollbackQuestionBankImport,
-  updatePreviewRow, updateRowImages, downloadExcelTemplate, downloadJsonTemplate,
+  updatePreviewRow, updateRowImages, downloadExcelTemplate, downloadCsvTemplate, downloadJsonTemplate,
 } from "../api/questionBankImport";
 import { cleanupEmptyExam } from "../api/exams";
 import { PageHeader, Card, Button, FormField, TextInput, TextArea, Select, Alert, friendlyError } from "../components/AdminUI";
@@ -248,6 +248,7 @@ export default function QuestionBankUploadWizard() {
   async function handleDownloadTemplate(kind) {
     try {
       if (kind === "excel") await downloadExcelTemplate(token);
+      else if (kind === "csv") await downloadCsvTemplate(token);
       else await downloadJsonTemplate(token);
     } catch (err) {
       window.alert(friendlyError(err));
@@ -295,6 +296,10 @@ export default function QuestionBankUploadWizard() {
 
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
             <span className="text-ink-400">Not sure of the format? Download the template:</span>
+            <button type="button" onClick={() => handleDownloadTemplate("csv")} className="flex items-center gap-1 font-semibold text-secondary-500 hover:underline">
+              <Download className="h-3.5 w-3.5" strokeWidth={2.25} />
+              CSV
+            </button>
             <button type="button" onClick={() => handleDownloadTemplate("excel")} className="flex items-center gap-1 font-semibold text-secondary-500 hover:underline">
               <Download className="h-3.5 w-3.5" strokeWidth={2.25} />
               Excel
