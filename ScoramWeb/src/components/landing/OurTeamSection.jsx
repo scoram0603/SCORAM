@@ -17,7 +17,7 @@ const MEMBERS = [
   {
     name: "Dishu Jay",
     role: "Co-founder",
-    photo: "/assets/team/durgesh.jpg",
+    photo: "/assets/team/Dishu.jpg",
     slot: "founder-dishu",
     alt: "Dishu Jay, Co-founder of SCORAM",
     line: "Turns the vision into a practical digital experience, with a focus on technology, usability, and continuous improvement.",

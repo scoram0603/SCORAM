@@ -55,11 +55,11 @@ const FOUNDERS = [
   {
     name: "Dishu Jay",
     role: "Co-founder",
-    photo: "/assets/team/durgesh.jpg",
-    slot: "founder-durgesh",
-    alt: "Durgesh, Co-founder of SCORAM",
+    photo: "/assets/team/Dishu.jpg",
+    slot: "founder-Dishu",
+    alt: "Dishu, Co-founder of SCORAM",
     lead: "Great ideas become meaningful when they are brought to life.",
-    body: "As Co-founder of SCORAM, Durgesh contributes to turning the platform's vision into a practical digital experience. With a focus on technology, usability, and continuous improvement, he aims to help build a platform that makes exam preparation simpler, more accessible, and more effective for students.",
+    body: "As Co-founder of SCORAM, Dishu contributes to turning the platform's vision into a practical digital experience. With a focus on technology, usability, and continuous improvement, he aims to help build a platform that makes exam preparation simpler, more accessible, and more effective for students.",
   },
 ];
 
@@ -231,8 +231,8 @@ function FounderText({ founder }) {
 }
 
 // One full-width editorial band per founder. The DOM order is what makes the mobile reading
-// order right: Sarvoch = text then photo, Durgesh = photo then text. On desktop the two columns
-// simply follow DOM order (Sarvoch: text left / photo right; Durgesh: photo left / text right).
+// order right: Sarvoch = text then photo, Dishu = photo then text. On desktop the two columns
+// simply follow DOM order (Sarvoch: text left / photo right; Dishu: photo left / text right).
 function FounderBand({ founder, photoFirst, className, frameClassName, tightTop = false }) {
   const headingId = `founder-${founder.name.toLowerCase()}`;
   const photo = (
