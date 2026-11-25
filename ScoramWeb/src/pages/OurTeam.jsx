@@ -44,7 +44,7 @@ const FOUNDERS_INTRO = {
 // `lead` + `body` together are the profile text, split only so the opening line can be set larger.
 const FOUNDERS = [
   {
-    name: "Sarvoch Priyadarshi",
+    name: "Naman Priyadarshi",
     role: "Founder",
     photo: "/assets/team/sarvoch.jpg",
     slot: "founder-sarvoch",
@@ -53,7 +53,7 @@ const FOUNDERS = [
     body: "Sarvoch envisioned SCORAM as a platform that could make exam preparation more focused, structured, and meaningful for aspirants. His vision is to help students move beyond simply practising questions and towards understanding their progress, recognising their strengths, and identifying where they can improve.",
   },
   {
-    name: "Durgesh Maurya",
+    name: "Dishu Jay",
     role: "Co-founder",
     photo: "/assets/team/durgesh.jpg",
     slot: "founder-durgesh",

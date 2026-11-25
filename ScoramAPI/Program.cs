@@ -31,7 +31,7 @@ builder.Host.UseSerilog((context, configuration) => configuration
 
 // ---------- Database ----------
 // SlowQueryInterceptor observes finished database commands.
-// EnableRetryOnFailure retries transient SQL connection failures.
+// EnableRetryOnFailure (opt-in via Database:EnableRetryOnFailure) retries transient SQL connection failures.
 builder.Services.AddSingleton<SlowQueryInterceptor>();
 
 builder.Services.AddDbContext<ScoramDbContext>((serviceProvider, options) =>
@@ -39,11 +39,21 @@ builder.Services.AddDbContext<ScoramDbContext>((serviceProvider, options) =>
         builder.Configuration.GetConnectionString("DefaultConnection"),
         sql =>
         {
-            sql.EnableRetryOnFailure(
-                maxRetryCount: 3,
-                maxRetryDelay: TimeSpan.FromSeconds(5),
-                errorNumbersToAdd: null
-            );
+            // Retry-on-failure is OFF by default. SqlServerRetryingExecutionStrategy rejects every
+            // user-initiated transaction that isn't wrapped in CreateExecutionStrategy().ExecuteAsync(),
+            // and this codebase opens manual transactions in many places (bulk import commit, exam
+            // merge, account deletion, test import, app config, and DbContext.SaveChangesAsync's own
+            // Business-ID transaction). With it on they all fail with "does not support user-initiated
+            // transactions". Set "Database:EnableRetryOnFailure": true only after every
+            // BeginTransactionAsync site has been wrapped in the strategy.
+            if (builder.Configuration.GetValue<bool>("Database:EnableRetryOnFailure"))
+            {
+                sql.EnableRetryOnFailure(
+                    maxRetryCount: 3,
+                    maxRetryDelay: TimeSpan.FromSeconds(5),
+                    errorNumbersToAdd: null
+                );
+            }
         })
     .AddInterceptors(
         serviceProvider.GetRequiredService<SlowQueryInterceptor>()

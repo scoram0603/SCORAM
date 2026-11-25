@@ -59,7 +59,7 @@ export default function HeroSection({ stats }) {
               <ArrowRight className="h-4 w-4" strokeWidth={2.5} />
             </Link>
             <a
-              href="https://github.com/scoram0603/SCORAM/releases/download/scoram/SCORAM.apk"
+              href="https://play.google.com/store/apps/details?id=in.scoram.app"
               className="flex items-center gap-2 rounded-xl border border-primary-100 bg-white px-6 py-3.5 text-[15px] font-semibold text-primary-600 transition-colors hover:bg-primary-50"
             >
               DOWNLOAD APP

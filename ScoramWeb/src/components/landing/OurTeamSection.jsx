@@ -7,19 +7,19 @@ import ScrollReveal from "./ScrollReveal";
 // served from /public/assets/team/; if one fails to load the card falls back to the initial.
 const MEMBERS = [
   {
-    name: "Sarvoch Priyadarshi",
+    name: "Naman Priyadarshi",
     role: "Founder",
     photo: "/assets/team/sarvoch.jpg",
-    slot: "founder-sarvoch",
-    alt: "Sarvoch Priyadarshi, Founder of SCORAM",
+    slot: "founder-naman",
+    alt: "Naman Priyadarshi, Founder of SCORAM",
     line: "Envisioned SCORAM as a platform that makes exam preparation more focused, structured, and meaningful.",
   },
   {
-    name: "Durgesh Maurya",
+    name: "Dishu Jay",
     role: "Co-founder",
     photo: "/assets/team/durgesh.jpg",
-    slot: "founder-durgesh",
-    alt: "Durgesh Maurya, Co-founder of SCORAM",
+    slot: "founder-dishu",
+    alt: "Dishu Jay, Co-founder of SCORAM",
     line: "Turns the vision into a practical digital experience, with a focus on technology, usability, and continuous improvement.",
   },
 ];

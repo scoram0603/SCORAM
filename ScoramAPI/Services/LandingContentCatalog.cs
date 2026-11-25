@@ -44,8 +44,8 @@ namespace ScoramAPI.Services
             new("community-preview", "Community image", "Feature images", "4:3 landscape, about 1200x900 px", "Image in the Community section.", true),
             new("app-promo-preview", "Mobile app promotion image", "Feature images", "Portrait phone mockup, about 800x1000 px", "Image in the Get the App section.", true),
             new("smart-progress-image", "Smart Progress image", "Smart Progress", "Real app screenshot, 4:3 landscape, about 1200x900 px", "Optional. The Smart Progress section works without it.", false),
-            new("founder-sarvoch", "Founder photo - Sarvoch Priyadarshi", "Founders", "Square-ish portrait, about 600x600 px, face in the upper third", "Shown only for Sarvoch Priyadarshi (landing + Our Team page).", true),
-            new("founder-durgesh", "Founder photo - Durgesh Maurya", "Founders", "Square-ish portrait, about 600x600 px, face in the upper third", "Shown only for Durgesh Maurya (landing + Our Team page).", true),
+            new("founder-sarvoch", "Founder photo - Naman Priyadarshi", "Founders", "Square-ish portrait, about 600x600 px, face in the upper third", "Shown only for Naman Priyadarshi (landing + Our Team page).", true),
+            new("founder-durgesh", "Founder photo - Dishu Jay", "Founders", "Square-ish portrait, about 600x600 px, face in the upper third", "Shown only for Dishu Jay (landing + Our Team page).", true),
         };
 
         private static readonly Dictionary<string, LandingMediaSlot> ByKey =
