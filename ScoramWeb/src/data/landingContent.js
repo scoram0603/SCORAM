@@ -32,6 +32,9 @@ export const navLinks = [
 
 export const footerLinks = {
   quick: [
+    { label: "Login", to: "/login" },
+    { label: "Register", to: "/register" },
+    { label: "Download App", to: "/download-app" },
     { label: "Home", href: "#top" },
     { label: "PYP Practice", to: "/pyq" },
     { label: "PYQs", to: "/question-bank" },

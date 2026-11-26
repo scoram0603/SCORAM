@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import AppLayout from "./layouts/AppLayout";
 import AuthLayout from "./layouts/AuthLayout";
 import ProtectedRoute from "./routes/ProtectedRoute";
@@ -7,6 +7,8 @@ import NotFound from "./pages/NotFound";
 import { lazyWithRetry } from "./components/routing/lazyWithRetry";
 import { SuspenseOutlet } from "./components/routing/RouteSuspense";
 import { AuthProvider } from "./context/AuthContext";
+import RouteSeo from "./components/seo/RouteSeo";
+import Seo from "./components/seo/Seo";
 import { MyExamsProvider } from "./context/MyExamsContext";
 import { ChatConnectionProvider } from "./context/ChatConnectionContext";
 
@@ -49,33 +51,58 @@ const Settings = lazyWithRetry(() => import("./pages/Settings"));
 const RateScoram = lazyWithRetry(() => import("./pages/RateScoram"));
 const SelectExams = lazyWithRetry(() => import("./pages/SelectExams"));
 const MyExams = lazyWithRetry(() => import("./pages/MyExams"));
+const DownloadApp = lazyWithRetry(() => import("./pages/DownloadApp"));
+
+// Wraps a page element with its registered SEO tags (config/seoRoutes.js).
+const withSeo = (key, element) => (
+  <>
+    <RouteSeo routeKey={key} />
+    {element}
+  </>
+);
+
+// /login and /register are separate, indexable URLs. The older "/login?mode=register" links that may
+// already be shared or bookmarked are redirected to /register (keeping any ?redirect=).
+function LoginRoute() {
+  const [params] = useSearchParams();
+  if (params.get("mode") === "register") {
+    const redirect = params.get("redirect");
+    return <Navigate to={`/register${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ""}`} replace />;
+  }
+  return (
+    <>
+      <RouteSeo routeKey="login" />
+      <Login initialMode="login" />
+    </>
+  );
+}
 
 function AppRoutes() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
         <Route index element={<Home />} />
-        <Route path="search" element={<SearchQuestions />} />
+        <Route path="search" element={withSeo("search", <SearchQuestions />)} />
         {/* MASTER PROMPT -- Previous Year Paper Practice: "/pyq" used to just redirect into "Find
             PYQs" (individual-question browsing). It's now the real Previous Year Paper Practice
             destination -- browse Exam/Year/Language, then attempt the FULL paper as one timed test
             (see StudentPapersController.Start). "Find PYQs" still exists at /search, unchanged, for
             anyone who wants a single question rather than a full paper. */}
-        <Route path="pyq" element={<PreviousYearPapers />} />
-        <Route path="discussions" element={<Discussions />} />
+        <Route path="pyq" element={withSeo("pyq", <PreviousYearPapers />)} />
+        <Route path="discussions" element={withSeo("discussions", <Discussions />)} />
         <Route path="questions/:questionId" element={<QuestionDetail />} />
         {/* SCORAM_QUESTION_BANK -- individual-question search engine, independent of the
             Paper/PYP upload flow above (spec section 21: two different features). */}
-        <Route path="question-bank" element={<QuestionBankSearch />} />
+        <Route path="question-bank" element={withSeo("questionBank", <QuestionBankSearch />)} />
         <Route path="question-bank/:questionId" element={<QuestionBankQuestionDetail />} />
-        <Route path="chat" element={<GroupChat />} />
+        <Route path="chat" element={withSeo("chat", <GroupChat />)} />
 
         {/* SCORAM_TESTS -- "Tests" is a hub (Practice Tests / Mock Tests). The old flat TestsList +
             one-shot attempt/result components (tests-classic, tests/:testId/attempt, tests/results/:id)
             were a parallel, pre-timer-fix implementation of this same flow and have been removed --
             keeping both around was what let students land on TestRunner.jsx via one path and the
             legacy TestAttempt.jsx via another, with no way to tell from the UI which one they'd get. */}
-        <Route path="tests" element={<Tests />} />
+        <Route path="tests" element={withSeo("tests", <Tests />)} />
 
         {/* Attempting/submitting/reviewing a test is inherently tied to a student's own
             account -- hard-redirect rather than letting a guest fill out a test only to
@@ -116,14 +143,24 @@ function AppRoutes() {
       </Route>
 
       <Route element={<AuthLayout />}>
-        <Route path="login" element={<Login />} />
-        <Route path="forgot-password" element={<ForgotPassword />} />
+        <Route path="login" element={<LoginRoute />} />
+        <Route
+          path="register"
+          element={
+            <>
+              <RouteSeo routeKey="register" />
+              <Login initialMode="register" />
+            </>
+          }
+        />
+        <Route path="forgot-password" element={<><Seo title="Reset Password" description="Reset your SCORAM account password." path="/forgot-password" noindex /><ForgotPassword /></>} />
       </Route>
 
       {/* LANDING PAGE -- public support pages, own navbar/footer (LegalPage), no app chrome,
           so these are top-level routes rather than nested under AppLayout or AuthLayout. */}
       <Route element={<SuspenseOutlet />}>
         <Route path="our-team" element={<OurTeam />} />
+        <Route path="download-app" element={<DownloadApp />} />
         <Route path="privacy-policy" element={<PrivacyPolicy />} />
         <Route path="terms-and-conditions" element={<Terms />} />
         {/* "/terms" was the original URL for this page -- kept as a redirect so links already shared,

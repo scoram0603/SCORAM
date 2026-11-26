@@ -27,23 +27,6 @@ function buildJsonLd() {
     "@context": "https://schema.org",
     "@graph": [
       {
-        "@type": "EducationalOrganization",
-        "@id": `${seoConfig.siteUrl}/#organization`,
-        name: seoConfig.siteName,
-        url: seoConfig.siteUrl,
-        logo: `${seoConfig.siteUrl}${seoConfig.logo}`,
-        description: seoConfig.defaultDescription,
-        email: seoConfig.contact.email,
-        telephone: seoConfig.contact.phone,
-      },
-      {
-        "@type": "WebSite",
-        "@id": `${seoConfig.siteUrl}/#website`,
-        url: seoConfig.siteUrl,
-        name: seoConfig.siteName,
-        publisher: { "@id": `${seoConfig.siteUrl}/#organization` },
-      },
-      {
         "@type": "FAQPage",
         mainEntity: faqs.map((item) => ({
           "@type": "Question",

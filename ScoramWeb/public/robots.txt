@@ -1,8 +1,12 @@
 User-agent: *
 Allow: /
 
+# /login, /register and /download-app are public landing pages and MUST stay crawlable (they are the
+# pages Google can show as sitelinks under the brand result). Only login-redirect variants are blocked.
+Disallow: /*?redirect=
+Disallow: /forgot-password
+
 # Auth-gated app areas -- nothing to index behind a login redirect
-Disallow: /login
 Disallow: /profile
 Disallow: /settings
 Disallow: /bookmarks

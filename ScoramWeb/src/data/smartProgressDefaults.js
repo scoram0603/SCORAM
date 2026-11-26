@@ -16,7 +16,7 @@ export const DEFAULT_SMART_PROGRESS = {
     "A daily study plan based on your real practice activity",
   ],
   ctaText: "Start practising",
-  ctaLink: "/login?mode=register",
+  ctaLink: "/register",
 };
 
 export const SMART_PROGRESS_FOOTNOTE =

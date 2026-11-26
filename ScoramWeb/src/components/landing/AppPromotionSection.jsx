@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Smartphone, Wifi, BellRing } from "lucide-react";
 import AssetImage from "./AssetImage";
 import ScrollReveal from "./ScrollReveal";
@@ -29,8 +30,8 @@ export default function AppPromotionSection() {
             Take Your Preparation Anywhere.
           </h2>
           <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-ink-600">
-            SCORAM's web app works great on mobile browsers today, with a dedicated app on the way
-            for an even smoother experience.
+            Practise with the SCORAM Android app, or open scoram.in in any mobile browser — your
+            account and progress work in both.
           </p>
           <ul className="mt-6 space-y-3">
             {POINTS.map((point) => (
@@ -42,12 +43,12 @@ export default function AppPromotionSection() {
               </li>
             ))}
           </ul>
-          <a
-            href="https://play.google.com/store/apps/details?id=in.scoram.app"
+          <Link
+            to="/download-app"
             className="mt-7 inline-flex items-center gap-2 rounded-xl bg-primary-600 px-6 py-3.5 text-[15px] font-semibold text-white shadow-floating transition-transform hover:-translate-y-0.5 hover:bg-primary-700"
           >
-            Get the SCORAM App
-          </a>
+            Download App
+          </Link>
           {/* CTA currently scrolls to top -- point this at the real app-store / play-store links
               once the app ships. See LANDING_REPORT.md. */}
         </ScrollReveal>

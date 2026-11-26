@@ -54,12 +54,13 @@ export default function Seo({
   image = seoConfig.ogImage,
   type = "website",
   jsonLd,
+  noindex = false,
 }) {
   useEffect(() => {
     // A title that already leads with the brand ("SCORAM Privacy Policy") is used as-is instead of
     // getting " | SCORAM" appended a second time.
     const resolvedTitle = title
-      ? title.startsWith(seoConfig.siteName)
+      ? title.toUpperCase().includes(seoConfig.siteName)
         ? title
         : seoConfig.titleTemplate.replace("%s", title)
       : seoConfig.defaultTitle;
@@ -83,8 +84,14 @@ export default function Seo({
     setMeta("name", "twitter:description", description);
     setMeta("name", "twitter:image", `${seoConfig.siteUrl}${image}`);
 
+    setMeta("name", "robots", noindex ? "noindex, follow" : "index, follow");
+
+    // Page-level structured data. The site-wide Organization/WebSite data lives in index.html
+    // ("site-jsonld") and is left alone; a page with no JSON-LD of its own removes any stale one
+    // left behind by the previous page.
     if (jsonLd) setJsonLd("landing-jsonld", jsonLd);
-  }, [title, description, keywords, path, image, type, jsonLd]);
+    else document.getElementById("landing-jsonld")?.remove();
+  }, [title, description, keywords, path, image, type, jsonLd, noindex]);
 
   return null;
 }

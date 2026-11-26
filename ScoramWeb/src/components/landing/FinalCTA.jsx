@@ -17,7 +17,7 @@ export default function FinalCTA() {
         </div>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
           <Link
-            to="/login?mode=register"
+            to="/register"
             className="flex items-center justify-center gap-2 rounded-xl bg-accent-500 px-6 py-3.5 text-[15px] font-semibold text-white shadow-floating transition-transform hover:-translate-y-0.5 hover:bg-accent-600"
           >
             Create Free Account

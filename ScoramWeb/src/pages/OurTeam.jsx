@@ -272,7 +272,7 @@ export default function OurTeam() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-white">
       <Seo
-        title="The Vison"
+        title="The Vision – Meet the People Behind SCORAM"
         description="Meet the people behind SCORAM — built with a purpose to help aspirants prepare with greater clarity, confidence, and direction."
         path="/our-team"
       />

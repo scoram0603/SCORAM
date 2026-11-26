@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Menu, X, ArrowRight } from "lucide-react";
+import { Menu, X, ArrowRight, Smartphone } from "lucide-react";
 import defaultLogo from "../../assets/scoram-logo-horizontal.png";
 import { navLinks } from "../../data/landingContent";
 import LandingLink from "./LandingLink";
@@ -57,7 +57,9 @@ export default function LandingNavbar() {
             ))}
           </div>
 
-          <div className="hidden items-center gap-3 lg:flex">
+          {/* Account actions -- real, separate URLs (/login, /register, /download-app) with plain-text anchors so
+              search engines can read them as the site's primary actions (sitelink candidates). */}
+          <div className="hidden items-center gap-2.5 lg:flex">
             <Link
               to="/login"
               className="rounded-xl border border-primary-100 bg-white px-4 py-2.5 text-sm font-semibold text-primary-600 transition-colors hover:bg-primary-50"
@@ -65,10 +67,17 @@ export default function LandingNavbar() {
               Login
             </Link>
             <Link
-              to="/login?mode=register"
+              to="/download-app"
+              className="flex items-center gap-1.5 rounded-xl border border-primary-100 bg-white px-4 py-2.5 text-sm font-semibold text-primary-600 transition-colors hover:bg-primary-50"
+            >
+              <Smartphone className="h-4 w-4" strokeWidth={2.25} />
+              Download App
+            </Link>
+            <Link
+              to="/register"
               className="flex items-center gap-1.5 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-floating transition-colors hover:bg-primary-700"
             >
-              Sign Up
+              Register
               <ArrowRight className="h-4 w-4" strokeWidth={2.5} />
             </Link>
           </div>
@@ -138,6 +147,13 @@ export default function LandingNavbar() {
 
           <div className="flex flex-col gap-2 border-t border-primary-100 p-4 safe-bottom">
             <Link
+              to="/register"
+              onClick={() => setDrawerOpen(false)}
+              className="rounded-xl bg-primary-600 px-4 py-3 text-center text-sm font-semibold text-white"
+            >
+              Register
+            </Link>
+            <Link
               to="/login"
               onClick={() => setDrawerOpen(false)}
               className="rounded-xl border border-primary-100 bg-white px-4 py-3 text-center text-sm font-semibold text-primary-600"
@@ -145,11 +161,11 @@ export default function LandingNavbar() {
               Login
             </Link>
             <Link
-              to="/login?mode=register"
+              to="/download-app"
               onClick={() => setDrawerOpen(false)}
-              className="rounded-xl bg-primary-600 px-4 py-3 text-center text-sm font-semibold text-white"
+              className="rounded-xl border border-primary-100 bg-white px-4 py-3 text-center text-sm font-semibold text-primary-600"
             >
-              Sign Up
+              Download App
             </Link>
           </div>
         </div>

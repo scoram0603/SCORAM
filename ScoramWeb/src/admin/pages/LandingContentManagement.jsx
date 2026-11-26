@@ -182,7 +182,7 @@ function SmartProgressEditor({ initial, limits, token, onSaved }) {
     if (list.some((h) => h.length > max.highlight)) return `Each highlight can be at most ${max.highlight} characters.`;
     if (ctaText.trim().length > max.ctaText) return `The button text can be at most ${max.ctaText} characters.`;
     if (!!ctaText.trim() !== !!ctaLink.trim()) return "Provide both the button text and the button link, or leave both empty.";
-    if (ctaLink.trim() && !isSafeLink(ctaLink.trim())) return "The button link must be a path on this site (e.g. /login?mode=register) or an https:// address.";
+    if (ctaLink.trim() && !isSafeLink(ctaLink.trim())) return "The button link must be a path on this site (e.g. /register) or an https:// address.";
     return null;
   }
 
@@ -237,7 +237,7 @@ function SmartProgressEditor({ initial, limits, token, onSaved }) {
           <FormField label="Button text (optional)" hint={`${ctaText.trim().length}/${max.ctaText}`}>
             <TextInput value={ctaText} maxLength={max.ctaText + 20} onChange={(e) => setCtaText(e.target.value)} />
           </FormField>
-          <FormField label="Button link" hint="A site path like /login?mode=register, or an https:// address">
+          <FormField label="Button link" hint="A site path like /register, or an https:// address">
             <TextInput value={ctaLink} onChange={(e) => setCtaLink(e.target.value)} />
           </FormField>
         </div>

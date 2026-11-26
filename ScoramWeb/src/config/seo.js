@@ -1,3 +1,5 @@
+import { HOME_TITLE, HOME_DESCRIPTION } from "./seoRoutes";
+
 // SEO CONFIGURATION -- centralized so metadata never gets hardcoded across pages.
 //
 // siteUrl MUST be the real production domain before launch -- set VITE_SITE_URL in .env.production.
@@ -8,10 +10,9 @@ export const SITE_URL = import.meta.env.VITE_SITE_URL || "https://scoram.in";
 export const seoConfig = {
   siteName: "SCORAM",
   siteUrl: SITE_URL,
-  defaultTitle: "SCORAM – Competitive Exam Preparation | PYQs, Previous Year Papers & Mock Tests",
+  defaultTitle: HOME_TITLE,
   titleTemplate: "%s | SCORAM",
-  defaultDescription:
-    "Prepare for SSC, Railway and other competitive exams with SCORAM. Practice previous year papers, a topic-wise question bank, mock tests, quizzes, and learn through community discussions.",
+  defaultDescription: HOME_DESCRIPTION,
   defaultKeywords: [
     "SCORAM",
     "SCORAM learning platform",

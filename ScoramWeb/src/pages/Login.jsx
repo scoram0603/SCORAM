@@ -26,13 +26,17 @@ function isValidPhone(value) {
   return /^\d{10}$/.test(value.trim());
 }
 
-export default function Login() {
+export default function Login({ initialMode }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/";
   // "login" | "register" -- defaults to "login" exactly as before; the landing page's Sign Up CTAs
   // link to /login?mode=register to open straight into the registration form.
-  const [mode, setMode] = useState(() => (searchParams.get("mode") === "register" ? "register" : "login"));
+  // `initialMode` is passed by the dedicated /login and /register routes (each is its own indexable URL --
+  // see config/seoRoutes.js); the old ?mode=register query still works when no prop is given.
+  const [mode, setMode] = useState(() =>
+    initialMode ? initialMode : searchParams.get("mode") === "register" ? "register" : "login"
+  );
   const { login, loginWithOtp, register, isLoading, error, clearError, sessionExpired, sessionRevokedElsewhere } = useAuth();
 
   // "password" | "otp" -- login-mode only. Register always goes through OTP now (see the Phone
@@ -533,7 +537,14 @@ export default function Login() {
             type="button"
             onClick={() => {
               clearError();
-              setMode(mode === "login" ? "register" : "login");
+              const next = mode === "login" ? "register" : "login";
+              if (initialMode) {
+                // Keep the address bar on the matching dedicated URL (and keep any ?redirect=).
+                const redirect = searchParams.get("redirect");
+                navigate(`${next === "register" ? "/register" : "/login"}${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ""}`, { replace: true });
+              } else {
+                setMode(next);
+              }
             }}
             className="font-semibold text-secondary-500 hover:underline"
           >
